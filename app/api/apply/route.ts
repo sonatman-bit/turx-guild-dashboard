@@ -3,7 +3,14 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { characterName, discordName, characterClass, spec, logs, motivation } = body;
+    
+    // Frontend'den gelebilecek tüm alternatif parametre isimlerini yakalayalım
+    const characterName = body.characterName || body.charName || body.name;
+    const discordName = body.discordName || body.discordHandle || body.discord;
+    const characterClass = body.characterClass || body.class || body.className;
+    const spec = body.spec || body.specialization;
+    const logs = body.logs || body.warcraftlogs || body.logsUrl;
+    const motivation = body.motivation || body.experience || body.notes;
 
     const webhookUrl = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL;
 

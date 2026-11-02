@@ -1,0 +1,154 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-cinzel), ui-serif, Georgia, serif;
+  --color-gold: var(--gold);
+  --color-neon: var(--neon);
+  --color-azure: var(--azure);
+  --color-silver: var(--silver);
+  --color-navy: var(--navy);
+  --color-success: var(--success);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  color-scheme: dark;
+  --gold: #d4af37;
+  --neon: #00f2fe;
+  --azure: #4facfe;
+  --silver: #c0c8d4;
+  --navy: #0a2540;
+  --success: #3ee07f;
+  --background: #08121e;
+  --foreground: #e6edf5;
+  --card: #0c1c2e;
+  --card-foreground: #e6edf5;
+  --popover: #0c1c2e;
+  --popover-foreground: #e6edf5;
+  --primary: #d4af37;
+  --primary-foreground: #08121e;
+  --secondary: #0f2a44;
+  --secondary-foreground: #e6edf5;
+  --muted: #10243a;
+  --muted-foreground: #8ea1b8;
+  --accent: #0f2f4a;
+  --accent-foreground: #00f2fe;
+  --destructive: #ef5350;
+  --border: rgb(79 172 254 / 0.16);
+  --input: rgb(79 172 254 / 0.22);
+  --ring: #00f2fe;
+  --chart-1: #00f2fe;
+  --chart-2: #4facfe;
+  --chart-3: #d4af37;
+  --chart-4: #c0c8d4;
+  --chart-5: #3ee07f;
+  --radius: 0.625rem;
+  --sidebar: #071019;
+  --sidebar-foreground: #c0c8d4;
+  --sidebar-primary: #d4af37;
+  --sidebar-primary-foreground: #08121e;
+  --sidebar-accent: #0f2a44;
+  --sidebar-accent-foreground: #00f2fe;
+  --sidebar-border: rgb(79 172 254 / 0.14);
+  --sidebar-ring: #00f2fe;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 85% -10%, rgb(0 242 254 / 0.08), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgb(212 175 55 / 0.06), transparent 60%),
+      linear-gradient(180deg, #08121e 0%, #0a2540 140%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-border bg-card/80 backdrop-blur-sm;
+  }
+  .text-glow-cyan {
+    text-shadow: 0 0 18px rgb(0 242 254 / 0.55);
+  }
+  .text-glow-gold {
+    text-shadow: 0 0 18px rgb(212 175 55 / 0.45);
+  }
+  .glow-border {
+    position: relative;
+    isolation: isolate;
+  }
+  .glow-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(90deg, var(--neon), var(--gold), var(--azure), var(--neon));
+    background-size: 300% 100%;
+    animation: border-flow 6s linear infinite;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    z-index: -1;
+  }
+}
+
+@keyframes border-flow {
+  to {
+    background-position: 300% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-border::before {
+    animation: none;
+  }
+}

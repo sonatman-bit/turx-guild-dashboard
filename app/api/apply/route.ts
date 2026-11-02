@@ -1,10 +1,23 @@
 import { NextResponse } from 'next/server';
 
+// Class'a göre dinamik sol çizgi rengi (Hex Decimal)
+const CLASS_COLORS: Record<string, number> = {
+  'Warrior': 12882200,      // #C69B6D (Kahverengi)
+  'Paladin': 16024474,      // #F48CBA (Pembe)
+  'Hunter': 11003713,       // #A7FD31 (Yeşil)
+  'Rogue': 16776006,        // #FFF468 (Sarı)
+  'Priest': 16777215,       // #FFFFFF (Beyaz)
+  'Death Knight': 12852277, // #C41E3A (Kırmızı)
+  'Shaman': 28882,          // #0070DD (Mavi)
+  'Mage': 41724,            // #3FC7EB (Açık Mavi)
+  'Warlock': 8871618,       // #8788EE (Mor)
+  'Druid': 16743680         // #FF7C0A (Turuncu)
+};
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    
-    // Frontend'den gelebilecek tüm alternatif parametre isimlerini yakalayalım
+
     const characterName = body.characterName || body.charName || body.name;
     const discordName = body.discordName || body.discordHandle || body.discord;
     const characterClass = body.characterClass || body.class || body.className;
@@ -19,16 +32,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Webhook URL missing" }, { status: 500 });
     }
 
+    // Seçilen Class'ın rengini al, yoksa varsayılan TURX Gold (#D4AF37) kullan
+    const embedColor = CLASS_COLORS[characterClass] || 13938487;
+
     const embed = {
-      title: "⚔️ Yeni TURX Raid Başvurusu",
-      color: 3899638,
+      title: "⚔️ YENİ RAID BAŞVURUSU",
+      color: embedColor,
       fields: [
-        { name: "Karakter Adı", value: characterName || "Belirtilmedi", inline: true },
-        { name: "Discord", value: discordName || "Belirtilmedi", inline: true },
-        { name: "Class / Spec", value: `${characterClass || '-'} / ${spec || '-'}`, inline: true },
-        { name: "WoWLogs Linki", value: logs && logs.trim() !== "" ? logs : "Belirtilmedi", inline: false },
-        { name: "Tecrübe & Motivasyon", value: motivation || "Belirtilmedi", inline: false }
+        {
+          name: "👤 Karakter & Oyuncu Bilgisi",
+          value: `> **Karakter Adı:** \`${characterName || 'Belirtilmedi'}\`\n> **Discord:** \`${discordName || 'Belirtilmedi'}\``,
+          inline: false
+        },
+        {
+          name: "🛡️ Sınıf & Uzmanlık (Class / Spec)",
+          value: `> **${characterClass || '-'}** — ${spec || '-'}`,
+          inline: false
+        },
+        {
+          name: "📊 WarcraftLogs Profil Linki",
+          value: logs && logs.trim() !== "" ? logs : "*Belirtilmedi*",
+          inline: false
+        },
+        {
+          name: "📜 Raid Tecrübesi & Motivasyon",
+          value: `\`\`\`text\n${motivation || 'Belirtilmedi'}\n\`\`\``,
+          inline: false
+        }
       ],
+      footer: {
+        text: "TURX Guild Dashboard Entegrasyonu"
+      },
       timestamp: new Date().toISOString()
     };
 

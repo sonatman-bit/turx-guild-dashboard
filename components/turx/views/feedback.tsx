@@ -10,6 +10,47 @@ const MAX = 1000
 export function FeedbackView() {
   const toast = useToast()
   const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const form = e.currentTarget
+    const formData = new FormData(form)
+    const message = ((formData.get('message') as string) || '').trim()
+    if (message.length < 8) {
+      toast({ title: 'Mesaj çok kısa', description: 'En az 8 karakter yaz.' })
+      return
+    }
+    setBusy(true)
+    try {
+      const response = await fetch('/api/anonymous', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: formData.get('to'),
+          topic: formData.get('topic'),
+          message,
+        }),
+      })
+      const data = (await response.json().catch(() => ({}))) as { error?: string }
+      if (!response.ok) {
+        throw new Error(data.error || 'Mesaj gönderilemedi.')
+      }
+      form.reset()
+      setText('')
+      toast({
+        title: 'Mesajınız anonim olarak iletildi',
+        description: 'Şimdilik yalnızca Guild Master e-postasına düşer.',
+      })
+    } catch (err) {
+      toast({
+        title: 'Gönderilemedi',
+        description: err instanceof Error ? err.message : 'Lütfen tekrar dene.',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div>
@@ -21,15 +62,7 @@ export function FeedbackView() {
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <Panel className="glow-border">
           <PanelTitle icon={Lock}>Gizli Mesaj</PanelTitle>
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              e.currentTarget.reset()
-              setText('')
-              toast({ title: 'Mesajınız Anonim Olarak İletildi', description: 'GM & Officer ekibi en kısa sürede değerlendirecek.' })
-            }}
-          >
+          <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Alıcı">
                 <select name="to" className={inputClass}>
@@ -63,8 +96,8 @@ export function FeedbackView() {
               <span className="text-xs text-muted-foreground tabular-nums">
                 {text.length}/{MAX}
               </span>
-              <GoldButton type="submit" disabled={!text.trim()}>
-                <EyeOff className="size-4" /> Anonim Gönder
+              <GoldButton type="submit" disabled={!text.trim() || busy}>
+                <EyeOff className="size-4" /> {busy ? 'Gönderiliyor…' : 'Anonim Gönder'}
               </GoldButton>
             </div>
           </form>

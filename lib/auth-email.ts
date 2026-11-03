@@ -137,6 +137,25 @@ export function signupEmailHtml(code: string) {
   `)
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+export function anonymousMessageHtml(options: { toLabel: string; topic: string; message: string }) {
+  const message = escapeHtml(options.message).replace(/\n/g, '<br>')
+  return wrapEmail(`
+    <h1 style="margin:0 0 12px;font-size:22px;color:#f4e7c3">Anonim mesaj</h1>
+    <p style="margin:0 0 8px;line-height:1.5"><strong>Alıcı seçimi:</strong> ${escapeHtml(options.toLabel)}</p>
+    <p style="margin:0 0 16px;line-height:1.5"><strong>Konu:</strong> ${escapeHtml(options.topic)}</p>
+    <div style="margin:0;padding:16px;border:1px solid #d4af3740;border-radius:12px;background:#071422;line-height:1.6;color:#d7e2ee">${message}</div>
+    <p style="margin:16px 0 0;font-size:13px;color:#8aa0b5">Gönderen kimliği, karakter adı ve IP saklanmaz / e-postaya eklenmez.</p>
+  `)
+}
+
 export function resetEmailHtml(link: string) {
   return wrapEmail(`
     <h1 style="margin:0 0 12px;font-size:22px;color:#f4e7c3">Şifre sıfırlama</h1>

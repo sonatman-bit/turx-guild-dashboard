@@ -1,3 +1,5 @@
+export type GuildRank = 'Guild Master' | 'Officer' | 'Raid Leader' | 'Raider' | 'Member'
+
 export const GM_EMAIL = 'sonatman@hotmail.com'
 export const DATA_EPOCH = '2026-11-03-auth-passwords'
 const DATA_EPOCH_KEY = 'turx_data_epoch'

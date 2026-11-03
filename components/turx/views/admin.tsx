@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
@@ -44,6 +44,15 @@ export function AdminDashboardView() {
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
   const [applications, setApplications] = useState<AdminApplication[]>([])
 
+  useEffect(() => {
+    fetch('/api/applications')
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { applications?: AdminApplication[] }
+        if (response.ok) setApplications(data.applications || [])
+      })
+      .catch(() => undefined)
+  }, [])
+
   const handleRankChange = (memberId: string, memberAccount: string, currentRank: GuildRank, newRank: GuildRank) => {
     if (currentRank === 'GM') {
       toast({
@@ -84,8 +93,17 @@ export function AdminDashboardView() {
     })
   }
 
-  const handleAppAction = (appId: string, status: 'APPROVED' | 'REJECTED') => {
-    setApplications(prev => prev.map(a => a.id === appId ? { ...a, status } : a))
+  const handleAppAction = async (appId: string, status: 'APPROVED' | 'REJECTED') => {
+    const response = await fetch('/api/applications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: appId, status }),
+    })
+    if (!response.ok) {
+      toast({ title: 'Güncellenemedi', description: 'Başvuru durumu kaydedilemedi.' })
+      return
+    }
+    setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, status } : a)))
     toast({
       title: status === 'APPROVED' ? 'Başvuru Onaylandı' : 'Başvuru Reddedildi',
       description: `Başvuru durumu güncellendi.`,

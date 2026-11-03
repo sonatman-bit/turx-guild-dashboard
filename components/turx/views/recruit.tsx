@@ -1,9 +1,11 @@
 'use client'
 
 import { Gavel, Grid3x3, UserPlus, CheckCircle2, XCircle, Clock, MessageSquare, Shield, Swords, ChevronDown, ChevronUp } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
@@ -130,6 +132,7 @@ interface ApplicationItem {
 }
 
 export function RecruitView() {
+  const { user } = useAuth()
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
@@ -141,8 +144,7 @@ export function RecruitView() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Officer detay aç/kapat
 
-  // Aktif kullanıcının rolü (GM / Officer kontrolü için)
-  const [currentUserRole] = useState<'Guild Master' | 'Officer' | 'Member'>('Guild Master')
+  const isAuthorized = canAccessAdminPanel(user?.role)
 
   const manifestoContentRef = useRef<HTMLDivElement>(null)
 
@@ -158,8 +160,30 @@ export function RecruitView() {
 
   const [applications, setApplications] = useState<ApplicationItem[]>([])
 
-  const handleStatusChange = (id: string, newStatus: 'APPROVED' | 'REJECTED') => {
-    setApplications(prev => prev.map(app => app.id === id ? { ...app, status: newStatus } : app))
+  const loadApplications = async () => {
+    const response = await fetch('/api/applications')
+    const data = (await response.json().catch(() => ({}))) as { applications?: ApplicationItem[]; error?: string }
+    if (!response.ok) {
+      throw new Error(data.error || 'Başvurular yüklenemedi.')
+    }
+    setApplications(data.applications || [])
+  }
+
+  useEffect(() => {
+    loadApplications().catch(() => setApplications([]))
+  }, [])
+
+  const handleStatusChange = async (id: string, newStatus: 'APPROVED' | 'REJECTED') => {
+    const response = await fetch('/api/applications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: newStatus }),
+    })
+    if (!response.ok) {
+      toast({ title: 'Güncellenemedi', description: 'Başvuru durumu kaydedilemedi.' })
+      return
+    }
+    setApplications((prev) => prev.map((app) => (app.id === id ? { ...app, status: newStatus } : app)))
     toast({
       title: newStatus === 'APPROVED' ? 'Başvuru Onaylandı!' : 'Başvuru Reddedildi',
       description: `Başvuru durumu sistem üzerinde güncellendi.`,
@@ -182,27 +206,51 @@ export function RecruitView() {
       logs: formData.get('logs') as string || 'Belirtilmemiş',
       experience: formData.get('exp') as string,
       status: 'PENDING',
-      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      date: new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }),
     }
 
     try {
-      setApplications(prev => [newApp, ...prev])
+      const saved = await fetch('/api/applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newApp,
+          accountName: user?.username || '',
+        }),
+      })
+      if (!saved.ok) {
+        const data = (await saved.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error || 'Başvuru kaydedilemedi.')
+      }
+
+      fetch('/api/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          charName: `${newApp.charName} ${newApp.charSurname}`.trim(),
+          discord: newApp.discord,
+          characterClass: newApp.characterClass,
+          spec: newApp.spec,
+          logs: newApp.logs,
+          experience: newApp.experience,
+        }),
+      }).catch(() => undefined)
+
+      await loadApplications()
       setOpen(false)
       toast({
         title: 'Başvurunuz Alındı!',
-        description: `⚔️ Yeni Guild Başvurunuz listeye başarıyla eklendi.`,
+        description: 'Başvuru kaydedildi. Sayfa yenilense de listede kalır.',
       })
     } catch (error) {
       toast({
         title: 'Hata!',
-        description: 'Sunucuya ulaşılamadı. Lütfen tekrar deneyin.',
+        description: error instanceof Error ? error.message : 'Sunucuya ulaşılamadı. Lütfen tekrar deneyin.',
       })
     } finally {
       setIsSubmitting(false)
     }
   }
-
-  const isAuthorized = currentUserRole === 'Guild Master' || currentUserRole === 'Officer'
 
   return (
     <div className="flex flex-col gap-8 pb-10">

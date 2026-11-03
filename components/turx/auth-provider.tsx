@@ -4,11 +4,11 @@ import { useState, useEffect, createContext, useContext, ReactNode } from 'react
 import { User, Pencil } from 'lucide-react'
 import { isOnboardingComplete } from '@/lib/profile-gate'
 import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt, verifyPassword } from '@/lib/password'
-import { isGuildMasterEmail, wipeLegacyTurxData } from '@/lib/turx-identity'
+import { isGuildMasterEmail, wipeLegacyTurxData, type GuildRank } from '@/lib/turx-identity'
 import { GoldButton, GhostButton, Modal, Field, inputClass } from './ui'
 import { useToast } from './toast'
 
-export type GuildRank = 'Guild Master' | 'Officer' | 'Raid Leader' | 'Raider' | 'Member'
+export type { GuildRank }
 type AuthStep = 'form' | 'verify' | 'forgot' | 'reset'
 type LoginResult = 'ok' | 'not_found' | 'bad_password'
 
@@ -29,7 +29,7 @@ interface AuthContextType {
   logout: () => void
   signup: (username: string, email: string, password: string) => Promise<void>
   updateUser: (username: string, email: string) => void
-  resetPasswordForEmail: (email: string, password: string) => Promise<boolean>
+  resetPasswordForEmail: (email: string, password: string, token?: string) => Promise<boolean>
   profileComplete: boolean
   refreshProfileGate: () => void
 }
@@ -126,6 +126,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const login = async (username: string, password: string): Promise<LoginResult> => {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      if (response.ok) {
+        const data = (await response.json()) as { user: UserAccount }
+        setUser(data.user)
+        setProfileComplete(isOnboardingComplete(data.user.username))
+        return 'ok'
+      }
+      if (response.status === 401) return 'bad_password'
+      if (response.status !== 404 && response.status !== 503) return 'not_found'
+    } catch {
+      // Fall through to this browser's local cache.
+    }
+
     const users = getRegisteredUsers()
     const found = users.find((item) => item.username.toLowerCase() === username.toLowerCase())
     if (!found) return 'not_found'
@@ -153,8 +171,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       salt,
       passwordHash,
     }
+
+    const response = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password }),
+    })
+    if (response.status === 409) {
+      throw new Error('Bu kullanıcı adı veya e-posta zaten kayıtlı.')
+    }
+    if (!response.ok && response.status !== 503) {
+      const data = (await response.json().catch(() => ({}))) as { error?: string }
+      throw new Error(data.error || 'Hesap sunucuya kaydedilemedi.')
+    }
+
     saveRegisteredUser(stored)
-    setUser(publicUser(stored))
+    if (response.ok) {
+      const data = (await response.json()) as { user?: UserAccount }
+      setUser(data.user || publicUser(stored))
+    } else {
+      setUser(publicUser(stored))
+    }
     setProfileComplete(false)
   }
 
@@ -165,10 +202,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const resetPasswordForEmail = async (email: string, password: string) => {
+  const resetPasswordForEmail = async (email: string, password: string, token?: string) => {
+    if (token) {
+      try {
+        await apiJson('/api/auth/reset-password', { token, password })
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('Hesap deposu')) {
+          // continue to local fallback
+        } else {
+          throw err
+        }
+      }
+    }
     const users = getRegisteredUsers()
     const found = users.find((item) => item.email.toLowerCase() === email.toLowerCase())
-    if (!found) return false
+    if (!found) return Boolean(token)
     const salt = randomSalt()
     const passwordHash = await hashPassword(password, salt)
     saveRegisteredUser({ ...found, salt, passwordHash })
@@ -365,11 +413,6 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const email = ((formData.get('email') as string) || '').trim().toLowerCase()
-    const existing = getRegisteredUsers().some((item) => item.email.toLowerCase() === email)
-    if (!existing) {
-      toast({ title: 'Hesap bulunamadı', description: 'Bu tarayıcıda bu e-posta ile kayıtlı bir hesap yok.' })
-      return
-    }
     setBusy(true)
     try {
       await apiJson('/api/auth/send-code', { purpose: 'reset', email })
@@ -407,7 +450,7 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
       const verified = await apiJson('/api/auth/verify-reset', { token: resetToken })
       const email = verified.email || resetEmail
       if (!email) throw new Error('Sıfırlama bağlantısı geçersiz.')
-      const updated = await resetPasswordForEmail(email, password)
+      const updated = await resetPasswordForEmail(email, password, resetToken)
       if (!updated) {
         toast({
           title: 'Hesap bu tarayıcıda yok',

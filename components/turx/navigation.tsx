@@ -13,20 +13,22 @@ import {
   X,
 } from 'lucide-react'
 import Image from 'next/image'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { TurxLogo } from './logo'
+import { AuthNavbarWidget } from './auth-provider'
 
-export type TabId = 'overview' | 'raids' | 'roster' | 'bank' | 'strategy' | 'recruit' | 'feedback'
+export type TabId = 'overview' | 'roster' | 'applications' | 'strategy' | 'raids' | 'bank' | 'anonymous' | 'profile' | 'admin'
 
 export const NAV_ITEMS: { id: TabId; label: string; short: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Genel Bakış', short: 'Dashboard', icon: LayoutDashboard },
-  { id: 'raids', label: 'PvE Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
-  { id: 'roster', label: 'Lonca Kadrosu', short: 'Roster & Analitik', icon: Users },
-  { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins },
+  { id: 'roster', label: 'Guild Kadrosu', short: 'Roster & Analitik', icon: Users },
+  { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus },
   { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText },
-  { id: 'recruit', label: 'Başvuru', short: 'Recruitment', icon: UserPlus },
-  { id: 'feedback', label: 'Anonim Mesaj Kutusu', short: 'GM & Officer', icon: MessageSquareLock },
+  { id: 'raids', label: 'Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
+  { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins },
+  { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Officer', icon: MessageSquareLock },
+  { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield }, // <--- Yeni Eklenen Admin Paneli
 ]
 
 function NavList({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
@@ -40,7 +42,7 @@ function NavList({ active, onSelect }: { active: TabId; onSelect: (id: TabId) =>
             onClick={() => onSelect(id)}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
+              'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition cursor-pointer',
               isActive
                 ? 'bg-gradient-to-r from-neon/15 to-transparent text-foreground'
                 : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
@@ -78,7 +80,7 @@ function SidebarBody({ active, onSelect }: { active: TabId; onSelect: (id: TabId
           <span className="font-display text-xs font-bold tracking-wider">ALLIANCE PvE (EU)</span>
         </div>
         <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-          WoW: Forever Classic+ · Haftalık Raid: Çarşamba & Pazar 21:00 (TR)
+          WoW: Forever Classic+ · İlk günden Phase 1 raid hazırlıkları
         </p>
       </div>
     </div>
@@ -127,7 +129,7 @@ export function Sidebar({
         >
           <button
             onClick={onCloseMobile}
-            className="absolute top-4 right-3 rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            className="absolute top-4 right-3 rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground cursor-pointer"
             aria-label="Menüyü kapat"
           >
             <X className="size-5" />
@@ -145,13 +147,23 @@ export function Sidebar({
   )
 }
 
-export function Header({ onOpenMobile, mobileOpen }: { onOpenMobile: () => void; mobileOpen: boolean }) {
+export function Header({ 
+  active, 
+  onSelect, 
+  onOpenMobile, 
+  mobileOpen 
+}: { 
+  active: TabId
+  onSelect: (id: TabId) => void
+  onOpenMobile: () => void
+  mobileOpen: boolean 
+}) {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 px-4 md:px-6">
         <button
           onClick={onOpenMobile}
-          className="rounded-lg border border-border p-2 text-silver hover:border-neon/40 hover:text-neon lg:hidden"
+          className="rounded-lg border border-border p-2 text-silver hover:border-neon/40 hover:text-neon lg:hidden cursor-pointer"
           aria-label="Menüyü aç"
           aria-expanded={mobileOpen}
           aria-controls="mobile-nav"
@@ -164,7 +176,7 @@ export function Header({ onOpenMobile, mobileOpen }: { onOpenMobile: () => void;
           <div className="min-w-0">
             <p className="flex items-baseline gap-2">
               <span className="font-display text-lg font-black tracking-widest text-gold">TURX</span>
-              <span className="hidden font-display text-xs tracking-[0.25em] text-neon sm:inline">TURX FOREVER</span>
+              <span className="hidden font-display text-xs tracking-[0.25em] text-neon sm:inline">FOREVER</span>
             </p>
           </div>
           <span className="hidden items-center gap-1.5 rounded-full border border-azure/40 bg-azure/10 px-3 py-1 text-xs font-semibold text-azure md:inline-flex">
@@ -173,30 +185,8 @@ export function Header({ onOpenMobile, mobileOpen }: { onOpenMobile: () => void;
           </span>
         </div>
 
-        <div className="ml-auto flex items-center gap-3 rounded-full border border-border bg-card/70 py-1 pr-1 pl-1 sm:pr-3">
-          <div className="relative">
-            <Image
-              src="/images/avatar.png"
-              alt="Aslanyürek Discord avatarı"
-              width={36}
-              height={36}
-              className="size-9 rounded-full border border-gold/50 object-cover"
-            />
-            <span className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-card bg-success" aria-hidden />
-          </div>
-          <div className="hidden leading-tight sm:block">
-            <p className="text-sm font-semibold" style={{ color: '#C69B6D' }}>
-              Aslanyürek
-            </p>
-            <p className="text-[11px] text-muted-foreground">Officer · Kaan#0420</p>
-          </div>
-          <span className="hidden items-center gap-1.5 rounded-full border border-success/50 bg-success/10 px-2.5 py-1 text-[11px] font-bold tracking-wide text-success shadow-[0_0_14px_rgb(62_224_127/0.35)] md:inline-flex">
-            <span className="relative flex size-2">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
-              <span className="relative inline-flex size-2 rounded-full bg-success" />
-            </span>
-            Raid Ready
-          </span>
+        <div className="ml-auto flex items-center gap-3">
+          <AuthNavbarWidget onNavigate={onSelect} />
         </div>
       </div>
     </header>

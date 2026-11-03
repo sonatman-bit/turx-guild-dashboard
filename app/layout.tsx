@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Cinzel, Inter } from 'next/font/google'
+import { AuthProvider } from '@/components/turx/auth-provider'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin', 'latin-ext'], variable: '--font-inter' })
@@ -26,7 +27,9 @@ export default function RootLayout({
   return (
     <html lang="tr" className={`${inter.variable} ${cinzel.variable} bg-background`}>
       <body>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

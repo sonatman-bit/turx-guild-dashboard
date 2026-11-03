@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     const embedColor = CLASS_COLORS[characterClass] || 13938487;
 
     const embed = {
-      title: "⚔️ YENİ RAID BAŞVURUSU",
+      title: "⚔️ GUILD BAŞVURUSU",
       color: embedColor,
       fields: [
         {

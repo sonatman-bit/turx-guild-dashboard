@@ -1,257 +1,327 @@
 'use client'
 
-import { CheckCircle2, Clock, ExternalLink, FlaskConical, HeartPulse, Shield, Swords, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { CheckCircle2, Clock, ExternalLink, FlaskConical, HeartPulse, Shield, Swords, UserCheck, UserX, XCircle, Users, Sparkles, UserPlus, Send } from 'lucide-react'
+import { useState, useEffect } from 'react'
 import { CLASS_COLORS, CONSUMABLES, MEMBERS, RAIDS, type Raid, type Role } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
 type Status = 'Confirmed' | 'Pending' | 'Declined'
+type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
+
+interface GuildCharacter {
+  id: string
+  name: string
+  wowClass: keyof typeof CLASS_COLORS
+  spec: string
+  role: ExtendedRole
+}
+
+interface RaidMember extends GuildCharacter {
+  status: 'roster' | 'bench' | 'signup'
+}
+
+// Örnek Aktif Kullanıcının Karakter Havuzu
+const MY_CHARACTERS: GuildCharacter[] = [
+  { id: 'c1', name: 'Sonat', wowClass: 'Druid', spec: 'Feral Tank', role: 'TANK' },
+  { id: 'c2', name: 'Waffleheal', wowClass: 'Shaman', spec: 'Restoration', role: 'HEALER' },
+  { id: 'c3', name: 'Wafflegear', wowClass: 'Mage', spec: 'Fire DPS', role: 'RANGED' },
+]
 
 const STATUS_STYLES: Record<Status, string> = {
   Confirmed: 'border-success/50 bg-success/10 text-success',
   Pending: 'border-gold/50 bg-gold/10 text-gold',
   Declined: 'border-destructive/50 bg-destructive/10 text-destructive',
 }
-const STATUS_LABEL: Record<Status, string> = { Confirmed: 'Confirmed', Pending: 'Pending', Declined: 'Declined' }
 
-const ROLE_ICONS: Record<Role, React.ComponentType<{ className?: string }>> = { Tank: Shield, Healer: HeartPulse, DPS: Swords }
+const ROLE_ICONS: Record<ExtendedRole, React.ComponentType<{ className?: string }>> = {
+  TANK: Shield,
+  HEALER: HeartPulse,
+  MELEE: Swords,
+  RANGED: Swords,
+}
 
-const seededStatus = (i: number): Status => (i % 5 === 3 ? 'Pending' : i % 7 === 6 ? 'Declined' : 'Confirmed')
+function getZoneTheme(zoneName: string) {
+  const name = zoneName.toLowerCase()
+  if (name.includes('serpentshrine') || name.includes('ssc')) {
+    return {
+      accentColor: 'text-cyan-400',
+      badgeColor: 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300',
+      cardBorder: 'border border-border border-t-2 border-t-cyan-400',
+    }
+  }
+  if (name.includes('tempest') || name.includes('tk')) {
+    return {
+      accentColor: 'text-purple-400',
+      badgeColor: 'border-purple-500/40 bg-purple-500/10 text-purple-300',
+      cardBorder: 'border border-border border-t-2 border-t-purple-400',
+    }
+  }
+  if (name.includes('hyjal') || name.includes('black temple')) {
+    return {
+      accentColor: 'text-emerald-400',
+      badgeColor: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+      cardBorder: 'border border-border border-t-2 border-t-emerald-400',
+    }
+  }
+  return {
+    accentColor: 'text-gold',
+    badgeColor: 'border-gold/40 bg-gold/10 text-gold',
+    cardBorder: 'border border-border border-t-2 border-t-gold',
+  }
+}
+
+function getActiveRaids(raids: Raid[]) {
+  return raids.filter(() => true)
+}
 
 function RaidCard({ raid }: { raid: Raid }) {
   const toast = useToast()
-  const [role, setRole] = useState<Role | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [selectedChar, setSelectedChar] = useState<GuildCharacter>(MY_CHARACTERS[0])
   const [signedUp, setSignedUp] = useState(false)
   const [myStatus, setMyStatus] = useState<Status>('Pending')
-  const [excuseOpen, setExcuseOpen] = useState(false)
-  const stage = signedUp ? 2 : 1
+  const [isPublished, setIsPublished] = useState(false)
 
-  const roster = MEMBERS.filter((m) => m.type === 'Main').slice(0, Math.min(raid.size, 8))
+  const theme = getZoneTheme(raid.name)
+
+  const storagePoolKey = `turx_raid_pool_${raid.id}`
+  const storageRosterKey = `turx_raid_roster_${raid.id}`
+
+  const [signupPool, setSignupPool] = useState<RaidMember[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(storagePoolKey)
+      if (saved) {
+        try { return JSON.parse(saved) } catch (e) { /* fallback */ }
+      }
+    }
+    return [
+      { id: '1', name: 'Overcharm', wowClass: 'Warrior', spec: 'Arms DPS', role: 'MELEE', status: 'signup' },
+      { id: '2', name: 'Overlock', wowClass: 'Shaman', spec: 'Resto', role: 'HEALER', status: 'signup' },
+    ]
+  })
+
+  const [publishedRoster, setPublishedRoster] = useState<RaidMember[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(storageRosterKey)
+      if (saved) {
+        try { return JSON.parse(saved) } catch (e) { /* fallback */ }
+      }
+    }
+    return [
+      { id: '10', name: 'Arthas', wowClass: 'Paladin', spec: 'Protection', role: 'TANK', status: 'roster' },
+      { id: '11', name: 'Thrall', wowClass: 'Shaman', spec: 'Restoration', role: 'HEALER', status: 'roster' },
+    ]
+  })
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(storagePoolKey, JSON.stringify(signupPool))
+    }
+  }, [signupPool, storagePoolKey])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(storageRosterKey, JSON.stringify(publishedRoster))
+    }
+  }, [publishedRoster, storageRosterKey])
+
+  const roles: { key: ExtendedRole; label: string }[] = [
+    { key: 'TANK', label: 'Tank' },
+    { key: 'HEALER', label: 'Healer' },
+    { key: 'MELEE', label: 'Melee DPS' },
+    { key: 'RANGED', label: 'Ranged DPS' },
+  ]
+
+  const moveToRoster = (member: RaidMember, role: ExtendedRole) => {
+    setSignupPool(signupPool.filter(m => m.id !== member.id))
+    setPublishedRoster([...publishedRoster, { ...member, role, status: 'roster' }])
+  }
+
+  const returnToPool = (member: RaidMember) => {
+    setPublishedRoster(publishedRoster.filter(m => m.id !== member.id))
+    setSignupPool([...signupPool, { ...member, status: 'signup' }])
+  }
+
+  const handlePublish = () => {
+    setIsPublished(true)
+    toast({ 
+      title: 'Kadro Başarıyla Yayınlandı! 🚀', 
+      description: `${raid.name} resmi rosterı güncellendi ve Discord webhook kuyruğuna eklendi.` 
+    })
+    setTimeout(() => setIsPublished(false), 3000)
+  }
+
+  const handleSignupSubmit = () => {
+    setModalOpen(false)
+    setSignedUp(true)
+    const existingInPool = signupPool.some(m => m.name === selectedChar.name)
+    if (!existingInPool) {
+      const newSignup: RaidMember = { ...selectedChar, id: Date.now().toString(), status: 'signup' }
+      setSignupPool([...signupPool, newSignup])
+    }
+    toast({ title: 'Ön Kayıt Başarılı!', description: `${selectedChar.name} (${selectedChar.spec}) ile kayıt olundu.` })
+  }
 
   return (
-    <Panel className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <Panel className={`flex flex-col gap-6 relative shadow-xl ${theme.cardBorder}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 pt-1">
         <div>
-          <h2 className="font-display text-xl font-bold text-gold">{raid.name}</h2>
-          <p className="text-sm text-muted-foreground">
-            {raid.size}-Man · Açılış {raid.unlock} @ {raid.time}
+          <h2 className={`font-display text-2xl font-bold tracking-wide ${theme.accentColor}`}>{raid.name}</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {raid.size}-Man Raid · Açılış: <span className="text-silver font-medium">{raid.unlock} @ {raid.time}</span>
           </p>
         </div>
-        <Badge className="border-neon/40 bg-neon/10 text-neon">Phase 1</Badge>
+        <Badge className={theme.badgeColor}>Phase 1 Engine</Badge>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 text-center">
-        {(
-          [
-            ['Tank', raid.tanks],
-            ['Healer', raid.healers],
-            ['DPS', raid.dps],
-          ] as const
-        ).map(([r, n]) => {
-          const Icon = ROLE_ICONS[r]
+      {/* 4'lü Rol Sütun Matrisi */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {roles.map(({ key, label }) => {
+          const membersInRole = publishedRoster.filter(m => m.role === key && m.status === 'roster')
           return (
-            <div key={r} className="rounded-lg border border-border bg-[#071422] py-2">
-              <Icon className="mx-auto size-4 text-neon" />
-              <p className="mt-1 font-display text-lg font-bold tabular-nums">{n}</p>
-              <p className="text-[11px] text-muted-foreground">{r}</p>
+            <div key={key} className="rounded-xl border border-border/70 bg-[#071422]/90 p-3.5 shadow-inner">
+              <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-2.5">
+                <span className="text-xs font-bold text-silver uppercase tracking-wider">{label}</span>
+                <span className="text-xs font-extrabold text-neon tabular-nums bg-neon/10 px-1.5 py-0.5 rounded">{membersInRole.length}</span>
+              </div>
+              <ul className="flex flex-col gap-1.5 min-h-[90px]">
+                {membersInRole.map(m => (
+                  <li key={m.id} className="flex items-center justify-between text-xs bg-background/60 px-2.5 py-1.5 rounded-lg border border-border/40 transition hover:border-border">
+                    <div className="flex flex-col truncate">
+                      <span className="truncate font-semibold" style={{ color: CLASS_COLORS[m.wowClass] }}>{m.name}</span>
+                      <span className="text-[10px] text-muted-foreground">{m.spec}</span>
+                    </div>
+                    <button onClick={() => returnToPool(m)} title="Havuza Geri Gönder" className="text-muted-foreground hover:text-destructive transition ml-1">
+                      <UserX className="size-3.5" />
+                    </button>
+                  </li>
+                ))}
+                {membersInRole.length === 0 && (
+                  <li className="text-[11px] text-muted-foreground/70 italic text-center py-6">Kadro boş</li>
+                )}
+              </ul>
             </div>
           )
         })}
       </div>
 
-      <ol className="flex items-center gap-2 text-xs" aria-label="Kayıt aşamaları">
-        {['Pre-Signup', 'Kadro Onayı'].map((s, i) => (
-          <li key={s} className="flex flex-1 items-center gap-2">
-            <span
-              className={cn(
-                'flex size-6 items-center justify-center rounded-full border font-bold',
-                stage > i ? 'border-neon bg-neon/20 text-neon' : 'border-border text-muted-foreground',
-              )}
-            >
-              {i + 1}
-            </span>
-            <span className={stage > i ? 'text-foreground' : 'text-muted-foreground'}>{s}</span>
-            {i === 0 && <span className="h-px flex-1 bg-border" aria-hidden />}
-          </li>
-        ))}
-      </ol>
-
+      {/* Oyuncu Ön Kayıt Bölümü */}
       {!signedUp ? (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-silver">Rolünü seç ve ön kayıt oluştur:</p>
-          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Rol seçimi">
-            {(['Tank', 'Healer', 'DPS'] as Role[]).map((r) => {
-              const Icon = ROLE_ICONS[r]
-              return (
-                <button
-                  key={r}
-                  role="radio"
-                  aria-checked={role === r}
-                  onClick={() => setRole(r)}
-                  className={cn(
-                    'flex flex-col items-center gap-1 rounded-lg border py-3 text-sm font-medium transition',
-                    role === r ? 'border-gold bg-gold/10 text-gold' : 'border-border text-silver hover:border-neon/40',
-                  )}
-                >
-                  <Icon className="size-5" />
-                  {r}
-                </button>
-              )
-            })}
-          </div>
-          <GoldButton
-            disabled={!role}
-            onClick={() => {
-              setSignedUp(true)
-              toast({ title: 'Raid Kaydınız Alındı!', description: `${raid.name} · ${role}` })
-            }}
-          >
-            Ön Kayıt Oluştur
+        <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/40 p-4">
+          <p className="text-sm text-silver font-medium flex items-center gap-1.5">
+            <Sparkles className="size-4 text-gold" /> Karakter havuzundan seçim yaparak ön kayıt oluştur:
+          </p>
+          <GoldButton onClick={() => setModalOpen(true)} className="w-full sm:w-auto">
+            <UserPlus className="size-4" /> Karakter ile Ön Kayıt Ol
           </GoldButton>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-[#071422] p-3">
+        <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/40 p-4">
+          <div className="flex items-center justify-between">
             <p className="text-sm">
-              Kadro yayınlandı · Rolün: <span className="font-semibold text-gold">{role}</span>
+              Aktif Kayıtlı Karakter: <span className="font-semibold" style={{ color: CLASS_COLORS[selectedChar.wowClass] }}>{selectedChar.name}</span> ({selectedChar.spec})
             </p>
-            <Badge className={STATUS_STYLES[myStatus]}>{STATUS_LABEL[myStatus]}</Badge>
+            <Badge className={STATUS_STYLES[myStatus]}>{myStatus}</Badge>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <GoldButton
-              onClick={() => {
-                setMyStatus('Confirmed')
-                toast({ title: 'Katılımınız Onaylandı!', description: `${raid.name} · ${raid.unlock} ${raid.time}` })
-              }}
-            >
-              <CheckCircle2 className="size-4" /> Kadro Katılımımı Onaylıyorum
+          <div className="flex gap-2">
+            <GoldButton onClick={() => setMyStatus('Confirmed')}>
+              <CheckCircle2 className="size-4" /> Katılımı Onayla
             </GoldButton>
-            <GhostButton onClick={() => setExcuseOpen(true)}>
-              <XCircle className="size-4" /> Mazeret Bildir
+            <GhostButton onClick={() => setModalOpen(true)}>
+              Karakter Değiştir
             </GhostButton>
           </div>
         </div>
       )}
 
-      <div>
-        <p className="mb-2 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Yayınlanan Kadro</p>
-        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-          {roster.map((m, i) => {
-            const s = seededStatus(i)
-            const Icon = ROLE_ICONS[m.role]
-            return (
-              <li key={m.name} className="flex items-center gap-3 px-3 py-2 text-sm">
-                <Icon className="size-4 text-muted-foreground" aria-label={m.role} />
-                <span className="flex-1 truncate font-medium" style={{ color: CLASS_COLORS[m.wowClass] }}>
-                  {m.name}
-                </span>
-                <span className="hidden text-xs text-muted-foreground sm:inline">{m.spec}</span>
-                <Badge className={STATUS_STYLES[s]}>{s}</Badge>
-              </li>
-            )
-          })}
-        </ul>
+      {/* Officer / Subay Yönetim Paneli (Draft & Publish) */}
+      <div className="rounded-xl border border-gold/30 bg-gold/5 p-4 flex flex-col gap-3 shadow-sm">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-gold flex items-center gap-2">
+            <Users className="size-4" /> Officer Ön Kayıt Havuzu ({signupPool.length})
+          </span>
+          <GoldButton 
+            onClick={handlePublish} 
+            className={cn("text-xs py-1.5 px-3.5 transition-all", isPublished && "bg-success text-success-foreground border-success")}
+          >
+            <Send className="size-3.5 mr-1" /> {isPublished ? 'Yayınlandı!' : 'Kadroyu Yayınla (Publish)'}
+          </GoldButton>
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {signupPool.map(m => (
+            <div key={m.id} className="flex items-center gap-2.5 bg-background border border-border/80 rounded-lg px-3 py-2 text-xs shadow-sm">
+              <div className="flex flex-col">
+                <span className="font-semibold" style={{ color: CLASS_COLORS[m.wowClass] }}>{m.name}</span>
+                <span className="text-muted-foreground text-[10px]">{m.spec} ({m.role})</span>
+              </div>
+              <div className="flex gap-1.5 ml-3 border-l border-border pl-2">
+                <button onClick={() => moveToRoster(m, m.role)} title="Rostere Ekle" className="text-success hover:scale-110 transition">
+                  <UserCheck className="size-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+          {signupPool.length === 0 && (
+            <p className="text-xs text-muted-foreground italic py-1">Havuzda bekleyen yeni başvuru bulunmuyor.</p>
+          )}
+        </div>
       </div>
 
-      <Modal open={excuseOpen} onClose={() => setExcuseOpen(false)} title="Mazeret Bildir" description={`${raid.name} · ${raid.unlock} ${raid.time}`}>
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault()
-            setMyStatus('Declined')
-            setExcuseOpen(false)
-            toast({ title: 'Mazeretiniz İletildi', description: 'Officer ekibi bilgilendirildi. Bench listesine alındınız.', variant: 'info' })
-          }}
-        >
-          <Field label="Mazeret Türü">
-            <select required className={inputClass} defaultValue="">
-              <option value="" disabled>
-                Seçiniz
-              </option>
-              <option>İş / Okul</option>
-              <option>Sağlık</option>
-              <option>Geç katılacağım</option>
-              <option>Diğer</option>
-            </select>
-          </Field>
-          <Field label="Açıklama">
-            <textarea required rows={3} className={inputClass} placeholder="Kısa bir açıklama yazın..." />
-          </Field>
-          <div className="flex justify-end gap-2">
-            <GhostButton type="button" onClick={() => setExcuseOpen(false)}>
-              Vazgeç
-            </GhostButton>
-            <GoldButton type="submit">Gönder</GoldButton>
+      {/* Karakter Seçim Modalı */}
+      {modalOpen && (
+        <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Raide Katılacak Karakteri Seçin">
+          <div className="flex flex-col gap-4 py-2">
+            <p className="text-sm text-muted-foreground">Hesabınıza bağlı karakter havuzundan bu raid için kullanacağınız karakteri seçin:</p>
+            <div className="grid gap-2.5">
+              {MY_CHARACTERS.map((char) => (
+                <button
+                  key={char.id}
+                  onClick={() => setSelectedChar(char)}
+                  className={cn(
+                    'flex items-center justify-between p-3 rounded-xl border text-left transition-all',
+                    selectedChar.id === char.id ? 'border-gold bg-gold/10 shadow-sm' : 'border-border bg-background hover:border-border/80'
+                  )}
+                >
+                  <div>
+                    <div className="font-bold text-sm" style={{ color: CLASS_COLORS[char.wowClass] }}>{char.name}</div>
+                    <div className="text-xs text-muted-foreground">{char.wowClass} · {char.spec}</div>
+                  </div>
+                  <Badge className="border-border bg-muted/30 text-xs">{char.role}</Badge>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <GhostButton onClick={() => setModalOpen(false)}>İptal</GhostButton>
+              <GoldButton onClick={handleSignupSubmit}>Bu Karakterle Kaydol</GoldButton>
+            </div>
           </div>
-        </form>
-      </Modal>
+        </Modal>
+      )}
     </Panel>
   )
 }
 
-const LOGS = [
-  { name: 'Barrow Deeps — PTR Testi', date: '28 Ekim 2026' },
-  { name: 'Onyxia — Beta Pull Analizi', date: '21 Ekim 2026' },
-  { name: 'Hyjal Summit — Beta Clear', date: '14 Ekim 2026' },
-]
-
 export function RaidsView() {
+  const activeRaids = getActiveRaids(RAIDS)
+
   return (
     <div>
       <SectionHeader
         eyebrow="Raid Takvimi · 21:00 TR"
-        title="PvE Raid Takvimi & Kadro Onay Sistemi"
-        description="Önce rolünle Pre-Signup yap, Officer ekibi kadroyu yayınladığında katılımını onayla veya mazeret bildir."
+        title="PvE Raid Takvimi & Kadro Yönetim Sistemi"
+        description="Karakter havuzunuzdan seçim yapın, ön kayıt oluşturun ve subay paneliyle roster'ı yönetin."
         action={
           <Badge className="border-gold/40 bg-gold/10 text-gold">
             <Clock className="size-3" /> Tüm Raid’ler 21:00’da başlar
           </Badge>
         }
       />
-      <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3">
-        {RAIDS.map((r) => (
+      <div className="grid gap-8 mt-6">
+        {activeRaids.map((r) => (
           <RaidCard key={r.id} raid={r} />
         ))}
-      </div>
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Panel>
-          <PanelTitle icon={FlaskConical}>Zorunlu Raid Consumable Listesi</PanelTitle>
-          <ul className="flex flex-col gap-2">
-            {CONSUMABLES.map((c) => (
-              <li key={c.name} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#071422] px-3 py-2.5 text-sm">
-                <span className="text-silver">{c.name}</span>
-                <Badge className={c.required ? 'border-gold/50 text-gold' : 'border-border text-muted-foreground'}>
-                  {c.required ? 'Zorunlu' : 'Önerilen'}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-        <Panel>
-          <PanelTitle icon={ExternalLink}>WoWLogs Raporları</PanelTitle>
-          <ul className="flex flex-col gap-2">
-            {LOGS.map((l) => (
-              <li key={l.name}>
-                <a
-                  href="https://www.warcraftlogs.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#071422] px-3 py-2.5 text-sm transition hover:border-neon/50"
-                >
-                  <span>
-                    <span className="block font-medium">{l.name}</span>
-                    <span className="text-xs text-muted-foreground">{l.date}</span>
-                  </span>
-                  <ExternalLink className="size-4 text-neon" aria-hidden />
-                  <span className="sr-only">(yeni sekmede açılır)</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </Panel>
       </div>
     </div>
   )

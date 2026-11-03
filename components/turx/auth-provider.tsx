@@ -3,11 +3,14 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
 import { User, Pencil } from 'lucide-react'
 import { isOnboardingComplete } from '@/lib/profile-gate'
+import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt, verifyPassword } from '@/lib/password'
 import { isGuildMasterEmail, wipeLegacyTurxData } from '@/lib/turx-identity'
 import { GoldButton, GhostButton, Modal, Field, inputClass } from './ui'
 import { useToast } from './toast'
 
 export type GuildRank = 'Guild Master' | 'Officer' | 'Raid Leader' | 'Raider' | 'Member'
+type AuthStep = 'form' | 'verify' | 'forgot' | 'reset'
+type LoginResult = 'ok' | 'not_found' | 'bad_password'
 
 interface UserAccount {
   username: string
@@ -15,12 +18,18 @@ interface UserAccount {
   role: GuildRank
 }
 
+interface StoredAccount extends UserAccount {
+  salt: string
+  passwordHash: string
+}
+
 interface AuthContextType {
   user: UserAccount | null
-  login: (username: string) => boolean
+  login: (username: string, password: string) => Promise<LoginResult>
   logout: () => void
-  signup: (username: string, email: string) => void
+  signup: (username: string, email: string, password: string) => Promise<void>
   updateUser: (username: string, email: string) => void
+  resetPasswordForEmail: (email: string, password: string) => Promise<boolean>
   profileComplete: boolean
   refreshProfileGate: () => void
 }
@@ -29,25 +38,41 @@ function roleForEmail(email: string): GuildRank {
   return isGuildMasterEmail(email) ? 'Guild Master' : 'Member'
 }
 
+function publicUser(account: StoredAccount): UserAccount {
+  return { username: account.username, email: account.email, role: roleForEmail(account.email) }
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const getRegisteredUsers = (): UserAccount[] => {
+const getRegisteredUsers = (): StoredAccount[] => {
   if (typeof window === 'undefined') return []
   wipeLegacyTurxData()
   const saved = localStorage.getItem('turx_registered_users')
   if (saved) {
-    try { return JSON.parse(saved) } catch (e) { return [] }
+    try {
+      return JSON.parse(saved) as StoredAccount[]
+    } catch {
+      return []
+    }
   }
   return []
 }
 
-const saveRegisteredUser = (newUser: UserAccount) => {
+const persistUsers = (users: StoredAccount[]) => {
+  localStorage.setItem('turx_registered_users', JSON.stringify(users))
+}
+
+const saveRegisteredUser = (newUser: StoredAccount) => {
   if (typeof window === 'undefined') return
   const users = getRegisteredUsers()
-  if (!users.some(u => u.username.toLowerCase() === newUser.username.toLowerCase())) {
-    users.push(newUser)
-    localStorage.setItem('turx_registered_users', JSON.stringify(users))
-  }
+  const index = users.findIndex(
+    (item) =>
+      item.username.toLowerCase() === newUser.username.toLowerCase() ||
+      item.email.toLowerCase() === newUser.email.toLowerCase(),
+  )
+  if (index >= 0) users[index] = newUser
+  else users.push(newUser)
+  persistUsers(users)
 }
 
 function readStoredUser(): UserAccount | null {
@@ -60,6 +85,19 @@ function readStoredUser(): UserAccount | null {
   } catch {
     return null
   }
+}
+
+async function apiJson(path: string, body: Record<string, string>) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = (await response.json().catch(() => ({}))) as { error?: string; email?: string; ok?: boolean }
+  if (!response.ok) {
+    throw new Error(data.error || 'İstek başarısız.')
+  }
+  return data
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -87,14 +125,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileComplete(isOnboardingComplete(user.username))
   }
 
-  const login = (username: string) => {
+  const login = async (username: string, password: string): Promise<LoginResult> => {
     const users = getRegisteredUsers()
-    const found = users.find(u => u.username.toLowerCase() === username.toLowerCase())
-    if (!found) return false
-    const nextUser = { ...found, role: roleForEmail(found.email) }
+    const found = users.find((item) => item.username.toLowerCase() === username.toLowerCase())
+    if (!found) return 'not_found'
+    if (!found.salt || !found.passwordHash) return 'bad_password'
+    const matches = await verifyPassword(password, found.salt, found.passwordHash)
+    if (!matches) return 'bad_password'
+    const nextUser = publicUser(found)
     setUser(nextUser)
     setProfileComplete(isOnboardingComplete(nextUser.username))
-    return true
+    return 'ok'
   }
 
   const logout = () => {
@@ -102,10 +143,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileComplete(true)
   }
 
-  const signup = (username: string, email: string) => {
-    const newUser: UserAccount = { username, email, role: roleForEmail(email) }
-    saveRegisteredUser(newUser)
-    setUser(newUser)
+  const signup = async (username: string, email: string, password: string) => {
+    const salt = randomSalt()
+    const passwordHash = await hashPassword(password, salt)
+    const stored: StoredAccount = {
+      username,
+      email,
+      role: roleForEmail(email),
+      salt,
+      passwordHash,
+    }
+    saveRegisteredUser(stored)
+    setUser(publicUser(stored))
     setProfileComplete(false)
   }
 
@@ -116,8 +165,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const resetPasswordForEmail = async (email: string, password: string) => {
+    const users = getRegisteredUsers()
+    const found = users.find((item) => item.email.toLowerCase() === email.toLowerCase())
+    if (!found) return false
+    const salt = randomSalt()
+    const passwordHash = await hashPassword(password, salt)
+    saveRegisteredUser({ ...found, salt, passwordHash })
+    return true
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, logout, signup, updateUser, profileComplete, refreshProfileGate }}>
+    <AuthContext.Provider
+      value={{ user, login, logout, signup, updateUser, resetPasswordForEmail, profileComplete, refreshProfileGate }}
+    >
       {children}
     </AuthContext.Provider>
   )
@@ -132,7 +193,7 @@ export function useAuth() {
 }
 
 export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile') => void }) {
-  const { user, login, logout, signup } = useAuth()
+  const { user, login, logout, signup, resetPasswordForEmail } = useAuth()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -141,62 +202,120 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
 
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [isSignup, setIsSignup] = useState(false)
-  
-  const [step, setStep] = useState<'form' | 'verify'>('form')
+  const [step, setStep] = useState<AuthStep>('form')
   const [pendingData, setPendingData] = useState<{ username: string; email: string; pass: string } | null>(null)
-  const [simulatedCode, setSimulatedCode] = useState('')
   const [inputCode, setInputCode] = useState('')
+  const [resetToken, setResetToken] = useState('')
+  const [resetEmail, setResetEmail] = useState('')
+  const [busy, setBusy] = useState(false)
 
   const toast = useToast()
+
+  useEffect(() => {
+    if (!mounted) return
+    const token = new URLSearchParams(window.location.search).get('reset')
+    if (!token) return
+    setResetToken(token)
+    setIsSignup(false)
+    setStep('reset')
+    setAuthModalOpen(true)
+    setBusy(true)
+    apiJson('/api/auth/verify-reset', { token })
+      .then((data) => {
+        if (data.email) setResetEmail(data.email)
+      })
+      .catch((err: unknown) => {
+        toast({
+          title: 'Sıfırlama bağlantısı geçersiz',
+          description: err instanceof Error ? err.message : 'Bağlantının süresi dolmuş olabilir.',
+        })
+        setStep('forgot')
+      })
+      .finally(() => {
+        setBusy(false)
+        const url = new URL(window.location.href)
+        url.searchParams.delete('reset')
+        window.history.replaceState({}, '', url.pathname + url.search)
+      })
+  }, [mounted])
 
   if (!mounted) {
     return <div className="h-9 w-24" />
   }
 
-  const handleAuthSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const modalTitle =
+    step === 'verify'
+      ? 'E-posta adresini doğrula'
+      : step === 'forgot'
+        ? 'Şifremi unuttum'
+        : step === 'reset'
+          ? 'Yeni şifre belirle'
+          : isSignup
+            ? 'TURX — Yeni Hesap Oluştur (Sign Up)'
+            : 'TURX — Hesaba Giriş Yap (Log In)'
+
+  const handleAuthSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
     const username = ((formData.get('username') as string) || '').trim()
-    const emailInput = formData.get('email') as string
-    const email = emailInput ? emailInput.trim() : ''
+    const email = ((formData.get('email') as string) || '').trim().toLowerCase()
     const password = (formData.get('password') as string) || ''
     const passwordConfirm = (formData.get('passwordConfirm') as string) || ''
 
     const existingUsers = getRegisteredUsers()
 
     if (isSignup) {
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        toast({ title: 'Hata', description: `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.` })
+        return
+      }
       if (password !== passwordConfirm) {
         toast({ title: 'Hata', description: 'Girdiğiniz şifreler birbiriyle eşleşmiyor!' })
         return
       }
 
-      const usernameExists = existingUsers.some(u => u.username.toLowerCase() === username.toLowerCase())
-      const emailExists = existingUsers.some(u => u.email.toLowerCase() === email.toLowerCase())
+      const usernameExists = existingUsers.some((item) => item.username.toLowerCase() === username.toLowerCase())
+      const emailExists = existingUsers.some((item) => item.email.toLowerCase() === email.toLowerCase())
 
       if (usernameExists) {
         toast({ title: 'Kayıt Hatası', description: `"${username}" kullanıcı adı zaten alınmış.` })
         return
       }
-
       if (emailExists) {
         toast({ title: 'Kayıt Hatası', description: `"${email}" e-posta adresiyle zaten bir hesap kayıtlı.` })
         return
       }
 
-      const code = Math.floor(100000 + Math.random() * 900000).toString()
-      setSimulatedCode(code)
-      setInputCode(code)
-      setPendingData({ username, email, pass: password })
-      setStep('verify')
-      
-      toast({ 
-        title: 'Doğrulama Kodu Gönderildi!', 
-        description: `Simülasyon: ${email} için kod: ${code}` 
-      })
-    } else {
-      const ok = login(username)
-      if (!ok) {
+      setBusy(true)
+      try {
+        await apiJson('/api/auth/send-code', { purpose: 'signup', email })
+        setPendingData({ username, email, pass: password })
+        setInputCode('')
+        setStep('verify')
+        toast({
+          title: 'Doğrulama kodu e-postana gönderildi',
+          description: `${email} gelen kutusunu (ve spam klasörünü) kontrol et. Kod ekranda gösterilmez.`,
+        })
+      } catch (err: unknown) {
+        toast({
+          title: 'Kod gönderilemedi',
+          description: err instanceof Error ? err.message : 'E-posta gönderilemedi.',
+        })
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
+
+    setBusy(true)
+    try {
+      const result = await login(username, password)
+      if (result === 'not_found') {
         toast({ title: 'Giriş Hatası', description: 'Bu kullanıcı adı kayıtlı değil. Önce kayıt ol.' })
+        return
+      }
+      if (result === 'bad_password') {
+        toast({ title: 'Giriş Hatası', description: 'Şifre yanlış. Tekrar dene veya şifremi unuttum kullan.' })
         return
       }
       const locked = !isOnboardingComplete(username)
@@ -208,17 +327,22 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
           : `Hoş geldin, ${username}`,
       })
       setAuthModalOpen(false)
+    } finally {
+      setBusy(false)
     }
   }
 
-  const handleVerifySubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleVerifySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (inputCode === simulatedCode && pendingData) {
-      signup(pendingData.username, pendingData.email)
+    if (!pendingData) return
+    setBusy(true)
+    try {
+      await apiJson('/api/auth/verify-code', { email: pendingData.email, code: inputCode.trim() })
+      await signup(pendingData.username, pendingData.email, pendingData.pass)
       onNavigate?.('profile')
       const gm = isGuildMasterEmail(pendingData.email)
-      toast({ 
-        title: gm ? 'GM hesabı oluşturuldu' : 'Kayıt Tamamlandı!', 
+      toast({
+        title: gm ? 'GM hesabı oluşturuldu' : 'Kayıt Tamamlandı!',
         description: gm
           ? `Hoş geldin ${pendingData.username}. Guild Master yetkin aktif. Önce profilini ve Main karakterini kaydet.`
           : `Hoş geldin ${pendingData.username}. Lonca paneline geçmeden önce profilini ve Main karakterini kaydet.`,
@@ -227,8 +351,83 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
       setStep('form')
       setPendingData(null)
       setInputCode('')
-    } else {
-      toast({ title: 'Doğrulama Hatası', description: 'Girdiğiniz onay kodu hatalı!' })
+    } catch (err: unknown) {
+      toast({
+        title: 'Doğrulama Hatası',
+        description: err instanceof Error ? err.message : 'Girdiğiniz onay kodu hatalı!',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleForgotSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const email = ((formData.get('email') as string) || '').trim().toLowerCase()
+    const existing = getRegisteredUsers().some((item) => item.email.toLowerCase() === email)
+    if (!existing) {
+      toast({ title: 'Hesap bulunamadı', description: 'Bu tarayıcıda bu e-posta ile kayıtlı bir hesap yok.' })
+      return
+    }
+    setBusy(true)
+    try {
+      await apiJson('/api/auth/send-code', { purpose: 'reset', email })
+      toast({
+        title: 'Sıfırlama bağlantısı gönderildi',
+        description: `${email} adresine şifre sıfırlama linki gönderildi.`,
+      })
+      setAuthModalOpen(false)
+      setStep('form')
+    } catch (err: unknown) {
+      toast({
+        title: 'E-posta gönderilemedi',
+        description: err instanceof Error ? err.message : 'Daha sonra tekrar dene.',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleResetSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const password = (formData.get('password') as string) || ''
+    const passwordConfirm = (formData.get('passwordConfirm') as string) || ''
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      toast({ title: 'Hata', description: `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.` })
+      return
+    }
+    if (password !== passwordConfirm) {
+      toast({ title: 'Hata', description: 'Girdiğiniz şifreler birbiriyle eşleşmiyor!' })
+      return
+    }
+    setBusy(true)
+    try {
+      const verified = await apiJson('/api/auth/verify-reset', { token: resetToken })
+      const email = verified.email || resetEmail
+      if (!email) throw new Error('Sıfırlama bağlantısı geçersiz.')
+      const updated = await resetPasswordForEmail(email, password)
+      if (!updated) {
+        toast({
+          title: 'Hesap bu tarayıcıda yok',
+          description: 'Şifre ancak kayıt olduğun tarayıcıda güncellenebilir.',
+        })
+        return
+      }
+      toast({ title: 'Şifre güncellendi', description: 'Yeni şifrenle giriş yapabilirsin.' })
+      setAuthModalOpen(true)
+      setIsSignup(false)
+      setStep('form')
+      setResetToken('')
+      setResetEmail('')
+    } catch (err: unknown) {
+      toast({
+        title: 'Şifre sıfırlanamadı',
+        description: err instanceof Error ? err.message : 'Bağlantı geçersiz.',
+      })
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -267,9 +466,9 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
           </div>
 
           <div className="flex items-center gap-1.5 ml-2 pl-3 border-l border-border">
-            <GhostButton 
-              onClick={() => onNavigate && onNavigate('profile')} 
-              className="p-2 text-silver hover:text-gold hover:bg-gold/10 transition rounded-lg cursor-pointer" 
+            <GhostButton
+              onClick={() => onNavigate && onNavigate('profile')}
+              className="p-2 text-silver hover:text-gold hover:bg-gold/10 transition rounded-lg cursor-pointer"
               title="Detaylı Profil ve Karakter Sayfasına Git"
             >
               <Pencil className="size-4" />
@@ -282,58 +481,115 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
         </div>
       ) : (
         <div className="flex items-center gap-2">
-          <GhostButton onClick={() => { setIsSignup(false); setStep('form'); setAuthModalOpen(true); }} className="text-xs py-1.5 px-3 cursor-pointer">
+          <GhostButton
+            onClick={() => {
+              setIsSignup(false)
+              setStep('form')
+              setAuthModalOpen(true)
+            }}
+            className="text-xs py-1.5 px-3 cursor-pointer"
+          >
             Giriş Yap
           </GhostButton>
-          <GoldButton onClick={() => { setIsSignup(true); setStep('form'); setAuthModalOpen(true); }} className="text-xs py-1.5 px-3 cursor-pointer">
+          <GoldButton
+            onClick={() => {
+              setIsSignup(true)
+              setStep('form')
+              setAuthModalOpen(true)
+            }}
+            className="text-xs py-1.5 px-3 cursor-pointer"
+          >
             Kayıt Ol
           </GoldButton>
         </div>
       )}
 
-      <Modal 
-        open={authModalOpen} 
-        onClose={() => { setAuthModalOpen(false); setStep('form'); }} 
-        title={isSignup ? (step === 'form' ? 'TURX — Yeni Hesap Oluştur (Sign Up)' : 'E-posta Adresini Doğrula') : 'TURX — Hesaba Giriş Yap (Log In)'} 
+      <Modal
+        open={authModalOpen}
+        onClose={() => {
+          setAuthModalOpen(false)
+          setStep('form')
+        }}
+        title={modalTitle}
         description="Alliance PvE (EU) - Forever Guild Yönetim Paneli"
       >
-        {isSignup && step === 'verify' ? (
+        {step === 'verify' ? (
           <form onSubmit={handleVerifySubmit} className="flex flex-col gap-4">
             <div className="rounded-lg border border-neon/30 bg-neon/10 p-3 text-xs text-neon">
-              <p className="font-bold">Doğrulama Kodu Gönderildi!</p>
+              <p className="font-bold">Kod e-postana gönderildi</p>
               <p className="mt-1 text-muted-foreground">
-                <span className="text-foreground font-semibold">{pendingData?.email}</span> adresine gönderilen 6 haneli onay kodunu giriniz.
+                <span className="text-foreground font-semibold">{pendingData?.email}</span> adresine giden 6 haneli
+                kodu gir. Gelen kutusu boşsa spam klasörüne bak.
               </p>
-              <p className="mt-2 text-[10px] text-gold">(Test Simülasyon Kodu: <span className="font-mono font-bold">{simulatedCode}</span>)</p>
             </div>
 
             <Field label="6 Haneli Onay Kodu">
-              <input 
-                name="code" 
+              <input
+                name="code"
                 type="text"
                 inputMode="numeric"
-                required 
-                maxLength={6} 
-                autoComplete="off"
+                required
+                maxLength={6}
+                autoComplete="one-time-code"
                 value={inputCode}
-                onChange={(e) => setInputCode(e.target.value)}
-                className={inputClass + " text-center font-mono tracking-widest text-lg"} 
-                placeholder="123456" 
+                onChange={(e) => setInputCode(e.target.value.replace(/\D/g, ''))}
+                className={inputClass + ' text-center font-mono tracking-widest text-lg'}
+                placeholder="______"
               />
             </Field>
 
             <div className="flex justify-end gap-2 pt-3 border-t border-border">
-              <GhostButton type="button" onClick={() => { setStep('form'); setInputCode(''); }} className="cursor-pointer">
+              <GhostButton
+                type="button"
+                onClick={() => {
+                  setStep('form')
+                  setInputCode('')
+                }}
+                className="cursor-pointer"
+              >
                 Geri Dön
               </GhostButton>
-              <GoldButton type="submit" className="cursor-pointer">
-                Kodu Onayla ve Kaydı Tamamla
+              <GoldButton type="submit" disabled={busy} className="cursor-pointer">
+                {busy ? 'Kontrol ediliyor…' : 'Kodu Onayla ve Kaydı Tamamla'}
+              </GoldButton>
+            </div>
+          </form>
+        ) : step === 'forgot' ? (
+          <form onSubmit={handleForgotSubmit} className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Kayıtlı e-posta adresine şifre sıfırlama bağlantısı gönderilir. Link yalnızca gerçek gelen kutusunda olur.
+            </p>
+            <Field label="E-posta Adresi">
+              <input name="email" type="email" required className={inputClass} placeholder="ornek@mail.com" />
+            </Field>
+            <div className="flex justify-between items-center pt-3 border-t border-border">
+              <button type="button" onClick={() => setStep('form')} className="text-xs text-gold hover:underline cursor-pointer font-medium">
+                Girişe dön
+              </button>
+              <GoldButton type="submit" disabled={busy} className="cursor-pointer">
+                {busy ? 'Gönderiliyor…' : 'Sıfırlama linki gönder'}
+              </GoldButton>
+            </div>
+          </form>
+        ) : step === 'reset' ? (
+          <form onSubmit={handleResetSubmit} className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              {resetEmail ? `${resetEmail} için yeni şifre belirle.` : 'Bağlantı doğrulanıyor…'}
+            </p>
+            <Field label="Yeni Şifre">
+              <input name="password" type="password" required minLength={MIN_PASSWORD_LENGTH} className={inputClass} placeholder="••••••••" />
+            </Field>
+            <Field label="Yeni Şifre (Tekrar)">
+              <input name="passwordConfirm" type="password" required minLength={MIN_PASSWORD_LENGTH} className={inputClass} placeholder="••••••••" />
+            </Field>
+            <div className="flex justify-end gap-2 pt-3 border-t border-border">
+              <GoldButton type="submit" disabled={busy || !resetEmail} className="cursor-pointer">
+                {busy ? 'Kaydediliyor…' : 'Şifreyi güncelle'}
               </GoldButton>
             </div>
           </form>
         ) : (
           <div className="flex flex-col gap-4">
-            {/* Google ile Giriş Seçeneği (Bonus Hızlı Yöntem) */}
             <button
               type="button"
               onClick={handleGoogleLogin}
@@ -368,40 +624,67 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
 
             <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
               <Field label="Kullanıcı Adı (Siteye Özel)">
-                <input name="username" required className={inputClass} placeholder="Örn: Sonat" />
+                <input name="username" required className={inputClass} placeholder="Örn: Sonat" autoComplete={isSignup ? 'username' : 'username'} />
               </Field>
 
               {isSignup && (
                 <Field label="E-posta Adresi">
-                  <input name="email" type="email" required className={inputClass} placeholder="ornek@mail.com" />
+                  <input name="email" type="email" required className={inputClass} placeholder="ornek@mail.com" autoComplete="email" />
                 </Field>
               )}
 
               <Field label="Şifre">
-                <input name="password" type="password" required className={inputClass} placeholder="••••••••" />
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  minLength={isSignup ? MIN_PASSWORD_LENGTH : undefined}
+                  className={inputClass}
+                  placeholder="••••••••"
+                  autoComplete={isSignup ? 'new-password' : 'current-password'}
+                />
               </Field>
 
               {isSignup && (
                 <Field label="Şifre (Tekrar)">
-                  <input name="passwordConfirm" type="password" required className={inputClass} placeholder="••••••••" />
+                  <input
+                    name="passwordConfirm"
+                    type="password"
+                    required
+                    minLength={MIN_PASSWORD_LENGTH}
+                    className={inputClass}
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                  />
                 </Field>
               )}
 
-              <div className="flex justify-between items-center pt-3 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setIsSignup(!isSignup)}
-                  className="text-xs text-gold hover:underline cursor-pointer font-medium"
-                >
-                  {isSignup ? 'Zaten hesabın var mı? Giriş yap' : 'Hesabın yok mu? Kayıt ol'}
-                </button>
+              <div className="flex justify-between items-center pt-3 border-t border-border gap-3">
+                <div className="flex flex-col items-start gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setIsSignup(!isSignup)}
+                    className="text-xs text-gold hover:underline cursor-pointer font-medium"
+                  >
+                    {isSignup ? 'Zaten hesabın var mı? Giriş yap' : 'Hesabın yok mu? Kayıt ol'}
+                  </button>
+                  {!isSignup && (
+                    <button
+                      type="button"
+                      onClick={() => setStep('forgot')}
+                      className="text-xs text-muted-foreground hover:text-gold hover:underline cursor-pointer"
+                    >
+                      Şifremi unuttum
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex gap-2">
                   <GhostButton type="button" onClick={() => setAuthModalOpen(false)} className="cursor-pointer">
                     Vazgeç
                   </GhostButton>
-                  <GoldButton type="submit" className="cursor-pointer">
-                    {isSignup ? 'Devam Et ve Kod Gönder' : 'Giriş Yap'}
+                  <GoldButton type="submit" disabled={busy} className="cursor-pointer">
+                    {busy ? 'İşleniyor…' : isSignup ? 'Kodu e-postaya gönder' : 'Giriş Yap'}
                   </GoldButton>
                 </div>
               </div>

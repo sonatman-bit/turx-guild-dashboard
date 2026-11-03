@@ -1,9 +1,8 @@
 'use client'
 
 import { BarChart3, Crown, Search, UserCheck, Users, Star, Wrench, Shield, Swords, Cross, Target } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
-import { charactersStorageKey } from '@/lib/profile-gate'
 import { cn } from '@/lib/utils'
 import { useToast } from '../toast'
 import { useAuth, type GuildRank } from '../auth-provider' // Auth entegrasyonu
@@ -26,6 +25,15 @@ interface StoredCharacter {
     onyxia?: boolean
     hyjal?: boolean
   }
+}
+
+type ServerCharacter = StoredCharacter & { firstName?: string; lastName?: string }
+
+type ServerMember = {
+  username: string
+  role: GuildRank
+  profile?: { fullName?: string } | null
+  characters?: ServerCharacter[]
 }
 
 interface RosterMemberRow {
@@ -53,6 +61,37 @@ const RANK_STYLES: Record<GuildRank, string> = {
   'Raid Leader': 'border-azure/50 bg-azure/10 text-azure',
   'Raider': 'border-success/40 bg-success/10 text-success',
   'Member': 'border-border text-muted-foreground',
+}
+
+function isWowClass(value: string | undefined): value is WowClass {
+  return Boolean(value && value in CLASS_COLORS)
+}
+
+function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
+  return accounts.flatMap((account) => {
+    const chars = Array.isArray(account.characters) ? account.characters : []
+    const displayName = (account.profile?.fullName || account.username).trim()
+    return chars
+      .filter((character) => character.firstName?.trim() && character.lastName?.trim())
+      .map((character, index) => ({
+        id: character.id || `${account.username}-${index}`,
+        charName: `${character.firstName} ${character.lastName}`,
+        realName: displayName,
+        level: 1,
+        race: character.race || '—',
+        wowClass: isWowClass(character.wowClass) ? character.wowClass : 'Warrior',
+        spec: character.spec || '—',
+        offSpec: character.offSpec || 'Yok',
+        role: character.role || 'MELEE',
+        rank: account.role,
+        type: character.isMain ? 'Main' : 'Alt',
+        professions: character.professions || ['Yok', 'Yok'],
+        attunements: {
+          onyxia: Boolean(character.attunements?.onyxia),
+          hyjal: Boolean(character.attunements?.hyjal),
+        },
+      }))
+  })
 }
 
 function RoleIcon({ role }: { role: ExtendedRole }) {
@@ -111,37 +150,23 @@ export function RosterView() {
 
   const [defaultMembers, setDefaultMembers] = useState<RosterMemberRow[]>([])
 
-  const rosterMembers = useMemo(() => {
-    let userCharacters: RosterMemberRow[] = []
-    if (typeof window !== 'undefined') {
-      const saved = user ? localStorage.getItem(charactersStorageKey(user.username)) : null
-      if (saved) {
-        try {
-          const parsed: StoredCharacter[] = JSON.parse(saved)
-          userCharacters = parsed.map((c) => ({
-            id: c.id,
-            charName: `${c.firstName} ${c.lastName}`,
-            realName: user?.username ? `${user.username} (Sen)` : 'Sen',
-            level: 1,
-            race: c.race,
-            wowClass: c.wowClass,
-            spec: c.spec,
-            offSpec: c.offSpec || 'Yok',
-            role: c.role,
-            rank: user?.role || 'Guild Master',
-            type: c.isMain ? 'Main' : 'Alt',
-            professions: c.professions || ['Yok', 'Yok'],
-            attunements: {
-              onyxia: c.attunements?.onyxia || false,
-              hyjal: c.attunements?.hyjal || false
-            }
-          }))
-        } catch (e) { /* fallback */ }
-      }
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/roster')
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { members?: ServerMember[] }
+        if (!response.ok || cancelled) return
+        setDefaultMembers(mapServerMembers(Array.isArray(data.members) ? data.members : []))
+      })
+      .catch(() => {
+        if (!cancelled) setDefaultMembers([])
+      })
+    return () => {
+      cancelled = true
     }
+  }, [])
 
-    return [...userCharacters, ...defaultMembers]
-  }, [defaultMembers, user])
+  const rosterMembers = defaultMembers
 
   const handleRankChange = (memberId: string, newRank: GuildRank) => {
     if (!canManageRanks) {
@@ -332,7 +357,9 @@ export function RosterView() {
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
-                    Aramanızı eşleşen karakter bulunamadı.
+                    {rosterMembers.length === 0
+                      ? 'Henüz kayıtlı karakter yok. Üyeler profilini doldurunca burada görünür.'
+                      : 'Aramanızı eşleşen karakter bulunamadı.'}
                   </td>
                 </tr>
               )}

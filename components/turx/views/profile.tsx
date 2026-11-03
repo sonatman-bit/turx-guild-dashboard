@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { CLASS_COLORS } from '@/lib/guild-data'
+import { authHeaders } from '@/lib/client-session'
 import {
   commitOnboardingStatus,
   getOnboardingGaps,
@@ -225,15 +226,43 @@ export function ProfileView() {
       return
     }
 
-    const savedProfile = loadOnboardingProfile(user.username) as Partial<UserProfileData> | null
-    const savedCharacters = loadOnboardingCharacters(user.username) as GuildCharacter[]
-    setProfile(
-      savedProfile
-        ? { ...emptyProfile(user.email), ...savedProfile, selectedAvatar: savedProfile.selectedAvatar || 'Druid' }
-        : emptyProfile(user.email),
-    )
-    setCharacters(Array.isArray(savedCharacters) ? savedCharacters : [])
-    setReady(true)
+    let cancelled = false
+    const localProfile = loadOnboardingProfile(user.username) as Partial<UserProfileData> | null
+    const localCharacters = loadOnboardingCharacters(user.username) as GuildCharacter[]
+
+    const applyLocal = () => {
+      setProfile(
+        localProfile
+          ? { ...emptyProfile(user.email), ...localProfile, selectedAvatar: localProfile.selectedAvatar || 'Druid' }
+          : emptyProfile(user.email),
+      )
+      setCharacters(Array.isArray(localCharacters) ? localCharacters : [])
+      setReady(true)
+    }
+
+    applyLocal()
+
+    fetch('/api/profile', { headers: authHeaders() })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as {
+          profile?: Partial<UserProfileData> | null
+          characters?: GuildCharacter[]
+        }
+        if (!response.ok || cancelled) return
+        if (data.profile) {
+          setProfile({
+            ...emptyProfile(user.email),
+            ...data.profile,
+            selectedAvatar: data.profile.selectedAvatar || 'Druid',
+          })
+        }
+        if (Array.isArray(data.characters)) setCharacters(data.characters)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
   }, [user])
 
   useEffect(() => {
@@ -241,21 +270,35 @@ export function ProfileView() {
     saveOnboardingSnapshot(user.username, profile, characters)
   }, [profile, characters, ready, user])
 
-  const persistGate = (nextProfile: UserProfileData, nextCharacters: GuildCharacter[]) => {
+  const persistGate = async (nextProfile: UserProfileData, nextCharacters: GuildCharacter[]) => {
     if (!user) return false
     saveOnboardingSnapshot(user.username, nextProfile, nextCharacters)
-    const complete = commitOnboardingStatus(user.username, nextProfile, nextCharacters)
-    refreshProfileGate()
-    return complete
+    commitOnboardingStatus(user.username, nextProfile, nextCharacters)
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { ...authHeaders({ 'Content-Type': 'application/json' }) },
+        body: JSON.stringify({ profile: nextProfile, characters: nextCharacters }),
+      })
+      const data = (await response.json().catch(() => ({}))) as { profileComplete?: boolean; error?: string }
+      if (!response.ok) {
+        toast({ title: 'Sunucuya kaydedilemedi', description: data.error || 'Profil tarayıcıda kaldı.' })
+      }
+      await refreshProfileGate()
+      return Boolean(data.profileComplete ?? commitOnboardingStatus(user.username, nextProfile, nextCharacters))
+    } catch {
+      await refreshProfileGate()
+      return commitOnboardingStatus(user.username, nextProfile, nextCharacters)
+    }
   }
 
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) {
       toast({ title: 'Giriş gerekli', description: 'Profil kaydetmek için önce oturum açın.' })
       return
     }
-    const complete = persistGate(profile, characters)
+    const complete = await persistGate(profile, characters)
     if (!complete) {
       const gaps = getOnboardingGaps(profile, characters).join(', ')
       toast({
@@ -299,10 +342,12 @@ export function ProfileView() {
   }
 
   const handleSetMain = (id: string) => {
-    setCharacters(characters.map(char => ({
+    const nextCharacters = characters.map((char) => ({
       ...char,
-      isMain: char.id === id
-    })))
+      isMain: char.id === id,
+    }))
+    setCharacters(nextCharacters)
+    void persistGate(profile, nextCharacters)
     toast({ title: 'Ana Karakter Güncellendi', description: 'Main karakteriniz başarıyla değiştirildi.' })
   }
 
@@ -321,7 +366,7 @@ export function ProfileView() {
   }
 
   const handleSaveEdit = (id: string) => {
-    setCharacters(characters.map(char => {
+    const nextCharacters = characters.map((char) => {
       if (char.id === id) {
         return {
           ...char,
@@ -329,22 +374,24 @@ export function ProfileView() {
           lastName: editLastName.trim(),
           spec: editSpec,
           offSpec: editOffSpec,
-          professions: [editProf1, editProf2],
+          professions: [editProf1, editProf2] as [string, string],
           attunements: {
             onyxia: editAttOny,
             mc: editAttMc,
             bwl: editAttBwl,
-            naxx: editAttNaxx
-          }
+            naxx: editAttNaxx,
+          },
         }
       }
       return char
-    }))
+    })
+    setCharacters(nextCharacters)
     setEditingCharId(null)
+    void persistGate(profile, nextCharacters)
     toast({ title: 'Karakter Güncellendi', description: 'Değişiklikler başarıyla kaydedildi.' })
   }
 
-  const handleAddCharacter = (e: React.FormEvent) => {
+  const handleAddCharacter = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newFirstName.trim() || !newLastName.trim()) {
       toast({ title: 'Hata', description: 'Lütfen karakterin adını ve soyadını girin.' })
@@ -377,7 +424,7 @@ export function ProfileView() {
     setAttMc(false)
     setAttBwl(false)
     setAttNaxx(false)
-    const unlocked = persistGate(profile, nextCharacters)
+    const unlocked = await persistGate(profile, nextCharacters)
     toast({
       title: 'Karakter Eklendi!',
       description: unlocked
@@ -396,6 +443,7 @@ export function ProfileView() {
       remaining[0].isMain = true
     }
     setCharacters(remaining)
+    void persistGate(profile, remaining)
     toast({ title: 'Karakter Silindi', description: 'Karakter havuzunuzdan kaldırıldı.' })
   }
 

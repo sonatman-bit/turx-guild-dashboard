@@ -7,6 +7,9 @@ export type StoredAccount = {
   role: GuildRank
   salt: string
   passwordHash: string
+  profile?: Record<string, unknown> | null
+  characters?: unknown[]
+  onboardingComplete?: boolean
 }
 
 export type StoredApplication = {

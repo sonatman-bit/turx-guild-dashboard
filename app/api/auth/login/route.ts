@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { createSessionToken } from '@/lib/auth-email'
 import { verifyPassword } from '@/lib/password'
+import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
 import { blobConfigured, loadGuildStore, publicAccount } from '@/lib/turx-store'
 
 export async function POST(request: Request) {
@@ -23,7 +25,16 @@ export async function POST(request: Request) {
     if (!matches) {
       return NextResponse.json({ error: 'bad_password' }, { status: 401 })
     }
-    return NextResponse.json({ ok: true, user: publicAccount(found) })
+    const profile = (found.profile || null) as OnboardingProfile | null
+    const characters = (found.characters || []) as OnboardingCharacter[]
+    return NextResponse.json({
+      ok: true,
+      user: publicAccount(found),
+      token: createSessionToken(found.username),
+      profileComplete: hasRequiredOnboarding(profile, characters),
+      profile,
+      characters,
+    })
   } catch (err) {
     console.error('auth login', err)
     return NextResponse.json({ error: 'Giriş doğrulanamadı.' }, { status: 500 })

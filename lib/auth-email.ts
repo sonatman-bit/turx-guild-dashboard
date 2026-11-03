@@ -63,6 +63,37 @@ export function verifySignupCode(email: string, code: string) {
   return equal(trimmed, signupCodeFor(email, current)) || equal(trimmed, signupCodeFor(email, current - 1))
 }
 
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
+export function createSessionToken(username: string) {
+  const payload = Buffer.from(
+    JSON.stringify({ u: username.trim(), exp: Date.now() + SESSION_TTL_MS }),
+  ).toString('base64url')
+  const signature = createHmac('sha256', authSecret()).update(`session:${payload}`).digest('base64url')
+  return `${payload}.${signature}`
+}
+
+export function readSessionToken(token: string): { username: string } | null {
+  const [payload, signature] = token.split('.')
+  if (!payload || !signature) return null
+  const expected = createHmac('sha256', authSecret()).update(`session:${payload}`).digest('base64url')
+  if (!equal(signature, expected)) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { u?: string; exp?: number }
+    if (!parsed.u || typeof parsed.exp !== 'number' || parsed.exp < Date.now()) return null
+    return { username: parsed.u }
+  } catch {
+    return null
+  }
+}
+
+export function sessionFromRequest(request: Request) {
+  const header = request.headers.get('authorization') || ''
+  const [type, token] = header.split(' ')
+  if (type !== 'Bearer' || !token) return null
+  return readSessionToken(token)
+}
+
 export function createResetToken(email: string) {
   const payload = Buffer.from(
     JSON.stringify({ e: normalizeEmail(email), exp: Date.now() + RESET_TTL_MS }),

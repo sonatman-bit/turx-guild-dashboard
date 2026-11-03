@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { createSessionToken } from '@/lib/auth-email'
 import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt } from '@/lib/password'
 import { blobConfigured, mutateGuildStore, publicAccount, roleForEmail } from '@/lib/turx-store'
 
@@ -37,7 +38,12 @@ export async function POST(request: Request) {
       })
     })
 
-    return NextResponse.json({ ok: true, user })
+    return NextResponse.json({
+      ok: true,
+      user,
+      token: createSessionToken(user.username),
+      profileComplete: false,
+    })
   } catch (err) {
     if (err instanceof Error && err.message === 'USERNAME_OR_EMAIL_TAKEN') {
       return NextResponse.json({ error: 'Bu kullanıcı adı veya e-posta zaten kayıtlı.' }, { status: 409 })

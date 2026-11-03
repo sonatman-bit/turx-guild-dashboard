@@ -2,7 +2,8 @@
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
 import { User, Pencil } from 'lucide-react'
-import { isOnboardingComplete } from '@/lib/profile-gate'
+import { authHeaders, getSessionToken, setSessionToken } from '@/lib/client-session'
+import { isOnboardingComplete, saveOnboardingSnapshot, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
 import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt, verifyPassword } from '@/lib/password'
 import { isGuildMasterEmail, wipeLegacyTurxData, type GuildRank } from '@/lib/turx-identity'
 import { GoldButton, GhostButton, Modal, Field, inputClass } from './ui'
@@ -31,7 +32,7 @@ interface AuthContextType {
   updateUser: (username: string, email: string) => void
   resetPasswordForEmail: (email: string, password: string, token?: string) => Promise<boolean>
   profileComplete: boolean
-  refreshProfileGate: () => void
+  refreshProfileGate: () => Promise<void>
 }
 
 function roleForEmail(email: string): GuildRank {
@@ -110,20 +111,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user) {
       localStorage.setItem('turx_auth_user', JSON.stringify(user))
-      setProfileComplete(isOnboardingComplete(user.username))
     } else {
       localStorage.removeItem('turx_auth_user')
+      setSessionToken(null)
       setProfileComplete(true)
     }
   }, [user])
 
-  const refreshProfileGate = () => {
+  const refreshProfileGate = async () => {
     if (!user) {
       setProfileComplete(true)
       return
     }
+    if (!getSessionToken()) {
+      setProfileComplete(isOnboardingComplete(user.username))
+      return
+    }
+    try {
+      const response = await fetch('/api/profile', { headers: authHeaders() })
+      const data = (await response.json().catch(() => ({}))) as { profileComplete?: boolean }
+      if (response.ok && typeof data.profileComplete === 'boolean') {
+        setProfileComplete(data.profileComplete)
+        return
+      }
+    } catch {
+      // fall back to local snapshot
+    }
     setProfileComplete(isOnboardingComplete(user.username))
   }
+
+  useEffect(() => {
+    if (user) void refreshProfileGate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.username])
 
   const login = async (username: string, password: string): Promise<LoginResult> => {
     try {
@@ -133,9 +153,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ username, password }),
       })
       if (response.ok) {
-        const data = (await response.json()) as { user: UserAccount }
+        const data = (await response.json()) as {
+          user: UserAccount
+          token?: string
+          profileComplete?: boolean
+          profile?: OnboardingProfile | null
+          characters?: OnboardingCharacter[]
+        }
+        if (data.token) setSessionToken(data.token)
+        if (data.profile || data.characters) {
+          saveOnboardingSnapshot(data.user.username, data.profile || {}, data.characters || [])
+        }
         setUser(data.user)
-        setProfileComplete(isOnboardingComplete(data.user.username))
+        setProfileComplete(Boolean(data.profileComplete))
         return 'ok'
       }
       if (response.status === 401) return 'bad_password'
@@ -157,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
+    setSessionToken(null)
     setUser(null)
     setProfileComplete(true)
   }
@@ -187,7 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     saveRegisteredUser(stored)
     if (response.ok) {
-      const data = (await response.json()) as { user?: UserAccount }
+      const data = (await response.json()) as { user?: UserAccount; token?: string }
+      if (data.token) setSessionToken(data.token)
       setUser(data.user || publicUser(stored))
     } else {
       setUser(publicUser(stored))

@@ -1,9 +1,11 @@
 'use client'
 
-import { CheckCircle2, Clock, ExternalLink, FlaskConical, HeartPulse, Shield, Swords, UserCheck, UserX, XCircle, Users, Sparkles, UserPlus, Send } from 'lucide-react'
+import { CheckCircle2, Clock, HeartPulse, Shield, Swords, UserCheck, UserX, Users, Sparkles, UserPlus, Send } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { CLASS_COLORS, CONSUMABLES, MEMBERS, RAIDS, type Raid, type Role } from '@/lib/guild-data'
+import { CLASS_COLORS, RAIDS, type Raid } from '@/lib/guild-data'
+import { loadOnboardingCharacters } from '@/lib/profile-gate'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
@@ -22,12 +24,20 @@ interface RaidMember extends GuildCharacter {
   status: 'roster' | 'bench' | 'signup'
 }
 
-// Örnek Aktif Kullanıcının Karakter Havuzu
-const MY_CHARACTERS: GuildCharacter[] = [
-  { id: 'c1', name: 'Sonat', wowClass: 'Druid', spec: 'Feral Tank', role: 'TANK' },
-  { id: 'c2', name: 'Waffleheal', wowClass: 'Shaman', spec: 'Restoration', role: 'HEALER' },
-  { id: 'c3', name: 'Wafflegear', wowClass: 'Mage', spec: 'Fire DPS', role: 'RANGED' },
-]
+function charactersFromAccount(username: string | undefined): GuildCharacter[] {
+  if (!username || typeof window === 'undefined') return []
+  return loadOnboardingCharacters(username).flatMap((character) => {
+    const stored = character as GuildCharacter & { firstName?: string; lastName?: string; wowClass?: GuildCharacter['wowClass'] }
+    if (!stored.wowClass || !stored.firstName) return []
+    return [{
+      id: stored.id || `${stored.firstName}-${stored.lastName}`,
+      name: `${stored.firstName} ${stored.lastName ?? ''}`.trim(),
+      wowClass: stored.wowClass,
+      spec: stored.spec,
+      role: stored.role,
+    }]
+  })
+}
 
 const STATUS_STYLES: Record<Status, string> = {
   Confirmed: 'border-success/50 bg-success/10 text-success',
@@ -76,10 +86,10 @@ function getActiveRaids(raids: Raid[]) {
   return raids.filter(() => true)
 }
 
-function RaidCard({ raid }: { raid: Raid }) {
+function RaidCard({ raid, myCharacters }: { raid: Raid; myCharacters: GuildCharacter[] }) {
   const toast = useToast()
   const [modalOpen, setModalOpen] = useState(false)
-  const [selectedChar, setSelectedChar] = useState<GuildCharacter>(MY_CHARACTERS[0])
+  const [selectedChar, setSelectedChar] = useState<GuildCharacter | null>(myCharacters[0] ?? null)
   const [signedUp, setSignedUp] = useState(false)
   const [myStatus, setMyStatus] = useState<Status>('Pending')
   const [isPublished, setIsPublished] = useState(false)
@@ -96,10 +106,7 @@ function RaidCard({ raid }: { raid: Raid }) {
         try { return JSON.parse(saved) } catch (e) { /* fallback */ }
       }
     }
-    return [
-      { id: '1', name: 'Overcharm', wowClass: 'Warrior', spec: 'Arms DPS', role: 'MELEE', status: 'signup' },
-      { id: '2', name: 'Overlock', wowClass: 'Shaman', spec: 'Resto', role: 'HEALER', status: 'signup' },
-    ]
+    return []
   })
 
   const [publishedRoster, setPublishedRoster] = useState<RaidMember[]>(() => {
@@ -109,10 +116,7 @@ function RaidCard({ raid }: { raid: Raid }) {
         try { return JSON.parse(saved) } catch (e) { /* fallback */ }
       }
     }
-    return [
-      { id: '10', name: 'Arthas', wowClass: 'Paladin', spec: 'Protection', role: 'TANK', status: 'roster' },
-      { id: '11', name: 'Thrall', wowClass: 'Shaman', spec: 'Restoration', role: 'HEALER', status: 'roster' },
-    ]
+    return []
   })
 
   useEffect(() => {
@@ -154,6 +158,10 @@ function RaidCard({ raid }: { raid: Raid }) {
   }
 
   const handleSignupSubmit = () => {
+    if (!selectedChar) {
+      toast({ title: 'Karakter yok', description: 'Önce profilinden bir Main karakter ekle.' })
+      return
+    }
     setModalOpen(false)
     setSignedUp(true)
     const existingInPool = signupPool.some(m => m.name === selectedChar.name)
@@ -221,7 +229,7 @@ function RaidCard({ raid }: { raid: Raid }) {
         <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/40 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm">
-              Aktif Kayıtlı Karakter: <span className="font-semibold" style={{ color: CLASS_COLORS[selectedChar.wowClass] }}>{selectedChar.name}</span> ({selectedChar.spec})
+              Aktif Kayıtlı Karakter: {selectedChar ? <span className="font-semibold" style={{ color: CLASS_COLORS[selectedChar.wowClass] }}>{selectedChar.name}</span> : '—'} {selectedChar ? `(${selectedChar.spec})` : ''}
             </p>
             <Badge className={STATUS_STYLES[myStatus]}>{myStatus}</Badge>
           </div>
@@ -271,17 +279,17 @@ function RaidCard({ raid }: { raid: Raid }) {
 
       {/* Karakter Seçim Modalı */}
       {modalOpen && (
-        <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Raide Katılacak Karakteri Seçin">
+        <Modal open={modalOpen} onClose={() => setModalOpen(false)} title="Raide Katılacak Karakteri Seçin">
           <div className="flex flex-col gap-4 py-2">
             <p className="text-sm text-muted-foreground">Hesabınıza bağlı karakter havuzundan bu raid için kullanacağınız karakteri seçin:</p>
             <div className="grid gap-2.5">
-              {MY_CHARACTERS.map((char) => (
+              {myCharacters.map((char) => (
                 <button
                   key={char.id}
                   onClick={() => setSelectedChar(char)}
                   className={cn(
                     'flex items-center justify-between p-3 rounded-xl border text-left transition-all',
-                    selectedChar.id === char.id ? 'border-gold bg-gold/10 shadow-sm' : 'border-border bg-background hover:border-border/80'
+                    selectedChar?.id === char.id ? 'border-gold bg-gold/10 shadow-sm' : 'border-border bg-background hover:border-border/80'
                   )}
                 >
                   <div>
@@ -304,6 +312,8 @@ function RaidCard({ raid }: { raid: Raid }) {
 }
 
 export function RaidsView() {
+  const { user } = useAuth()
+  const myCharacters = charactersFromAccount(user?.username)
   const activeRaids = getActiveRaids(RAIDS)
 
   return (
@@ -320,7 +330,7 @@ export function RaidsView() {
       />
       <div className="grid gap-8 mt-6">
         {activeRaids.map((r) => (
-          <RaidCard key={r.id} raid={r} />
+          <RaidCard key={r.id} raid={r} myCharacters={myCharacters} />
         ))}
       </div>
     </div>

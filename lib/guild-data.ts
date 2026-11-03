@@ -1,7 +1,7 @@
 export const LAUNCH_DATE = '2026-11-04T19:00:00+03:00'
 export const RAID_DATE = '2026-12-09T21:00:00+03:00'
 
-export type WowClass = 'Warrior' | 'Paladin' | 'Hunter' | 'Rogue' | 'Priest' | 'Mage' | 'Warlock' | 'Druid'
+export type WowClass = 'Warrior' | 'Paladin' | 'Hunter' | 'Rogue' | 'Priest' | 'Shaman' | 'Mage' | 'Warlock' | 'Druid'
 
 export const CLASS_COLORS: Record<WowClass, string> = {
   Warrior: '#C69B6D',
@@ -9,6 +9,7 @@ export const CLASS_COLORS: Record<WowClass, string> = {
   Hunter: '#AAD372',
   Rogue: '#FFF468',
   Priest: '#FFFFFF',
+  Shaman: '#0070DD',
   Mage: '#3FC7EB',
   Warlock: '#8788EE',
   Druid: '#FF7C0A',
@@ -33,24 +34,7 @@ export type Member = {
   player: string
 }
 
-export const MEMBERS: Member[] = [
-  { name: 'Aslanyürek', level: 60, race: 'Human', wowClass: 'Warrior', spec: 'Protection', role: 'Tank', rank: 'Guild Master', attendance: 98, type: 'Main', professions: ['Blacksmithing', 'Mining'], parse: 94, player: 'Kaan' },
-  { name: 'Işıkkalkan', level: 60, race: 'Dwarf', wowClass: 'Paladin', spec: 'Holy', role: 'Healer', rank: 'Officer', attendance: 96, type: 'Main', professions: ['Alchemy', 'Herbalism'], parse: 88, player: 'Mert' },
-  { name: 'Gölgekesen', level: 60, race: 'Human', wowClass: 'Rogue', spec: 'Combat', role: 'DPS', rank: 'Officer', attendance: 93, type: 'Main', professions: ['Engineering', 'Skinning'], parse: 97, player: 'Emre' },
-  { name: 'Ayzehir', level: 60, race: 'Night Elf', wowClass: 'Druid', spec: 'Restoration', role: 'Healer', rank: 'Raider', attendance: 91, type: 'Main', professions: ['Herbalism', 'Alchemy'], parse: 82, player: 'Selin' },
-  { name: 'Buzokçu', level: 60, race: 'Gnome', wowClass: 'Mage', spec: 'Frost', role: 'DPS', rank: 'Raider', attendance: 89, type: 'Main', professions: ['Tailoring', 'Enchanting'], parse: 91, player: 'Burak' },
-  { name: 'Ruhçağıran', level: 60, race: 'Human', wowClass: 'Warlock', spec: 'Destruction', role: 'DPS', rank: 'Raider', attendance: 87, type: 'Main', professions: ['Tailoring', 'Enchanting'], parse: 86, player: 'Deniz' },
-  { name: 'Kartalgöz', level: 60, race: 'Night Elf', wowClass: 'Hunter', spec: 'Marksmanship', role: 'DPS', rank: 'Raider', attendance: 84, type: 'Main', professions: ['Leatherworking', 'Skinning'], parse: 79, player: 'Cem' },
-  { name: 'Nurdua', level: 60, race: 'Dwarf', wowClass: 'Priest', spec: 'Holy', role: 'Healer', rank: 'Raider', attendance: 95, type: 'Main', professions: ['Tailoring', 'First Aid'], parse: 90, player: 'Ayşe' },
-  { name: 'Demirdağ', level: 60, race: 'Dwarf', wowClass: 'Warrior', spec: 'Fury', role: 'DPS', rank: 'Raider', attendance: 82, type: 'Main', professions: ['Mining', 'Engineering'], parse: 75, player: 'Onur' },
-  { name: 'Yıldızoku', level: 58, race: 'Night Elf', wowClass: 'Druid', spec: 'Balance', role: 'DPS', rank: 'Social', attendance: 41, type: 'Main', professions: ['Herbalism', 'Skinning'], parse: 52, player: 'Elif' },
-  { name: 'Kanatkırık', level: 60, race: 'Human', wowClass: 'Paladin', spec: 'Retribution', role: 'DPS', rank: 'Raider', attendance: 78, type: 'Main', professions: ['Blacksmithing', 'Mining'], parse: 68, player: 'Tolga' },
-  { name: 'Kıvılcım', level: 60, race: 'Gnome', wowClass: 'Mage', spec: 'Fire', role: 'DPS', rank: 'Raider', attendance: 86, type: 'Main', professions: ['Enchanting', 'Tailoring'], parse: 95, player: 'Zeynep' },
-  { name: 'Taşbaşlı', level: 60, race: 'Dwarf', wowClass: 'Hunter', spec: 'Beast Mastery', role: 'DPS', rank: 'Social', attendance: 35, type: 'Alt', mainOf: 'Aslanyürek', professions: ['Leatherworking', 'Skinning'], parse: 61, player: 'Kaan' },
-  { name: 'Sisperde', level: 52, race: 'Human', wowClass: 'Rogue', spec: 'Subtlety', role: 'DPS', rank: 'Social', attendance: 12, type: 'Alt', mainOf: 'Gölgekesen', professions: ['Alchemy', 'Herbalism'], parse: 44, player: 'Emre' },
-  { name: 'Şafakışığı', level: 60, race: 'Human', wowClass: 'Priest', spec: 'Shadow', role: 'DPS', rank: 'Raider', attendance: 80, type: 'Alt', mainOf: 'Işıkkalkan', professions: ['Tailoring', 'Enchanting'], parse: 72, player: 'Mert' },
-  { name: 'Kalkanbey', level: 60, race: 'Human', wowClass: 'Warrior', spec: 'Protection', role: 'Tank', rank: 'Officer', attendance: 92, type: 'Main', professions: ['Blacksmithing', 'Mining'], parse: 85, player: 'Arda' },
-]
+export const MEMBERS: Member[] = []
 
 export type Raid = {
   id: string
@@ -77,29 +61,21 @@ export const PHASES = [
   { phase: 'Phase 5', title: 'Ahn’Qiraj', date: 'Q4 2027', status: 'future' as const, items: ['AQ20 / AQ40', 'Gates Event', 'Kalimdor Ödülleri'] },
 ]
 
-export const ANNOUNCEMENTS = [
-  { author: 'Aslanyürek', rank: 'Guild Master', time: '2 saat önce', text: 'Launch gecesi 19:00’da Stormwind Trade District’te toplanıyoruz. Leveling grupları Discord’da #leveling kanalında.' },
-  { author: 'Işıkkalkan', rank: 'Officer', time: '5 saat önce', text: 'Phase 1 Loot Council kuralları güncellendi. Strateji sekmesinden okumayı unutmayın.' },
-  { author: 'Gölgekesen', rank: 'Officer', time: 'Dün', text: 'Onyxia Attunement zinciri için Pazar 20:00’de grup çıkıyoruz. Kayıtlar #attunement kanalında.' },
-]
+export const ANNOUNCEMENTS: { author: string; rank: string; time: string; text: string }[] = []
 
-export const STREAMS = [
-  { name: 'TurxKaan', title: 'WoW: Forever hazırlık — Talent planlaması', viewers: 1243, live: true },
-  { name: 'SelinHeals', title: 'Resto Druid rehberi | Forever Classic+', viewers: 412, live: true },
-  { name: 'EmreRogue', title: 'Combat Rogue BIS listesi', viewers: 0, live: false },
-]
+export const STREAMS: { name: string; title: string; viewers: number; live: boolean }[] = []
 
 export const BANK_ITEMS = [
-  { name: 'Major Healing Potion', category: 'Potions', qty: 140, max: 200 },
-  { name: 'Greater Fire Protection Potion', category: 'Potions', qty: 48, max: 120 },
-  { name: 'Flask of the Titans', category: 'Potions', qty: 12, max: 40 },
-  { name: 'Elixir of the Mongoose', category: 'Potions', qty: 86, max: 120 },
-  { name: 'Arcanite Bar', category: 'Gems', qty: 22, max: 40 },
-  { name: 'Large Brilliant Shard', category: 'Gems', qty: 64, max: 100 },
-  { name: 'Huge Emerald', category: 'Gems', qty: 7, max: 20 },
-  { name: 'Enchant Weapon — Crusader', category: 'Enchants', qty: 9, max: 20 },
-  { name: 'Enchant Chest — Greater Stats', category: 'Enchants', qty: 15, max: 30 },
-  { name: 'Enchant Weapon — Spell Power', category: 'Enchants', qty: 4, max: 15 },
+  { name: 'Major Healing Potion', category: 'Potions', qty: 0, max: 200 },
+  { name: 'Greater Fire Protection Potion', category: 'Potions', qty: 0, max: 120 },
+  { name: 'Flask of the Titans', category: 'Potions', qty: 0, max: 40 },
+  { name: 'Elixir of the Mongoose', category: 'Potions', qty: 0, max: 120 },
+  { name: 'Arcanite Bar', category: 'Gems', qty: 0, max: 40 },
+  { name: 'Large Brilliant Shard', category: 'Gems', qty: 0, max: 100 },
+  { name: 'Huge Emerald', category: 'Gems', qty: 0, max: 20 },
+  { name: 'Enchant Weapon — Crusader', category: 'Enchants', qty: 0, max: 20 },
+  { name: 'Enchant Chest — Greater Stats', category: 'Enchants', qty: 0, max: 30 },
+  { name: 'Enchant Weapon — Spell Power', category: 'Enchants', qty: 0, max: 15 },
 ]
 
 export const CONSUMABLES = [
@@ -133,9 +109,9 @@ export const BOSS_TACTICS = [
 ]
 
 export const ATTUNEMENTS = [
-  { name: 'Onyxia Attunement (Drakefire Amulet)', done: 18, total: 25 },
-  { name: 'Hyjal Summit — Vault Anahtarı', done: 11, total: 25 },
-  { name: 'Barrow Deeps — Mührü', done: 22, total: 25 },
+  { name: 'Onyxia Attunement (Drakefire Amulet)', done: 0, total: 25 },
+  { name: 'Hyjal Summit — Vault Anahtarı', done: 0, total: 25 },
+  { name: 'Barrow Deeps — Mührü', done: 0, total: 25 },
 ]
 
 export const WEAKAURAS = [
@@ -160,6 +136,7 @@ export const RECRUITMENT = [
   { wowClass: 'Hunter' as WowClass, specs: [{ spec: 'Marksmanship', need: 'Orta' }] },
   { wowClass: 'Rogue' as WowClass, specs: [{ spec: 'Combat', need: 'Düşük' }] },
   { wowClass: 'Priest' as WowClass, specs: [{ spec: 'Holy', need: 'Yüksek' }, { spec: 'Shadow', need: 'Orta' }] },
+  { wowClass: 'Shaman' as WowClass, specs: [{ spec: 'Restoration', need: 'Yüksek' }, { spec: 'Enhancement', need: 'Orta' }] },
   { wowClass: 'Mage' as WowClass, specs: [{ spec: 'Frost', need: 'Orta' }, { spec: 'Fire', need: 'Düşük' }] },
   { wowClass: 'Warlock' as WowClass, specs: [{ spec: 'Destruction', need: 'Yüksek' }] },
   { wowClass: 'Druid' as WowClass, specs: [{ spec: 'Restoration', need: 'Yüksek' }, { spec: 'Feral', need: 'Orta' }] },
@@ -169,9 +146,9 @@ export const ACTIVE_POLL = {
   question: 'Phase 1 için ana loot sistemimiz ne olsun?',
   endsIn: '2 gün 4 saat',
   options: [
-    { id: 'lc', label: 'Loot Council', votes: 42 },
-    { id: 'epgp', label: 'EPGP', votes: 31 },
-    { id: 'dkp', label: 'DKP', votes: 18 },
-    { id: 'hybrid', label: 'Hibrit (LC + Soft Reserve)', votes: 9 },
+    { id: 'lc', label: 'Loot Council', votes: 0 },
+    { id: 'epgp', label: 'EPGP', votes: 0 },
+    { id: 'dkp', label: 'DKP', votes: 0 },
+    { id: 'hybrid', label: 'Hibrit (LC + Soft Reserve)', votes: 0 },
   ],
 }

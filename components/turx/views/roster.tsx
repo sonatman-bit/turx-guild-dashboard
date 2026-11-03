@@ -1,8 +1,9 @@
 'use client'
 
-import { BarChart3, Crown, Search, UserCheck, Users, Zap, Star, Wrench, Shield, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor } from 'lucide-react'
+import { BarChart3, Crown, Search, UserCheck, Users, Star, Wrench, Shield, Swords, Cross, Target } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import { charactersStorageKey } from '@/lib/profile-gate'
 import { cn } from '@/lib/utils'
 import { useToast } from '../toast'
 import { useAuth, type GuildRank } from '../auth-provider' // Auth entegrasyonu
@@ -10,20 +11,20 @@ import { Badge, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 
-interface GuildCharacter {
+interface StoredCharacter {
   id: string
   firstName: string
   lastName: string
   wowClass: WowClass
   race: string
   spec: string
-  offSpec: string
+  offSpec?: string
   role: ExtendedRole
   isMain: boolean
-  professions: [string, string]
-  attunements: {
-    onyxia: boolean
-    hyjal: boolean
+  professions?: [string, string]
+  attunements?: {
+    onyxia?: boolean
+    hyjal?: boolean
   }
 }
 
@@ -108,61 +109,15 @@ export function RosterView() {
   const [professionFilter, setProfessionFilter] = useState<string>('all')
   const [hideAlts, setHideAlts] = useState(false)
 
-  const [defaultMembers, setDefaultMembers] = useState<RosterMemberRow[]>([
-    {
-      id: 'd1',
-      charName: 'Kaan Shield',
-      realName: 'Kaan Aslanyürek',
-      level: 1,
-      race: 'Human',
-      wowClass: 'Warrior',
-      spec: 'Protection',
-      offSpec: 'Fury',
-      role: 'TANK',
-      rank: 'Officer',
-      type: 'Main',
-      professions: ['Blacksmithing', 'Mining'],
-      attunements: { onyxia: true, hyjal: true }
-    },
-    {
-      id: 'd2',
-      charName: 'Mert Shadow',
-      realName: 'Mert Aksoy',
-      level: 1,
-      race: 'Night Elf',
-      wowClass: 'Priest',
-      spec: 'Holy',
-      offSpec: 'Shadow',
-      role: 'HEALER',
-      rank: 'Raider',
-      type: 'Main',
-      professions: ['Alchemy', 'Herbalism'],
-      attunements: { onyxia: true, hyjal: false }
-    },
-    {
-      id: 'd3',
-      charName: 'Burak Storm',
-      realName: 'Burak Yılmaz',
-      level: 1,
-      race: 'Dwarf',
-      wowClass: 'Shaman',
-      spec: 'Restoration',
-      offSpec: 'Elemental',
-      role: 'HEALER',
-      rank: 'Raider',
-      type: 'Main',
-      professions: ['Leatherworking', 'Skinning'],
-      attunements: { onyxia: true, hyjal: false }
-    }
-  ])
+  const [defaultMembers, setDefaultMembers] = useState<RosterMemberRow[]>([])
 
   const rosterMembers = useMemo(() => {
     let userCharacters: RosterMemberRow[] = []
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('turx_my_characters')
+      const saved = user ? localStorage.getItem(charactersStorageKey(user.username)) : null
       if (saved) {
         try {
-          const parsed: GuildCharacter[] = JSON.parse(saved)
+          const parsed: StoredCharacter[] = JSON.parse(saved)
           userCharacters = parsed.map((c) => ({
             id: c.id,
             charName: `${c.firstName} ${c.lastName}`,

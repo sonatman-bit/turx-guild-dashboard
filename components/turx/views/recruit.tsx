@@ -156,34 +156,7 @@ export function RecruitView() {
     }, 50)
   }
 
-  const [applications, setApplications] = useState<ApplicationItem[]>([
-    {
-      id: '1',
-      charName: 'Waffle',
-      charSurname: 'Theone',
-      discord: 'Waffle (Sonat)',
-      race: 'Skyborn',
-      characterClass: 'Warrior',
-      spec: 'Fury',
-      logs: 'https://waffle.com/',
-      experience: 'GM & Raid Lead tecrübesi mevcut.',
-      status: 'APPROVED',
-      date: '07:04'
-    },
-    {
-      id: '2',
-      charName: 'Shadow',
-      charSurname: 'Blade',
-      discord: 'shadowblade',
-      race: 'Night Elf',
-      characterClass: 'Rogue',
-      spec: 'Combat',
-      logs: 'https://warcraftlogs.com/',
-      experience: 'Classic ve TBC boyunca aktif raid yaptım.',
-      status: 'PENDING',
-      date: '09:30'
-    }
-  ])
+  const [applications, setApplications] = useState<ApplicationItem[]>([])
 
   const handleStatusChange = (id: string, newStatus: 'APPROVED' | 'REJECTED') => {
     setApplications(prev => prev.map(app => app.id === id ? { ...app, status: newStatus } : app))

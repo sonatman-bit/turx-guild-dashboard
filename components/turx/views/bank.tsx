@@ -13,12 +13,7 @@ const CATEGORIES = [
   { id: 'Enchants', label: 'Enchants', icon: Sparkles },
 ] as const
 
-const LEDGER = [
-  { who: 'Işıkkalkan', what: '+250g Raid Fonu', time: 'Bugün' },
-  { who: 'Gölgekesen', what: '-20x Major Healing Potion', time: 'Dün' },
-  { who: 'Kıvılcım', what: '+12x Large Brilliant Shard', time: '2 gün önce' },
-  { who: 'Aslanyürek', what: '-1x Flask of the Titans', time: '3 gün önce' },
-]
+const LEDGER: { who: string; what: string; time: string }[] = []
 
 export function BankView() {
   const toast = useToast()
@@ -47,19 +42,19 @@ export function BankView() {
         <Panel className="glow-border flex flex-col justify-between bg-gradient-to-br from-gold/10 to-card">
           <PanelTitle icon={Coins}>Gold Bakiyesi</PanelTitle>
           <p className="font-display text-5xl font-black text-gold tabular-nums text-glow-gold">
-            12.480<span className="ml-1 text-2xl">g</span>
+            0<span className="ml-1 text-2xl">g</span>
           </p>
           <p className="mt-1 text-sm text-silver">
-            64s 20c · <span className="text-success">+1.250g bu hafta</span>
+            0s 0c · henüz hareket yok
           </p>
           <div className="mt-6 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg border border-border bg-[#071422] p-3">
               <p className="text-xs text-muted-foreground">Raid Repair Fonu</p>
-              <p className="font-semibold text-neon tabular-nums">4.000g</p>
+              <p className="font-semibold text-neon tabular-nums">0g</p>
             </div>
             <div className="rounded-lg border border-border bg-[#071422] p-3">
               <p className="text-xs text-muted-foreground">Consumable Fonu</p>
-              <p className="font-semibold text-neon tabular-nums">3.200g</p>
+              <p className="font-semibold text-neon tabular-nums">0g</p>
             </div>
           </div>
         </Panel>
@@ -67,6 +62,9 @@ export function BankView() {
         <Panel className="lg:col-span-2">
           <PanelTitle>Son Hareketler</PanelTitle>
           <ul className="divide-y divide-border">
+            {LEDGER.length === 0 && (
+              <li className="py-4 text-sm text-muted-foreground">Henüz banka hareketi yok.</li>
+            )}
             {LEDGER.map((l) => (
               <li key={l.what} className="flex items-center justify-between gap-3 py-2.5 text-sm">
                 <span className="font-medium text-silver">{l.who}</span>

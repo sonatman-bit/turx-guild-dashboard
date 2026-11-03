@@ -1,18 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'
+import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 
-// Class'a göre dinamik sol çizgi rengi (Hex Decimal)
-const CLASS_COLORS: Record<string, number> = {
-  'Warrior': 12882200,      // #C69B6D (Kahverengi)
-  'Paladin': 16024474,      // #F48CBA (Pembe)
-  'Hunter': 11003713,       // #A7FD31 (Yeşil)
-  'Rogue': 16776006,        // #FFF468 (Sarı)
-  'Priest': 16777215,       // #FFFFFF (Beyaz)
-  'Death Knight': 12852277, // #C41E3A (Kırmızı)
-  'Shaman': 28882,          // #0070DD (Mavi)
-  'Mage': 41724,            // #3FC7EB (Açık Mavi)
-  'Warlock': 8871618,       // #8788EE (Mor)
-  'Druid': 16743680         // #FF7C0A (Turuncu)
-};
+const TURX_GOLD = 0xd4af37
+
+function discordColorForClass(characterClass: unknown): number {
+  if (typeof characterClass !== 'string' || !(characterClass in CLASS_COLORS)) {
+    return TURX_GOLD
+  }
+  return parseInt(CLASS_COLORS[characterClass as WowClass].slice(1), 16)
+}
 
 export async function POST(request: Request) {
   try {
@@ -32,8 +28,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Webhook URL missing" }, { status: 500 });
     }
 
-    // Seçilen Class'ın rengini al, yoksa varsayılan TURX Gold (#D4AF37) kullan
-    const embedColor = CLASS_COLORS[characterClass] || 13938487;
+    const embedColor = discordColorForClass(characterClass)
 
     const embed = {
       title: "⚔️ GUILD BAŞVURUSU",
@@ -79,8 +74,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error("API Route Error:", err);
-    return NextResponse.json({ error: err.message || "Internal Server Error" }, { status: 500 });
+  } catch (err) {
+    console.error("API Route Error:", err)
+    const message = err instanceof Error ? err.message : 'Internal Server Error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

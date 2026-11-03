@@ -2,10 +2,18 @@
 
 import { useState, useEffect } from 'react'
 import { CLASS_COLORS } from '@/lib/guild-data'
+import {
+  commitOnboardingStatus,
+  getOnboardingGaps,
+  loadOnboardingCharacters,
+  loadOnboardingProfile,
+  saveOnboardingSnapshot,
+} from '@/lib/profile-gate'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Panel, SectionHeader, inputClass } from '../ui'
-import { User, Plus, Trash2, Shield, Calendar, Link2, CheckCircle2, AlertCircle, Edit3, Globe, Wrench, Check, Clock, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor, Star } from 'lucide-react'
+import { Plus, Trash2, Shield, Calendar, Link2, CheckCircle2, Edit3, Wrench, Clock, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor, Lock } from 'lucide-react'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 type AvailabilityStatus = 'none' | 'available' | 'maybe' | 'busy'
@@ -45,9 +53,7 @@ interface UserProfileData {
   availability: Record<string, { status: AvailabilityStatus; startTime: string; endTime: string }>
 }
 
-const WOW_CLASSES: (keyof typeof CLASS_COLORS)[] = [
-  'Druid', 'Warrior', 'Shaman', 'Mage', 'Paladin', 'Priest', 'Rogue', 'Warlock', 'Hunter'
-]
+const WOW_CLASSES = Object.keys(CLASS_COLORS) as (keyof typeof CLASS_COLORS)[]
 
 const CLASS_RACES: Record<keyof typeof CLASS_COLORS, string[]> = {
   Druid: ['Night Elf', 'Skyborn'],
@@ -116,15 +122,15 @@ const PROFESSIONS = [
 ]
 
 const AVATAR_CLASSES = [
-  { key: 'Warrior', label: 'Warrior', color: '#C79C6E', icon: Swords, bg: 'bg-[#C79C6E]/20' },
-  { key: 'Paladin', label: 'Paladin', color: '#F58CBA', icon: Shield, bg: 'bg-[#F58CBA]/20' },
-  { key: 'Hunter', label: 'Hunter', color: '#ABD473', icon: Target, bg: 'bg-[#ABD473]/20' },
-  { key: 'Rogue', label: 'Rogue', color: '#FFF569', icon: Footprints, bg: 'bg-[#FFF569]/20' },
-  { key: 'Priest', label: 'Priest', color: '#FFFFFF', icon: Cross, bg: 'bg-white/20' },
-  { key: 'Shaman', label: 'Shaman', color: '#0070DE', icon: Anchor, bg: 'bg-[#0070DE]/20' },
-  { key: 'Mage', label: 'Mage', color: '#69CCF0', icon: Wand2, bg: 'bg-[#69CCF0]/20' },
-  { key: 'Warlock', label: 'Warlock', color: '#9482C9', icon: Flame, bg: 'bg-[#9482C9]/20' },
-  { key: 'Druid', label: 'Druid', color: '#FF7D0A', icon: Sparkles, bg: 'bg-[#FF7D0A]/20' },
+  { key: 'Warrior' as const, label: 'Warrior', color: CLASS_COLORS.Warrior, icon: Swords, bg: 'bg-[#C69B6D]/20' },
+  { key: 'Paladin' as const, label: 'Paladin', color: CLASS_COLORS.Paladin, icon: Shield, bg: 'bg-[#F48CBA]/20' },
+  { key: 'Hunter' as const, label: 'Hunter', color: CLASS_COLORS.Hunter, icon: Target, bg: 'bg-[#AAD372]/20' },
+  { key: 'Rogue' as const, label: 'Rogue', color: CLASS_COLORS.Rogue, icon: Footprints, bg: 'bg-[#FFF468]/20' },
+  { key: 'Priest' as const, label: 'Priest', color: CLASS_COLORS.Priest, icon: Cross, bg: 'bg-white/20' },
+  { key: 'Shaman' as const, label: 'Shaman', color: CLASS_COLORS.Shaman, icon: Anchor, bg: 'bg-[#0070DD]/20' },
+  { key: 'Mage' as const, label: 'Mage', color: CLASS_COLORS.Mage, icon: Wand2, bg: 'bg-[#3FC7EB]/20' },
+  { key: 'Warlock' as const, label: 'Warlock', color: CLASS_COLORS.Warlock, icon: Flame, bg: 'bg-[#8788EE]/20' },
+  { key: 'Druid' as const, label: 'Druid', color: CLASS_COLORS.Druid, icon: Sparkles, bg: 'bg-[#FF7C0A]/20' },
 ]
 
 const START_TIME_OPTIONS = ['19:00', '19:30', '20:00', '20:30', '21:00']
@@ -140,56 +146,32 @@ const DAYS_OF_WEEK = [
   { key: 'paz', label: 'PAZ' },
 ]
 
+function emptyProfile(email: string): UserProfileData {
+  return {
+    fullName: '',
+    nickname: '',
+    birthDate: '',
+    gender: 'Erkek',
+    bnetId: '',
+    email,
+    phoneCountry: '+90',
+    phoneNumber: '',
+    selectedAvatar: 'Druid',
+    discordConnected: false,
+    discordTag: '',
+    bnetConnected: false,
+    availability: Object.fromEntries(
+      DAYS_OF_WEEK.map((day) => [day.key, { status: 'none' as AvailabilityStatus, startTime: '21:00', endTime: '00:00' }]),
+    ),
+  }
+}
+
 export function ProfileView() {
   const toast = useToast()
-
-  const [profile, setProfile] = useState<UserProfileData>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('turx_user_profile')
-      if (saved) {
-        try { 
-          const parsed = JSON.parse(saved)
-          return { ...parsed, selectedAvatar: parsed.selectedAvatar || 'Druid' } 
-        } catch (e) { /* fallback */ }
-      }
-    }
-    return {
-      fullName: 'Sonat Düşmez',
-      nickname: 'Waffle',
-      birthDate: '1990-05-15',
-      gender: 'Erkek',
-      bnetId: 'Sonat#2154',
-      email: 'sonat@dstkompresor.com',
-      phoneCountry: '+90',
-      phoneNumber: '532 000 0000',
-      selectedAvatar: 'Druid',
-      discordConnected: true,
-      discordTag: 'sonatman',
-      bnetConnected: false,
-      availability: {
-        pzt: { status: 'available', startTime: '21:00', endTime: '00:00' },
-        sal: { status: 'busy', startTime: '21:00', endTime: '00:00' },
-        car: { status: 'available', startTime: '21:00', endTime: '00:00' },
-        per: { status: 'busy', startTime: '21:00', endTime: '00:00' },
-        cum: { status: 'maybe', startTime: '21:00', endTime: '00:00' },
-        cmt: { status: 'available', startTime: '20:00', endTime: '01:00' },
-        paz: { status: 'available', startTime: '21:00', endTime: '00:00' },
-      }
-    }
-  })
-
-  const [characters, setCharacters] = useState<GuildCharacter[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('turx_my_characters')
-      if (saved) {
-        try { return JSON.parse(saved) } catch (e) { /* fallback */ }
-      }
-    }
-    return [
-      { id: 'c1', firstName: 'Sonat', lastName: 'Waffle', wowClass: 'Druid', race: 'Skyborn', spec: 'Feral Tank', offSpec: 'Restoration', role: 'TANK', isMain: true, professions: ['Engineering', 'Mining'], attunements: { onyxia: true, mc: true, bwl: true, naxx: false } },
-      { id: 'c2', firstName: 'Waffle', lastName: 'Gear', wowClass: 'Mage', race: 'Skyborn', spec: 'Fire', offSpec: 'Frost', role: 'RANGED', isMain: false, professions: ['Tailoring', 'Enchanting'], attunements: { onyxia: true, mc: false, bwl: false, naxx: false } },
-    ]
-  })
+  const { user, profileComplete, refreshProfileGate } = useAuth()
+  const [ready, setReady] = useState(false)
+  const [profile, setProfile] = useState<UserProfileData>(() => emptyProfile(''))
+  const [characters, setCharacters] = useState<GuildCharacter[]>([])
 
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
   const [editFirstName, setEditFirstName] = useState('')
@@ -236,20 +218,53 @@ export function ProfileView() {
   }
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('turx_user_profile', JSON.stringify(profile))
+    if (!user) {
+      setProfile(emptyProfile(''))
+      setCharacters([])
+      setReady(false)
+      return
     }
-  }, [profile])
+
+    const savedProfile = loadOnboardingProfile(user.username) as Partial<UserProfileData> | null
+    const savedCharacters = loadOnboardingCharacters(user.username) as GuildCharacter[]
+    setProfile(
+      savedProfile
+        ? { ...emptyProfile(user.email), ...savedProfile, selectedAvatar: savedProfile.selectedAvatar || 'Druid' }
+        : emptyProfile(user.email),
+    )
+    setCharacters(Array.isArray(savedCharacters) ? savedCharacters : [])
+    setReady(true)
+  }, [user])
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('turx_my_characters', JSON.stringify(characters))
-    }
-  }, [characters])
+    if (!ready || !user) return
+    saveOnboardingSnapshot(user.username, profile, characters)
+  }, [profile, characters, ready, user])
+
+  const persistGate = (nextProfile: UserProfileData, nextCharacters: GuildCharacter[]) => {
+    if (!user) return false
+    saveOnboardingSnapshot(user.username, nextProfile, nextCharacters)
+    const complete = commitOnboardingStatus(user.username, nextProfile, nextCharacters)
+    refreshProfileGate()
+    return complete
+  }
 
   const handleProfileUpdate = (e: React.FormEvent) => {
     e.preventDefault()
-    toast({ title: 'Profil Güncellendi', description: 'Hesap bilgileriniz başarıyla kaydedildi.' })
+    if (!user) {
+      toast({ title: 'Giriş gerekli', description: 'Profil kaydetmek için önce oturum açın.' })
+      return
+    }
+    const complete = persistGate(profile, characters)
+    if (!complete) {
+      const gaps = getOnboardingGaps(profile, characters).join(', ')
+      toast({
+        title: 'Profil kilitli kaldı',
+        description: `Eksik: ${gaps}. Kaydettikten sonra diğer sekmelere geçebilirsin.`,
+      })
+      return
+    }
+    toast({ title: 'Profil Güncellendi', description: 'Hesap bilgileriniz kaydedildi. Lonca paneli açıldı.' })
   }
 
   const cycleAvailability = (dayKey: string) => {
@@ -352,7 +367,8 @@ export function ProfileView() {
       attunements: { onyxia: attOny, mc: attMc, bwl: attBwl, naxx: attNaxx }
     }
 
-    setCharacters([...characters, newChar])
+    const nextCharacters = [...characters, newChar]
+    setCharacters(nextCharacters)
     setNewFirstName('')
     setNewLastName('')
     setProf1('Yok')
@@ -361,7 +377,13 @@ export function ProfileView() {
     setAttMc(false)
     setAttBwl(false)
     setAttNaxx(false)
-    toast({ title: 'Karakter Eklendi!', description: `${newChar.firstName} ${newChar.lastName} (${newChar.spec}) havuzunuza eklendi.` })
+    const unlocked = persistGate(profile, nextCharacters)
+    toast({
+      title: 'Karakter Eklendi!',
+      description: unlocked
+        ? `${newChar.firstName} ${newChar.lastName} eklendi. Profil kilidi açıldı.`
+        : `${newChar.firstName} ${newChar.lastName} (${newChar.spec}) havuzunuza eklendi. Kişisel bilgileri de kaydet.`,
+    })
   }
 
   const handleDeleteCharacter = (id: string) => {
@@ -380,6 +402,19 @@ export function ProfileView() {
   const displayName = profile.nickname.trim() ? `${profile.nickname} (${profile.fullName})` : profile.fullName
   const activeAvatarClass = AVATAR_CLASSES.find(a => a.key === profile.selectedAvatar) || AVATAR_CLASSES[0]
   const ActiveAvatarIcon = activeAvatarClass.icon
+  const onboardingGaps = getOnboardingGaps(profile, characters)
+
+  if (!user) {
+    return (
+      <div className="flex flex-col gap-4">
+        <SectionHeader
+          eyebrow="Hesap"
+          title="Profil için giriş gerekli"
+          description="Karakter havuzu ve kişisel kayıt bilgileri yalnızca oturum açmış üyeler içindir."
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-8 pb-10">
@@ -388,6 +423,20 @@ export function ProfileView() {
         title="Kullanıcı Profili & Karakter Havuzu"
         description="Lonca kayıt bilgileriniz, haftalık müsaitliğiniz ve Main/Alt karakter havuzunuz."
       />
+
+      {!profileComplete && (
+        <Panel className="border-gold/40 bg-gold/10 p-4">
+          <p className="flex items-center gap-2 font-display text-sm font-bold text-gold">
+            <Lock className="size-4" />
+            Zorunlu onboarding
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Ad soyad, doğum tarihi, cinsiyet, Battle.net ID, e-posta, telefon ve en az bir Main karakter
+            kaydedilene kadar diğer sekmeler kilitli.
+            {onboardingGaps.length > 0 ? ` Eksik: ${onboardingGaps.join(', ')}.` : ''}
+          </p>
+        </Panel>
+      )}
 
       <Panel className="border-gold/30 bg-gradient-to-r from-card/90 via-card/70 to-card/90 p-6 shadow-xl">
         <div className="flex flex-wrap items-center justify-between gap-6">
@@ -560,7 +609,7 @@ export function ProfileView() {
               </div>
 
               <div className="md:col-span-2 flex justify-end mt-2">
-                <GoldButton type="submit">Değişiklikleri Kaydet</GoldButton>
+                <GoldButton type="submit">{profileComplete ? 'Değişiklikleri Kaydet' : 'Kaydet ve Kilidi Aç'}</GoldButton>
               </div>
             </form>
           </Panel>

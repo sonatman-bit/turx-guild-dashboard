@@ -228,9 +228,9 @@ const PROGRESS = [
 ]
 
 const READINESS = [
-  { label: 'Level 60 Raider', value: 31, total: 40 },
-  { label: 'Onyxia Attunement', value: 18, total: 25 },
-  { label: 'Fire Resistance Set', value: 12, total: 25 },
+  { label: 'Level 60 Raider', value: 0, total: 40 },
+  { label: 'Onyxia Attunement', value: 0, total: 25 },
+  { label: 'Fire Resistance Set', value: 0, total: 25 },
 ]
 
 function ProgressTracker() {
@@ -302,6 +302,11 @@ function StreamRadar() {
         Stream Radar
       </PanelTitle>
       <ul className="flex flex-col gap-2">
+        {STREAMS.length === 0 && (
+          <li className="rounded-lg border border-border bg-[#071422] p-3 text-sm text-muted-foreground">
+            Aktif yayın yok.
+          </li>
+        )}
         {STREAMS.map((s) => (
           <li key={s.name} className="flex items-center gap-3 rounded-lg border border-border bg-[#071422] p-3">
             <span className={cn('relative flex size-2.5 shrink-0', !s.live && 'opacity-40')}>
@@ -327,6 +332,9 @@ function DiscordFeed() {
         Discord Duyuruları
       </PanelTitle>
       <ul className="flex flex-col gap-3">
+        {ANNOUNCEMENTS.length === 0 && (
+          <li className="text-sm text-muted-foreground">Henüz duyuru yok.</li>
+        )}
         {ANNOUNCEMENTS.map((a) => (
           <li key={a.text} className="border-l-2 border-gold/50 pl-3">
             <p className="flex flex-wrap items-center gap-2 text-sm">

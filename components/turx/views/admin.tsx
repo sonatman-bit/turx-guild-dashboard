@@ -39,42 +39,10 @@ export function AdminDashboardView() {
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
-  const [members, setMembers] = useState<MemberItem[]>([
-    { id: 'm1', accountName: 'Waffle', mainCharacter: 'Sonat Düşmez (Waffle)', class: 'Druid', spec: 'Feral Tank', rank: 'GM', joinDate: '2025-12-01' },
-    { id: 'm2', accountName: 'Shadowblade', mainCharacter: 'Ahmet Yılmaz', class: 'Rogue', spec: 'Combat', rank: 'Officer', joinDate: '2025-12-10' },
-    { id: 'm3', accountName: 'Holyheal', mainCharacter: 'Mehmet Demir', class: 'Priest', spec: 'Holy', rank: 'Raider', joinDate: '2026-01-05' },
-    { id: 'm4', name: 'Newbie', accountName: 'NewPlayer', mainCharacter: 'Can Çelik', class: 'Mage', spec: 'Fire', rank: 'Member', joinDate: '2026-02-14' },
-  ])
+  const [members, setMembers] = useState<MemberItem[]>([])
 
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
-  const [applications, setApplications] = useState<AdminApplication[]>([
-    { 
-      id: 'a1', 
-      accountName: 'shadowblade', 
-      charName: 'Shadow', 
-      charSurname: 'Blade', 
-      discord: 'shadowblade#1234', 
-      characterClass: 'Rogue', 
-      spec: 'Combat', 
-      experience: 'Vanilla Classic Naxx geceleri dahil tüm raid tierlerinde aktif hardcore officer ve dps tecrübesi.', 
-      previousGuilds: 'APEX, Vanguard (EU-Shazzrah)', 
-      status: 'PENDING', 
-      date: '09:30' 
-    },
-    { 
-      id: 'a2', 
-      accountName: 'ironshield', 
-      charName: 'Ironhold', 
-      charSurname: 'Shield', 
-      discord: 'ironshield#9988', 
-      characterClass: 'Warrior', 
-      spec: 'Protection', 
-      experience: 'TBC ve Classic dönemlerinde MT (Main Tank) olarak BWL ve AQ40 clear progress yönettim.', 
-      previousGuilds: 'Notorious (EU-Firemaw)', 
-      status: 'PENDING', 
-      date: '11:15' 
-    },
-  ])
+  const [applications, setApplications] = useState<AdminApplication[]>([])
 
   const handleRankChange = (memberId: string, memberAccount: string, currentRank: GuildRank, newRank: GuildRank) => {
     if (currentRank === 'GM') {
@@ -325,15 +293,15 @@ export function AdminDashboardView() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="p-4 rounded-xl border border-success/40 bg-success/10 flex flex-col gap-1">
               <span className="text-xs font-bold text-success uppercase">Çarşamba (MC / Ony)</span>
-              <span className="text-2xl font-display font-black text-foreground">32 / 40 Müsait</span>
+              <span className="text-2xl font-display font-black text-foreground">0 / 0 Müsait</span>
             </div>
             <div className="p-4 rounded-xl border border-success/40 bg-success/10 flex flex-col gap-1">
               <span className="text-xs font-bold text-success uppercase">Perşembe (BWL Progress)</span>
-              <span className="text-2xl font-display font-black text-foreground">28 / 40 Müsait</span>
+              <span className="text-2xl font-display font-black text-foreground">0 / 0 Müsait</span>
             </div>
             <div className="p-4 rounded-xl border border-gold/40 bg-gold/10 flex flex-col gap-1">
               <span className="text-xs font-bold text-gold uppercase">Pazar (Farm & Alt Run)</span>
-              <span className="text-2xl font-display font-black text-foreground">35 / 40 Müsait</span>
+              <span className="text-2xl font-display font-black text-foreground">0 / 0 Müsait</span>
             </div>
           </div>
         </Panel>

@@ -4,6 +4,7 @@ import {
   CalendarClock,
   Coins,
   LayoutDashboard,
+  Lock,
   Menu,
   MessageSquareLock,
   ScrollText,
@@ -12,11 +13,11 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { TurxLogo } from './logo'
-import { AuthNavbarWidget } from './auth-provider'
+import { AuthNavbarWidget, useAuth } from './auth-provider'
 
 export type TabId = 'overview' | 'roster' | 'applications' | 'strategy' | 'raids' | 'bank' | 'anonymous' | 'profile' | 'admin'
 
@@ -28,24 +29,55 @@ export const NAV_ITEMS: { id: TabId; label: string; short: string; icon: React.C
   { id: 'raids', label: 'Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
   { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins },
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Officer', icon: MessageSquareLock },
-  { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield }, // <--- Yeni Eklenen Admin Paneli
+  { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield },
 ]
 
-function NavList({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
+function NavList({
+  active,
+  onSelect,
+  navigationLocked = false,
+}: {
+  active: TabId
+  onSelect: (id: TabId) => void
+  navigationLocked?: boolean
+}) {
+  const { user } = useAuth()
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  const showAdmin = mounted && canAccessAdminPanel(user?.role)
+  const items = NAV_ITEMS.filter((item) => item.id !== 'admin' || showAdmin)
+
   return (
     <nav aria-label="Ana menü" className="flex flex-col gap-1">
-      {NAV_ITEMS.map(({ id, label, short, icon: Icon }) => {
+      {navigationLocked && (
+        <div className="mb-2 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-[11px] leading-relaxed text-gold">
+          <p className="flex items-center gap-1.5 font-semibold">
+            <Lock className="size-3.5 shrink-0" />
+            Profil kilidi
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Profil bilgileri ve en az bir Main karakter kaydedilene kadar menü kapalı.
+          </p>
+        </div>
+      )}
+      {items.map(({ id, label, short, icon: Icon }) => {
         const isActive = active === id
+        const itemLocked = navigationLocked && id !== 'profile'
         return (
           <button
             key={id}
             onClick={() => onSelect(id)}
+            disabled={itemLocked}
+            aria-disabled={itemLocked || undefined}
             aria-current={isActive ? 'page' : undefined}
+            title={itemLocked ? 'Önce profilini tamamla' : undefined}
             className={cn(
-              'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition cursor-pointer',
-              isActive
-                ? 'bg-gradient-to-r from-neon/15 to-transparent text-foreground'
-                : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
+              'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
+              itemLocked
+                ? 'cursor-not-allowed opacity-45'
+                : isActive
+                  ? 'cursor-pointer bg-gradient-to-r from-neon/15 to-transparent text-foreground'
+                  : 'cursor-pointer text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
             )}
           >
             {isActive && (
@@ -63,7 +95,15 @@ function NavList({ active, onSelect }: { active: TabId; onSelect: (id: TabId) =>
   )
 }
 
-function SidebarBody({ active, onSelect }: { active: TabId; onSelect: (id: TabId) => void }) {
+function SidebarBody({
+  active,
+  onSelect,
+  navigationLocked = false,
+}: {
+  active: TabId
+  onSelect: (id: TabId) => void
+  navigationLocked?: boolean
+}) {
   return (
     <div className="flex h-full flex-col gap-6 p-4">
       <div className="flex items-center gap-3 px-1">
@@ -73,7 +113,7 @@ function SidebarBody({ active, onSelect }: { active: TabId; onSelect: (id: TabId
           <p className="mt-1 font-display text-[10px] tracking-[0.3em] text-neon">TURX FOREVER</p>
         </div>
       </div>
-      <NavList active={active} onSelect={onSelect} />
+      <NavList active={active} onSelect={onSelect} navigationLocked={navigationLocked} />
       <div className="mt-auto rounded-xl border border-gold/25 bg-gradient-to-br from-gold/10 to-transparent p-4">
         <div className="flex items-center gap-2 text-gold">
           <Shield className="size-4" />
@@ -92,11 +132,13 @@ export function Sidebar({
   onSelect,
   mobileOpen,
   onCloseMobile,
+  navigationLocked = false,
 }: {
   active: TabId
   onSelect: (id: TabId) => void
   mobileOpen: boolean
   onCloseMobile: () => void
+  navigationLocked?: boolean
 }) {
   useEffect(() => {
     if (!mobileOpen) return
@@ -108,7 +150,7 @@ export function Sidebar({
   return (
     <>
       <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 border-r border-sidebar-border bg-sidebar/90 backdrop-blur lg:block">
-        <SidebarBody active={active} onSelect={onSelect} />
+        <SidebarBody active={active} onSelect={onSelect} navigationLocked={navigationLocked} />
       </aside>
 
       <div className={cn('fixed inset-0 z-50 lg:hidden', mobileOpen ? 'pointer-events-auto' : 'pointer-events-none')}>
@@ -136,6 +178,7 @@ export function Sidebar({
           </button>
           <SidebarBody
             active={active}
+            navigationLocked={navigationLocked}
             onSelect={(id) => {
               onSelect(id)
               onCloseMobile()

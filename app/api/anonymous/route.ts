@@ -23,19 +23,66 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Çok fazla mesaj. Birkaç dakika sonra tekrar dene.' }, { status: 429 })
     }
 
-    if (!process.env.RESEND_API_KEY) {
-      return NextResponse.json({ error: 'E-posta gönderimi yapılandırılmadı.' }, { status: 503 })
+    const html = anonymousMessageHtml({ toLabel, topic, message })
+    const text = `TURX anonim mesaj\nAlıcı seçimi: ${toLabel}\nKonu: ${topic}\n\n${message}\n`
+
+    let emailError = ''
+    if (process.env.RESEND_API_KEY?.trim()) {
+      try {
+        await sendAuthEmail({
+          to: GM_EMAIL,
+          subject: `TURX anonim mesaj - ${topic}`,
+          html,
+          text,
+        })
+      } catch (err) {
+        emailError = err instanceof Error ? err.message : 'E-posta gönderilemedi.'
+        console.error('anonymous resend', emailError)
+      }
+    } else {
+      emailError = 'RESEND_API_KEY missing'
     }
 
-    await sendAuthEmail({
-      to: GM_EMAIL,
-      subject: `TURX anonim mesaj · ${topic}`,
-      html: anonymousMessageHtml({ toLabel, topic, message }),
-    })
+    const webhookUrl = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL
+    let discordOk = false
+    if (webhookUrl) {
+      const discord = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          embeds: [
+            {
+              title: 'Anonim Mesaj Kutusu',
+              color: 0xd4af37,
+              fields: [
+                { name: 'Alıcı seçimi', value: toLabel, inline: true },
+                { name: 'Konu', value: topic, inline: true },
+                { name: 'Mesaj', value: message.slice(0, 1000) },
+              ],
+              footer: { text: 'Kimlik eklenmez · TURX anonim kutu' },
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        }),
+      })
+      discordOk = discord.ok
+    }
 
-    return NextResponse.json({ ok: true })
+    if (!process.env.RESEND_API_KEY?.trim() && !discordOk) {
+      return NextResponse.json({ error: 'Mesaj iletilemedi. E-posta henüz yapılandırılmadı.' }, { status: 503 })
+    }
+    if (emailError && !discordOk) {
+      return NextResponse.json({ error: emailError }, { status: 502 })
+    }
+
+    return NextResponse.json({
+      ok: true,
+      email: !emailError,
+      discord: discordOk,
+    })
   } catch (err) {
     console.error('anonymous message', err)
-    return NextResponse.json({ error: 'Mesaj gönderilemedi. Lütfen tekrar dene.' }, { status: 500 })
+    const messageText = err instanceof Error ? err.message : 'Mesaj gönderilemedi. Lütfen tekrar dene.'
+    return NextResponse.json({ error: messageText }, { status: 500 })
   }
 }

@@ -32,7 +32,7 @@ export function FeedbackView() {
           message,
         }),
       })
-      const data = (await response.json().catch(() => ({}))) as { error?: string }
+      const data = (await response.json().catch(() => ({}))) as { error?: string; email?: boolean; discord?: boolean }
       if (!response.ok) {
         throw new Error(data.error || 'Mesaj gönderilemedi.')
       }
@@ -40,7 +40,9 @@ export function FeedbackView() {
       setText('')
       toast({
         title: 'Mesajınız anonim olarak iletildi',
-        description: 'Şimdilik yalnızca Guild Master e-postasına düşer.',
+        description: data.email
+          ? 'Guild Master e-postasına gönderildi. Hotmail spam klasörünü de kontrol et.'
+          : 'E-posta yerine Discord yedeği ile iletildi.',
       })
     } catch (err) {
       toast({

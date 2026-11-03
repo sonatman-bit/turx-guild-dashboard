@@ -110,22 +110,42 @@ function wrapEmail(body: string) {
 </div>`
 }
 
-export async function sendAuthEmail(options: { to: string; subject: string; html: string }) {
+function fromAddress() {
+  const raw = (process.env.RESEND_FROM || 'TURX Forever <noreply@turxforever.com>').trim().replace(/^['"]|['"]$/g, '')
+  return raw || 'TURX Forever <noreply@turxforever.com>'
+}
+
+function htmlToText(html: string) {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+export async function sendAuthEmail(options: { to: string; subject: string; html: string; text?: string }) {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey) {
     throw new Error('RESEND_API_KEY missing')
   }
-  const from = process.env.RESEND_FROM?.trim() || 'TURX Guild <noreply@turxforever.com>'
   const resend = new Resend(apiKey)
   const result = await resend.emails.send({
-    from,
+    from: fromAddress(),
     to: options.to,
     subject: options.subject,
     html: options.html,
+    text: options.text || htmlToText(options.html),
   })
   if (result.error) {
     throw new Error(result.error.message)
   }
+  return result.data?.id || null
 }
 
 export function signupEmailHtml(code: string) {

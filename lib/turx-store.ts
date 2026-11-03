@@ -1,4 +1,4 @@
-import { list, put } from '@vercel/blob'
+import { BlobNotFoundError, get, put } from '@vercel/blob'
 import { isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
@@ -54,15 +54,17 @@ export function blobConfigured() {
 
 async function readStore(): Promise<GuildStore> {
   if (!blobConfigured()) return emptyStore()
-  const result = await list({ prefix: PATH, limit: 50 })
-  const blob = result.blobs.find((item) => item.pathname === PATH || item.pathname.endsWith(`/${PATH}`))
-  if (!blob) return emptyStore()
-  const response = await fetch(blob.url)
-  if (!response.ok) return emptyStore()
-  const data = (await response.json()) as Partial<GuildStore>
-  return {
-    users: Array.isArray(data.users) ? data.users : [],
-    applications: Array.isArray(data.applications) ? data.applications : [],
+  try {
+    const result = await get(PATH, { access: 'private', useCache: false })
+    if (!result || result.statusCode !== 200 || !result.stream) return emptyStore()
+    const data = (await new Response(result.stream).json()) as Partial<GuildStore>
+    return {
+      users: Array.isArray(data.users) ? data.users : [],
+      applications: Array.isArray(data.applications) ? data.applications : [],
+    }
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) return emptyStore()
+    throw err
   }
 }
 
@@ -71,6 +73,7 @@ async function writeStore(store: GuildStore) {
     access: 'private',
     addRandomSuffix: false,
     allowOverwrite: true,
+    cacheControlMaxAge: 0,
     contentType: 'application/json',
   })
 }

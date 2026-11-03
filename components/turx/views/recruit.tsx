@@ -218,10 +218,11 @@ export function RecruitView() {
           accountName: user?.username || '',
         }),
       })
+      const savedData = (await saved.json().catch(() => ({}))) as { error?: string; application?: ApplicationItem }
       if (!saved.ok) {
-        const data = (await saved.json().catch(() => ({}))) as { error?: string }
-        throw new Error(data.error || 'Başvuru kaydedilemedi.')
+        throw new Error(savedData.error || 'Başvuru kaydedilemedi.')
       }
+      setApplications((prev) => [savedData.application || newApp, ...prev.filter((item) => item.id !== newApp.id)])
 
       fetch('/api/apply', {
         method: 'POST',
@@ -379,6 +380,11 @@ export function RecruitView() {
             : 'Ziyaretçiler için sadeleştirilmiş başvuru durumu özeti. Detaylı inceleme ve yetki paneli sadece GM ve Officer rollerine görünür.'}
         </p>
         <div className="grid gap-4">
+          {applications.length === 0 && (
+            <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+              Henüz kayıtlı başvuru yok. Form gönderildikten sonra burada kalır.
+            </p>
+          )}
           {applications.map((app) => {
             const isExpanded = expandedAppId === app.id
             return (
@@ -400,7 +406,7 @@ export function RecruitView() {
                 {/* HERKESİN GÖRDÜĞÜ TEMEL ÖZET BİLGİLER */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
                   <div className="flex items-center gap-3">
-                    <span className="font-display font-bold text-base" style={{ color: CLASS_COLORS[app.characterClass] }}>
+                    <span className="font-display font-bold text-base" style={{ color: CLASS_COLORS[app.characterClass] || undefined }}>
                       {app.charName} {app.charSurname}
                     </span>
                     <Badge className="border-border bg-muted/40 text-[10px]">

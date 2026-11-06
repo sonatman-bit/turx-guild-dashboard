@@ -198,7 +198,7 @@ function MainRoleBreakdown({ mains }: { mains: RosterMemberRow[] }) {
               const Icon = role.icon
               const percent = Math.round((role.count / total) * 100)
               return (
-                <li key={role.id} className="rounded-lg border border-border bg-muted/30 px-2 py-2 text-center">
+                <li key={role.id} className="min-w-0 rounded-lg border border-border bg-muted/30 px-2 py-2 text-center">
                   <p className="flex items-center justify-center gap-1 text-[11px] font-semibold" style={{ color: role.color }}>
                     <Icon className="size-3.5" />
                     {role.label}

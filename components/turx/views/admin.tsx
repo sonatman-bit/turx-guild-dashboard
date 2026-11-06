@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react'
+import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp, ClipboardList, Vote } from 'lucide-react'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { STAFF_ROLES, type StaffRoleId } from '@/lib/staff-roles'
@@ -38,7 +38,7 @@ interface AdminApplication {
 
 export function AdminDashboardView() {
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'staff' | 'attendance'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'staff' | 'poll' | 'attendance'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
@@ -46,6 +46,12 @@ export function AdminDashboardView() {
 
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
   const [applications, setApplications] = useState<AdminApplication[]>([])
+  const [pollResults, setPollResults] = useState<{
+    question: string
+    total: number
+    options: { id: string; label: string; votes: number }[]
+    ballots: { username: string; optionLabel: string; at: string }[]
+  }>({ question: '', total: 0, options: [], ballots: [] })
   const [staffRoles, setStaffRoles] = useState<
     {
       id: StaffRoleId
@@ -71,6 +77,23 @@ export function AdminDashboardView() {
       })
       .catch(() => undefined)
   }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'poll') return
+    fetch('/api/poll/results', { headers: authHeaders() })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as Partial<typeof pollResults>
+        if (response.ok) {
+          setPollResults({
+            question: data.question || '',
+            total: data.total || 0,
+            options: data.options || [],
+            ballots: data.ballots || [],
+          })
+        }
+      })
+      .catch(() => undefined)
+  }, [activeTab])
 
   const handleRankChange = (memberId: string, memberAccount: string, currentRank: GuildRank, newRank: GuildRank) => {
     if (currentRank === 'GM') {
@@ -171,6 +194,15 @@ export function AdminDashboardView() {
           )}
         >
           <ClipboardList className="size-4" /> Görevli Talipleri
+        </button>
+        <button
+          onClick={() => setActiveTab('poll')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
+            activeTab === 'poll' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Vote className="size-4" /> Anket Sonuçları ({pollResults.total})
         </button>
         <button
           onClick={() => setActiveTab('attendance')}
@@ -328,6 +360,61 @@ export function AdminDashboardView() {
                 )
               })
             )}
+          </div>
+        </Panel>
+      )}
+
+      {activeTab === 'poll' && (
+        <Panel className="flex flex-col gap-4">
+          <PanelTitle icon={Vote}>Anket Sonuçları</PanelTitle>
+          <p className="text-sm font-semibold text-foreground">{pollResults.question || 'Aktif anket'}</p>
+          <p className="text-xs text-muted-foreground">Toplam {pollResults.total} oy. Her hesap yalnızca bir kez oy verebilir.</p>
+          <ul className="flex flex-col gap-2">
+            {pollResults.options.map((option) => {
+              const percent = pollResults.total === 0 ? 0 : Math.round((option.votes / pollResults.total) * 100)
+              return (
+                <li key={option.id} className="flex items-center gap-3 text-sm">
+                  <span className="w-48 shrink-0 font-medium">{option.label}</span>
+                  <span className="h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+                    <span className="block h-full rounded-full bg-neon" style={{ width: `${percent}%` }} />
+                  </span>
+                  <span className="w-20 shrink-0 text-right tabular-nums text-silver">
+                    {option.votes} · %{percent}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">Kimin ne oy verdiği</caption>
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="px-3 py-2">Kullanıcı</th>
+                  <th className="px-3 py-2">Oy</th>
+                  <th className="px-3 py-2">Zaman</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {pollResults.ballots.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-3 py-6 text-center text-muted-foreground">
+                      Henüz oy yok.
+                    </td>
+                  </tr>
+                ) : (
+                  pollResults.ballots.map((ballot) => (
+                    <tr key={`${ballot.username}-${ballot.at}`}>
+                      <td className="px-3 py-2 font-semibold text-silver">{ballot.username}</td>
+                      <td className="px-3 py-2">{ballot.optionLabel}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {new Date(ballot.at).toLocaleString('tr-TR')}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </Panel>
       )}

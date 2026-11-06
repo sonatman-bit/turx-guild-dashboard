@@ -29,15 +29,27 @@ export type StoredApplication = {
   date: string
 }
 
+export type StoredPollVote = {
+  username: string
+  optionId: string
+  at: string
+}
+
+export type StoredPoll = {
+  id: string
+  votes: StoredPollVote[]
+}
+
 export type GuildStore = {
   users: StoredAccount[]
   applications: StoredApplication[]
+  polls: StoredPoll[]
 }
 
 const PATH = 'turx-guild-store.json'
 
 export function emptyStore(): GuildStore {
-  return { users: [], applications: [] }
+  return { users: [], applications: [], polls: [] }
 }
 
 export function roleForEmail(email: string): GuildRank {
@@ -65,6 +77,7 @@ async function readStore(): Promise<GuildStore> {
     return {
       users: Array.isArray(data.users) ? data.users : [],
       applications: Array.isArray(data.applications) ? data.applications : [],
+      polls: Array.isArray(data.polls) ? data.polls : [],
     }
   } catch (err) {
     if (err instanceof BlobNotFoundError) return emptyStore()

@@ -3,6 +3,7 @@
 import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy, Vote } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
+import { authHeaders } from '@/lib/client-session'
 import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS, STREAMS } from '@/lib/guild-data'
 import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
@@ -84,12 +85,90 @@ function StaffHiringHero({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   )
 }
 
+type PollState = {
+  question: string
+  endsIn: string
+  total: number
+  myVote: string | null
+  options: { id: string; label: string; votes: number }[]
+}
+
 function PollAlert() {
+  const { user } = useAuth()
+  const toast = useToast()
   const [open, setOpen] = useState(false)
   const [choice, setChoice] = useState<string | null>(null)
-  const [voted, setVoted] = useState<string | null>(null)
-  const toast = useToast()
-  const total = ACTIVE_POLL.options.reduce((s, o) => s + o.votes, 0) + (voted ? 1 : 0)
+  const [busy, setBusy] = useState(false)
+  const [poll, setPoll] = useState<PollState>({
+    question: ACTIVE_POLL.question,
+    endsIn: ACTIVE_POLL.endsIn,
+    total: 0,
+    myVote: null,
+    options: ACTIVE_POLL.options.map((option) => ({ ...option, votes: 0 })),
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/poll', { headers: authHeaders() })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as Partial<PollState>
+        if (!response.ok || cancelled || !Array.isArray(data.options)) return
+        setPoll({
+          question: data.question || ACTIVE_POLL.question,
+          endsIn: data.endsIn || ACTIVE_POLL.endsIn,
+          total: data.total || 0,
+          myVote: data.myVote || null,
+          options: data.options,
+        })
+        if (data.myVote) setChoice(data.myVote)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [user?.username])
+
+  const voted = poll.myVote
+  const total = Math.max(poll.total, 1)
+
+  const submitVote = async () => {
+    if (!user) {
+      toast({ title: 'Giriş gerekli', description: 'Oy vermek için önce oturum aç.' })
+      return
+    }
+    if (!choice) return
+    setBusy(true)
+    try {
+      const response = await fetch('/api/poll', {
+        method: 'POST',
+        headers: { ...authHeaders({ 'Content-Type': 'application/json' }) },
+        body: JSON.stringify({ optionId: choice }),
+      })
+      const data = (await response.json().catch(() => ({}))) as Partial<PollState> & { error?: string }
+      if (response.status === 401) {
+        toast({ title: 'Giriş gerekli', description: 'Oy vermek için önce oturum aç.' })
+        return
+      }
+      if (response.status === 409) {
+        toast({ title: 'Zaten oy kullandın', description: 'Her hesap bu ankette yalnızca bir kez oy verebilir.' })
+        return
+      }
+      if (!response.ok || !Array.isArray(data.options)) {
+        toast({ title: 'Oy kaydedilemedi', description: data.error || 'Tekrar dene.' })
+        return
+      }
+      setPoll({
+        question: data.question || poll.question,
+        endsIn: data.endsIn || poll.endsIn,
+        total: data.total || 0,
+        myVote: data.myVote || choice,
+        options: data.options,
+      })
+      toast({ title: 'Oyunuz kaydedildi', description: 'Sonuçlar GM panelinde de görünür. İkinci oy verilemez.' })
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <>
@@ -99,8 +178,9 @@ function PollAlert() {
             <Vote className="size-5" />
           </span>
           <div>
-            <p className="text-xs font-bold tracking-widest text-neon uppercase">Aktif Anket · {ACTIVE_POLL.endsIn} kaldı</p>
-            <p className="mt-0.5 font-semibold text-pretty">{ACTIVE_POLL.question}</p>
+            <p className="text-xs font-bold tracking-widest text-neon uppercase">Aktif Anket · {poll.endsIn} kaldı</p>
+            <p className="mt-0.5 font-semibold text-pretty">{poll.question}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{poll.total} oy · her hesap 1 oy</p>
           </div>
         </div>
         <GoldButton onClick={() => setOpen(true)} className="shrink-0">
@@ -108,12 +188,11 @@ function PollAlert() {
         </GoldButton>
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Lonca Anketi" description={ACTIVE_POLL.question}>
+      <Modal open={open} onClose={() => setOpen(false)} title="Lonca Anketi" description={poll.question}>
         <fieldset className="flex flex-col gap-2">
           <legend className="sr-only">Seçenekler</legend>
-          {ACTIVE_POLL.options.map((o) => {
-            const votes = o.votes + (voted === o.id ? 1 : 0)
-            const pct = Math.round((votes / total) * 100)
+          {poll.options.map((o) => {
+            const pct = Math.round((o.votes / total) * 100)
             return (
               <label
                 key={o.id}
@@ -129,13 +208,17 @@ function PollAlert() {
                     type="radio"
                     name="poll"
                     value={o.id}
-                    disabled={!!voted}
+                    disabled={!!voted || busy}
                     checked={(voted ?? choice) === o.id}
                     onChange={() => setChoice(o.id)}
                     className="accent-[#00f2fe]"
                   />
                   <span className="flex-1 text-sm font-medium">{o.label}</span>
-                  {voted && <span className="text-xs font-semibold text-neon tabular-nums">%{pct}</span>}
+                  {voted && (
+                    <span className="text-xs font-semibold text-neon tabular-nums">
+                      {o.votes} · %{pct}
+                    </span>
+                  )}
                 </span>
               </label>
             )
@@ -144,14 +227,8 @@ function PollAlert() {
         <div className="mt-5 flex justify-end gap-2">
           <GhostButton onClick={() => setOpen(false)}>Kapat</GhostButton>
           {!voted && (
-            <GoldButton
-              disabled={!choice}
-              onClick={() => {
-                setVoted(choice)
-                toast({ title: 'Oyunuz Kaydedildi!', description: 'Anket sonuçları güncellendi.' })
-              }}
-            >
-              Oy Ver
+            <GoldButton disabled={!choice || busy} onClick={() => void submitVote()}>
+              {user ? 'Oy Ver' : 'Giriş yapıp oy ver'}
             </GoldButton>
           )}
         </div>

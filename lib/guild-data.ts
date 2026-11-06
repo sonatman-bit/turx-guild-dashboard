@@ -143,12 +143,13 @@ export const RECRUITMENT = [
 ]
 
 export const ACTIVE_POLL = {
+  id: 'phase1-loot',
   question: 'Phase 1 için ana loot sistemimiz ne olsun?',
   endsIn: '2 gün 4 saat',
   options: [
-    { id: 'lc', label: 'Loot Council', votes: 0 },
-    { id: 'epgp', label: 'EPGP', votes: 0 },
-    { id: 'dkp', label: 'DKP', votes: 0 },
-    { id: 'hybrid', label: 'Hibrit (LC + Soft Reserve)', votes: 0 },
+    { id: 'lc', label: 'Loot Council' },
+    { id: 'epgp', label: 'EPGP' },
+    { id: 'dkp', label: 'DKP' },
+    { id: 'hybrid', label: 'Hibrit (LC + Soft Reserve)' },
   ],
 }

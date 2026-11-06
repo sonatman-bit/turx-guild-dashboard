@@ -2,7 +2,7 @@
 
 import { Gavel, Grid3x3, UserPlus, CheckCircle2, XCircle, Clock, MessageSquare, Shield, Swords, ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
-import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import { ALLIANCE_RACES, CLASS_COLORS, classesForRace, type WowClass } from '@/lib/guild-data'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
@@ -90,14 +90,6 @@ const RECRUITMENT_MATRIX: { wowClass: WowClass; specs: { spec: string; need: 'Y�
     ],
   },
 ]
-
-const RACE_CLASSES: Record<string, WowClass[]> = {
-  Human: ['Warrior', 'Paladin', 'Hunter', 'Rogue', 'Priest', 'Mage', 'Warlock'],
-  Dwarf: ['Warrior', 'Paladin', 'Hunter', 'Rogue', 'Priest', 'Shaman', 'Warlock', 'Mage'],
-  'Night Elf': ['Warrior', 'Hunter', 'Rogue', 'Priest', 'Druid'],
-  Gnome: ['Warrior', 'Rogue', 'Priest', 'Mage', 'Warlock'],
-  Skyborn: ['Mage', 'Druid', 'Hunter', 'Rogue', 'Warrior'],
-}
 
 const CLASS_SPECS: Record<WowClass, string[]> = {
   Warrior: ['Arms', 'Fury', 'Protection'],
@@ -502,7 +494,7 @@ export function RecruitView() {
                 }}
               >
                 <option value="" disabled>Irk Seçiniz</option>
-                {Object.keys(RACE_CLASSES).map(r => <option key={r} value={r}>{r}</option>)}
+                {ALLIANCE_RACES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </Field>
           </div>
@@ -517,7 +509,7 @@ export function RecruitView() {
                 className={inputClass}
               >
                 <option value="" disabled>Class Seçiniz</option>
-                {selectedRace && RACE_CLASSES[selectedRace]?.map((c) => (
+                {selectedRace && classesForRace(selectedRace).map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>

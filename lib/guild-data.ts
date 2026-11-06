@@ -15,13 +15,39 @@ export const CLASS_COLORS: Record<WowClass, string> = {
   Druid: '#FF7C0A',
 }
 
+export const ALLIANCE_RACES = ['Human', 'Dwarf', 'Night Elf', 'Gnome', 'Skyborn'] as const
+export type AllianceRace = (typeof ALLIANCE_RACES)[number]
+
+/** WoW Forever Alliance race → class. Skyborn = High Order Skyborne. */
+export const ALLIANCE_RACE_CLASSES: Record<AllianceRace, WowClass[]> = {
+  Human: ['Warrior', 'Paladin', 'Hunter', 'Rogue', 'Priest', 'Mage', 'Warlock'],
+  Dwarf: ['Warrior', 'Paladin', 'Hunter', 'Rogue', 'Priest', 'Shaman'],
+  'Night Elf': ['Warrior', 'Hunter', 'Rogue', 'Priest', 'Druid'],
+  Gnome: ['Warrior', 'Rogue', 'Priest', 'Mage', 'Warlock'],
+  Skyborn: ['Warrior', 'Hunter', 'Rogue', 'Mage', 'Druid'],
+}
+
+export function classesForRace(race: string): WowClass[] {
+  return ALLIANCE_RACE_CLASSES[race as AllianceRace] || []
+}
+
+export function racesForClass(wowClass: WowClass): AllianceRace[] {
+  return ALLIANCE_RACES.filter((race) => ALLIANCE_RACE_CLASSES[race].includes(wowClass))
+}
+
+export function raceChoicesForClass(wowClass: WowClass, current?: string) {
+  const races = racesForClass(wowClass)
+  if (current && !races.includes(current as AllianceRace)) return [current, ...races]
+  return races
+}
+
 export type Role = 'Tank' | 'Healer' | 'DPS'
 export type Rank = 'Guild Master' | 'Officer' | 'Raider' | 'Social'
 
 export type Member = {
   name: string
   level: number
-  race: 'Human' | 'Dwarf' | 'Night Elf' | 'Gnome'
+  race: AllianceRace
   wowClass: WowClass
   spec: string
   role: Role

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CLASS_COLORS } from '@/lib/guild-data'
+import { CLASS_COLORS, raceChoicesForClass, racesForClass, type AllianceRace, type WowClass } from '@/lib/guild-data'
 import { authHeaders } from '@/lib/client-session'
 import {
   commitOnboardingStatus,
@@ -25,7 +25,7 @@ interface GuildCharacter {
   id: string
   firstName: string
   lastName: string
-  wowClass: keyof typeof CLASS_COLORS
+  wowClass: WowClass
   race: string
   spec: string
   offSpec: string
@@ -56,21 +56,9 @@ interface UserProfileData {
   availability: Record<string, { status: AvailabilityStatus; startTime: string; endTime: string }>
 }
 
-const WOW_CLASSES = Object.keys(CLASS_COLORS) as (keyof typeof CLASS_COLORS)[]
+const WOW_CLASSES = Object.keys(CLASS_COLORS) as WowClass[]
 
-const CLASS_RACES: Record<keyof typeof CLASS_COLORS, string[]> = {
-  Druid: ['Night Elf', 'Skyborn'],
-  Warrior: ['Night Elf', 'Human', 'Dwarf', 'Skyborn'],
-  Shaman: ['Dwarf'],
-  Mage: ['Human', 'Gnome', 'Skyborn'],
-  Paladin: ['Human', 'Dwarf'],
-  Priest: ['Human', 'Dwarf', 'Night Elf'],
-  Rogue: ['Human', 'Night Elf', 'Gnome', 'Skyborn'],
-  Warlock: ['Human', 'Gnome'],
-  Hunter: ['Night Elf', 'Dwarf', 'Skyborn'],
-}
-
-const CLASS_SPECS: Record<keyof typeof CLASS_COLORS, { label: string; role: ExtendedRole }[]> = {
+const CLASS_SPECS: Record<WowClass, { label: string; role: ExtendedRole }[]> = {
   Druid: [
     { label: 'Feral Tank', role: 'TANK' },
     { label: 'Feral DPS', role: 'MELEE' },
@@ -180,6 +168,7 @@ export function ProfileView() {
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
   const [editFirstName, setEditFirstName] = useState('')
   const [editLastName, setEditLastName] = useState('')
+  const [editRace, setEditRace] = useState('')
   const [editSpec, setEditSpec] = useState('')
   const [editOffSpec, setEditOffSpec] = useState('')
   const [editProf1, setEditProf1] = useState('Yok')
@@ -191,8 +180,8 @@ export function ProfileView() {
 
   const [newFirstName, setNewFirstName] = useState('')
   const [newLastName, setNewLastName] = useState('')
-  const [newClass, setNewClass] = useState<keyof typeof CLASS_COLORS>('Druid')
-  const [newRace, setNewRace] = useState(CLASS_RACES['Druid'][0])
+  const [newClass, setNewClass] = useState<WowClass>('Druid')
+  const [newRace, setNewRace] = useState(racesForClass('Druid')[0])
   const [newSpec, setNewSpec] = useState(CLASS_SPECS['Druid'][0].label)
   const [newOffSpec, setNewOffSpec] = useState(CLASS_SPECS['Druid'][1]?.label || 'Yok')
   const [newRole, setNewRole] = useState<ExtendedRole>(CLASS_SPECS['Druid'][0].role)
@@ -203,9 +192,9 @@ export function ProfileView() {
   const [attBwl, setAttBwl] = useState(false)
   const [attNaxx, setAttNaxx] = useState(false)
 
-  const handleClassChange = (cls: keyof typeof CLASS_COLORS) => {
+  const handleClassChange = (cls: WowClass) => {
     setNewClass(cls)
-    const races = CLASS_RACES[cls]
+    const races = racesForClass(cls)
     setNewRace(races[0])
     const specs = CLASS_SPECS[cls]
     setNewSpec(specs[0].label)
@@ -360,6 +349,7 @@ export function ProfileView() {
     setEditingCharId(char.id)
     setEditFirstName(char.firstName)
     setEditLastName(char.lastName)
+    setEditRace(char.race)
     setEditSpec(char.spec)
     setEditOffSpec(char.offSpec)
     setEditProf1(char.professions?.[0] || 'Yok')
@@ -377,6 +367,7 @@ export function ProfileView() {
           ...char,
           firstName: editFirstName.trim(),
           lastName: editLastName.trim(),
+          race: editRace,
           spec: editSpec,
           offSpec: editOffSpec,
           professions: [editProf1, editProf2] as [string, string],
@@ -885,6 +876,19 @@ export function ProfileView() {
                           />
                         </div>
 
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[11px] font-semibold text-silver">Irk</label>
+                          <select
+                            value={editRace}
+                            onChange={(e) => setEditRace(e.target.value)}
+                            className={inputClass}
+                          >
+                            {raceChoicesForClass(char.wowClass, editRace).map((race) => (
+                              <option key={race} value={race}>{race}</option>
+                            ))}
+                          </select>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-2">
                           <select
                             value={editSpec}
@@ -1042,7 +1046,7 @@ export function ProfileView() {
                   <label className="text-[11px] font-semibold text-silver">Sınıf</label>
                   <select
                     value={newClass}
-                    onChange={(e) => handleClassChange(e.target.value as keyof typeof CLASS_COLORS)}
+                    onChange={(e) => handleClassChange(e.target.value as WowClass)}
                     className={inputClass}
                   >
                     {WOW_CLASSES.map((cls) => (
@@ -1054,10 +1058,10 @@ export function ProfileView() {
                   <label className="text-[11px] font-semibold text-silver">Irk</label>
                   <select
                     value={newRace}
-                    onChange={(e) => setNewRace(e.target.value)}
+                    onChange={(e) => setNewRace(e.target.value as AllianceRace)}
                     className={inputClass}
                   >
-                    {CLASS_RACES[newClass].map((race) => (
+                    {racesForClass(newClass).map((race) => (
                       <option key={race} value={race}>{race}</option>
                     ))}
                   </select>

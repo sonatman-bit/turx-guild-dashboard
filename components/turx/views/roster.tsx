@@ -173,24 +173,27 @@ function MainRoleBreakdown({ mains }: { mains: RosterMemberRow[] }) {
       {total === 0 ? (
         <p className="text-sm text-muted-foreground">Main karakter kaydı gelince Tank / Healer / DPS oranı burada durur.</p>
       ) : (
-        <div className="flex flex-col gap-4">
-          <div
-            className="flex h-4 overflow-hidden rounded-full bg-muted"
-            role="img"
-            aria-label={`Tank ${tank}, Healer ${healer}, DPS ${dps}`}
-          >
-            {roles.map((role) =>
-              role.count === 0 ? null : (
-                <span
-                  key={role.id}
-                  className="h-full"
-                  style={{ width: `${(role.count / total) * 100}%`, backgroundColor: role.color }}
-                  title={`${role.label}: ${role.count}`}
-                />
-              ),
-            )}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className="min-w-0 flex-1">
+            <div
+              className="flex h-5 overflow-hidden rounded-full bg-muted"
+              role="img"
+              aria-label={`Tank ${tank}, Healer ${healer}, DPS ${dps}`}
+            >
+              {roles.map((role) =>
+                role.count === 0 ? null : (
+                  <span
+                    key={role.id}
+                    className="h-full"
+                    style={{ width: `${(role.count / total) * 100}%`, backgroundColor: role.color }}
+                    title={`${role.label}: ${role.count}`}
+                  />
+                ),
+              )}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">Melee ve Ranged DPS olarak birleşir. Sadece Main karakterler sayılır.</p>
           </div>
-          <ul className="grid grid-cols-3 gap-2">
+          <ul className="grid grid-cols-3 gap-2 lg:w-[28rem] lg:shrink-0">
             {roles.map((role) => {
               const Icon = role.icon
               const percent = Math.round((role.count / total) * 100)
@@ -306,7 +309,9 @@ export function RosterView() {
         </Panel>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <MainRoleBreakdown mains={mainCharacters} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <ClassBreakdown
           members={mainCharacters}
           title="Main Class Dağılımı"
@@ -317,7 +322,6 @@ export function RosterView() {
           title="Alt Class Dağılımı"
           emptyHint="Alt karakterler kaydedilince sınıf çubukları burada durur."
         />
-        <MainRoleBreakdown mains={mainCharacters} />
       </div>
 
       <Panel className="mt-6 p-0">

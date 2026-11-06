@@ -109,6 +109,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   useEffect(() => {
+    const token = getSessionToken()
+    if (token) setSessionToken(token)
+  }, [])
+
+  useEffect(() => {
     if (user) {
       localStorage.setItem('turx_auth_user', JSON.stringify(user))
     } else {
@@ -128,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
     try {
-      const response = await fetch('/api/profile', { headers: authHeaders() })
+      const response = await fetch('/api/profile', { credentials: 'same-origin', headers: authHeaders() })
       const data = (await response.json().catch(() => ({}))) as { profileComplete?: boolean }
       if (response.ok && typeof data.profileComplete === 'boolean') {
         setProfileComplete(data.profileComplete)

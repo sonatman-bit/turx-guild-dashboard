@@ -70,7 +70,7 @@ export function AdminDashboardView() {
       })
       .catch(() => undefined)
 
-    fetch('/api/staff-interests', { headers: authHeaders() })
+    fetch('/api/staff-interests', { credentials: 'same-origin', headers: authHeaders() })
       .then(async (response) => {
         const data = (await response.json().catch(() => ({}))) as { roles?: typeof staffRoles }
         if (response.ok) setStaffRoles(data.roles || [])
@@ -80,7 +80,7 @@ export function AdminDashboardView() {
 
   useEffect(() => {
     if (activeTab !== 'poll') return
-    fetch('/api/poll/results', { headers: authHeaders() })
+    fetch('/api/poll/results', { credentials: 'same-origin', headers: authHeaders() })
       .then(async (response) => {
         const data = (await response.json().catch(() => ({}))) as Partial<typeof pollResults>
         if (response.ok) {

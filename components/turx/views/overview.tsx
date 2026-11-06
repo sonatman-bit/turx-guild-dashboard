@@ -3,7 +3,7 @@
 import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy, Vote } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
-import { authHeaders } from '@/lib/client-session'
+import { authHeaders, getSessionToken } from '@/lib/client-session'
 import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS, STREAMS } from '@/lib/guild-data'
 import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
@@ -109,7 +109,7 @@ function PollAlert() {
 
   useEffect(() => {
     let cancelled = false
-    fetch('/api/poll', { headers: authHeaders() })
+    fetch('/api/poll', { credentials: 'same-origin', headers: authHeaders() })
       .then(async (response) => {
         const data = (await response.json().catch(() => ({}))) as Partial<PollState>
         if (!response.ok || cancelled || !Array.isArray(data.options)) return
@@ -132,8 +132,11 @@ function PollAlert() {
   const total = Math.max(poll.total, 1)
 
   const submitVote = async () => {
-    if (!user) {
-      toast({ title: 'Giriş gerekli', description: 'Oy vermek için önce oturum aç.' })
+    if (!user || !getSessionToken()) {
+      toast({
+        title: 'Oturum doğrulanamadı',
+        description: 'Oy kaydı için çıkış yapıp tekrar giriş yap.',
+      })
       return
     }
     if (!choice) return
@@ -141,12 +144,16 @@ function PollAlert() {
     try {
       const response = await fetch('/api/poll', {
         method: 'POST',
-        headers: { ...authHeaders({ 'Content-Type': 'application/json' }) },
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ optionId: choice }),
       })
       const data = (await response.json().catch(() => ({}))) as Partial<PollState> & { error?: string }
       if (response.status === 401) {
-        toast({ title: 'Giriş gerekli', description: 'Oy vermek için önce oturum aç.' })
+        toast({
+          title: 'Oturum doğrulanamadı',
+          description: 'Hesabın görünüyor ama oy kaydı için tekrar giriş yapman gerekiyor.',
+        })
         return
       }
       if (response.status === 409) {

@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto'
+import { NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import { SESSION_COOKIE } from '@/lib/client-session'
 
 const CODE_WINDOW_MS = 10 * 60 * 1000
 const RESET_TTL_MS = 30 * 60 * 1000
@@ -87,11 +89,48 @@ export function readSessionToken(token: string): { username: string } | null {
   }
 }
 
+function tokenFromBearer(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (/^bearer\s+/i.test(trimmed)) return trimmed.replace(/^bearer\s+/i, '').trim() || null
+  return trimmed
+}
+
+function tokenFromCookie(request: Request) {
+  const cookie = request.headers.get('cookie') || ''
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]*)`, 'i'))
+  if (!match?.[1]) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
+}
+
 export function sessionFromRequest(request: Request) {
-  const header = request.headers.get('authorization') || ''
-  const [type, token] = header.split(' ')
-  if (type !== 'Bearer' || !token) return null
-  return readSessionToken(token)
+  const candidates = [
+    request.headers.get('authorization') || '',
+    request.headers.get('x-turx-session') || '',
+    tokenFromCookie(request) || '',
+  ]
+  for (const candidate of candidates) {
+    const token = tokenFromBearer(candidate)
+    if (!token) continue
+    const session = readSessionToken(token)
+    if (session) return session
+  }
+  return null
+}
+
+export function attachSessionCookie(response: NextResponse, token: string) {
+  response.cookies.set(SESSION_COOKIE, token, {
+    path: '/',
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: false,
+  })
+  return response
 }
 
 export function createResetToken(email: string) {

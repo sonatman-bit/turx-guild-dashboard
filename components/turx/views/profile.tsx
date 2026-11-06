@@ -245,7 +245,7 @@ export function ProfileView() {
 
     applyLocal()
 
-    fetch('/api/profile', { headers: authHeaders() })
+    fetch('/api/profile', { credentials: 'same-origin', headers: authHeaders() })
       .then(async (response) => {
         const data = (await response.json().catch(() => ({}))) as {
           profile?: Partial<UserProfileData> | null
@@ -282,7 +282,7 @@ export function ProfileView() {
     try {
       const response = await fetch('/api/profile', {
         method: 'PUT',
-        headers: { ...authHeaders({ 'Content-Type': 'application/json' }) },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ profile: nextProfile, characters: nextCharacters, staffInterests }),
       })
       const data = (await response.json().catch(() => ({}))) as { profileComplete?: boolean; error?: string }

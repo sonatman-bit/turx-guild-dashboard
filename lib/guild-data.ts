@@ -156,18 +156,6 @@ export const ADDONS = [
   { name: 'AtlasLoot Classic', required: false },
 ]
 
-export const RECRUITMENT = [
-  { wowClass: 'Warrior' as WowClass, specs: [{ spec: 'Protection', need: 'Düşük' }, { spec: 'Fury', need: 'Orta' }] },
-  { wowClass: 'Paladin' as WowClass, specs: [{ spec: 'Holy', need: 'Yüksek' }, { spec: 'Retribution', need: 'Kapalı' }] },
-  { wowClass: 'Hunter' as WowClass, specs: [{ spec: 'Marksmanship', need: 'Orta' }] },
-  { wowClass: 'Rogue' as WowClass, specs: [{ spec: 'Combat', need: 'Düşük' }] },
-  { wowClass: 'Priest' as WowClass, specs: [{ spec: 'Holy', need: 'Yüksek' }, { spec: 'Shadow', need: 'Orta' }] },
-  { wowClass: 'Shaman' as WowClass, specs: [{ spec: 'Restoration', need: 'Yüksek' }, { spec: 'Enhancement', need: 'Orta' }] },
-  { wowClass: 'Mage' as WowClass, specs: [{ spec: 'Frost', need: 'Orta' }, { spec: 'Fire', need: 'Düşük' }] },
-  { wowClass: 'Warlock' as WowClass, specs: [{ spec: 'Destruction', need: 'Yüksek' }] },
-  { wowClass: 'Druid' as WowClass, specs: [{ spec: 'Restoration', need: 'Yüksek' }, { spec: 'Feral', need: 'Orta' }] },
-]
-
 export const ACTIVE_POLL = {
   id: 'phase1-loot',
   question: 'Phase 1 için ana loot sistemimiz ne olsun?',

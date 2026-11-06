@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp, ClipboardList, Vote } from 'lucide-react'
+import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp, ClipboardList, Vote, Grid3x3 } from 'lucide-react'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import { DEFAULT_RECRUITMENT_MATRIX, RECRUIT_NEEDS, type RecruitClassNeed, type RecruitNeed } from '@/lib/recruitment'
 import { STAFF_ROLES, type StaffRoleId } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
 import { StaffRoleBadge } from '../staff-role-icons'
@@ -38,7 +39,7 @@ interface AdminApplication {
 
 export function AdminDashboardView() {
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'staff' | 'poll' | 'attendance'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
@@ -52,6 +53,8 @@ export function AdminDashboardView() {
     options: { id: string; label: string; votes: number }[]
     ballots: { username: string; optionLabel: string; at: string }[]
   }>({ question: '', total: 0, options: [], ballots: [] })
+  const [recruitMatrix, setRecruitMatrix] = useState<RecruitClassNeed[]>(DEFAULT_RECRUITMENT_MATRIX)
+  const [savingNeed, setSavingNeed] = useState<string | null>(null)
   const [staffRoles, setStaffRoles] = useState<
     {
       id: StaffRoleId
@@ -74,6 +77,15 @@ export function AdminDashboardView() {
       .then(async (response) => {
         const data = (await response.json().catch(() => ({}))) as { roles?: typeof staffRoles }
         if (response.ok) setStaffRoles(data.roles || [])
+      })
+      .catch(() => undefined)
+
+    fetch('/api/recruitment')
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { matrix?: RecruitClassNeed[] }
+        if (response.ok && Array.isArray(data.matrix) && data.matrix.length > 0) {
+          setRecruitMatrix(data.matrix)
+        }
       })
       .catch(() => undefined)
   }, [])
@@ -152,6 +164,40 @@ export function AdminDashboardView() {
     })
   }
 
+  const handleRecruitNeedChange = async (wowClass: WowClass, spec: string, need: RecruitNeed) => {
+    const key = `${wowClass}::${spec}`
+    const previous = recruitMatrix
+    setRecruitMatrix((rows) =>
+      rows.map((row) =>
+        row.wowClass === wowClass
+          ? { ...row, specs: row.specs.map((item) => (item.spec === spec ? { ...item, need } : item)) }
+          : row,
+      ),
+    )
+    setSavingNeed(key)
+    try {
+      const response = await fetch('/api/recruitment', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ wowClass, spec, need }),
+      })
+      const data = (await response.json().catch(() => ({}))) as { matrix?: RecruitClassNeed[]; error?: string }
+      if (!response.ok) {
+        setRecruitMatrix(previous)
+        toast({ title: 'Kaydedilemedi', description: data.error || 'İhtiyaç seviyesi güncellenemedi.' })
+        return
+      }
+      if (Array.isArray(data.matrix)) setRecruitMatrix(data.matrix)
+      toast({ title: 'İhtiyaç güncellendi', description: `${wowClass} ${spec}: ${need}` })
+    } catch {
+      setRecruitMatrix(previous)
+      toast({ title: 'Kaydedilemedi', description: 'İhtiyaç seviyesi güncellenemedi.' })
+    } finally {
+      setSavingNeed(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-8 pb-10">
       <SectionHeader
@@ -185,6 +231,15 @@ export function AdminDashboardView() {
           )}
         >
           <FileText className="size-4" /> Detaylı Başvurular ({applications.filter(a => a.status === 'PENDING').length} Bekleyen)
+        </button>
+        <button
+          onClick={() => setActiveTab('recruitment')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
+            activeTab === 'recruitment' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Grid3x3 className="size-4" /> Alım İhtiyacı
         </button>
         <button
           onClick={() => setActiveTab('staff')}
@@ -360,6 +415,50 @@ export function AdminDashboardView() {
                 )
               })
             )}
+          </div>
+        </Panel>
+      )}
+
+      {activeTab === 'recruitment' && (
+        <Panel className="flex flex-col gap-4">
+          <PanelTitle icon={Grid3x3}>Alım İhtiyacı</PanelTitle>
+          <p className="text-xs text-muted-foreground">
+            Seçtiğin seviye anında kaydedilir ve Guild Başvuru sayfasındaki Class / Spec matrisine yansır.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {recruitMatrix.map((row) => (
+              <div
+                key={row.wowClass}
+                className="rounded-lg border border-border bg-background/50 p-4"
+                style={{ borderTopColor: CLASS_COLORS[row.wowClass], borderTopWidth: 3 }}
+              >
+                <p className="font-display font-bold" style={{ color: CLASS_COLORS[row.wowClass] }}>
+                  {row.wowClass}
+                </p>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {row.specs.map((item) => {
+                    const key = `${row.wowClass}::${item.spec}`
+                    return (
+                      <li key={item.spec} className="flex items-center justify-between gap-2 text-sm">
+                        <span className="text-silver">{item.spec}</span>
+                        <select
+                          value={item.need}
+                          disabled={savingNeed === key}
+                          onChange={(e) => void handleRecruitNeedChange(row.wowClass, item.spec, e.target.value as RecruitNeed)}
+                          className="rounded-md border border-border bg-card px-2 py-1 text-xs font-semibold text-foreground cursor-pointer"
+                        >
+                          {RECRUIT_NEEDS.map((need) => (
+                            <option key={need} value={need}>
+                              {need}
+                            </option>
+                          ))}
+                        </select>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+            ))}
           </div>
         </Panel>
       )}

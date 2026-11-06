@@ -3,6 +3,7 @@
 import { Gavel, Grid3x3, UserPlus, CheckCircle2, XCircle, Clock, MessageSquare, Shield, Swords, ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { ALLIANCE_RACES, CLASS_COLORS, classesForRace, type WowClass } from '@/lib/guild-data'
+import { DEFAULT_RECRUITMENT_MATRIX, type RecruitClassNeed } from '@/lib/recruitment'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
@@ -15,81 +16,6 @@ const NEED_STYLES: Record<string, string> = {
   Düşük: 'border-azure/40 bg-azure/10 text-azure',
   Kapalı: 'border-border text-muted-foreground',
 }
-
-const RECRUITMENT_MATRIX: { wowClass: WowClass; specs: { spec: string; need: 'Yüksek' | 'Düşük' | 'Kapalı' }[] }[] = [
-  {
-    wowClass: 'Warrior',
-    specs: [
-      { spec: 'Protection', need: 'Düşük' },
-      { spec: 'Arms', need: 'Yüksek' },
-      { spec: 'Fury', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Paladin',
-    specs: [
-      { spec: 'Protection', need: 'Düşük' },
-      { spec: 'Holy', need: 'Yüksek' },
-      { spec: 'Retribution', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Shaman',
-    specs: [
-      { spec: 'Elemental', need: 'Yüksek' },
-      { spec: 'Enhancement', need: 'Yüksek' },
-      { spec: 'Restoration', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Druid',
-    specs: [
-      { spec: 'Feral Combat (Tank)', need: 'Düşük' },
-      { spec: 'Balance', need: 'Yüksek' },
-      { spec: 'Restoration', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Mage',
-    specs: [
-      { spec: 'Arcane', need: 'Yüksek' },
-      { spec: 'Fire', need: 'Yüksek' },
-      { spec: 'Frost', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Warlock',
-    specs: [
-      { spec: 'Affliction', need: 'Yüksek' },
-      { spec: 'Demonology', need: 'Yüksek' },
-      { spec: 'Destruction', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Priest',
-    specs: [
-      { spec: 'Discipline', need: 'Yüksek' },
-      { spec: 'Holy', need: 'Yüksek' },
-      { spec: 'Shadow', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Hunter',
-    specs: [
-      { spec: 'Beast Mastery', need: 'Yüksek' },
-      { spec: 'Marksmanship', need: 'Yüksek' },
-      { spec: 'Survival', need: 'Yüksek' },
-    ],
-  },
-  {
-    wowClass: 'Rogue',
-    specs: [
-      { spec: 'Assassination', need: 'Yüksek' },
-      { spec: 'Combat', need: 'Yüksek' },
-      { spec: 'Subtlety', need: 'Yüksek' },
-    ],
-  },
-]
 
 const CLASS_SPECS: Record<WowClass, string[]> = {
   Warrior: ['Arms', 'Fury', 'Protection'],
@@ -151,6 +77,7 @@ export function RecruitView() {
   }
 
   const [applications, setApplications] = useState<ApplicationItem[]>([])
+  const [matrix, setMatrix] = useState<RecruitClassNeed[]>(DEFAULT_RECRUITMENT_MATRIX)
 
   const loadApplications = async () => {
     const response = await fetch('/api/applications')
@@ -163,6 +90,14 @@ export function RecruitView() {
 
   useEffect(() => {
     loadApplications().catch(() => setApplications([]))
+    fetch('/api/recruitment')
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { matrix?: RecruitClassNeed[] }
+        if (response.ok && Array.isArray(data.matrix) && data.matrix.length > 0) {
+          setMatrix(data.matrix)
+        }
+      })
+      .catch(() => undefined)
   }, [])
 
   const handleStatusChange = async (id: string, newStatus: 'APPROVED' | 'REJECTED') => {
@@ -285,7 +220,7 @@ export function RecruitView() {
       <Panel>
         <PanelTitle icon={Grid3x3}>Class / Spec İhtiyaç Matrisi</PanelTitle>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {RECRUITMENT_MATRIX.map((r) => (
+          {matrix.map((r) => (
             <div 
               key={r.wowClass} 
               className="rounded-lg border border-border bg-[#071422] p-4" 

@@ -156,7 +156,7 @@ export function readResetToken(token: string): { email: string } | null {
   }
 }
 
-function appOrigin(request: Request) {
+export function appOrigin(request: Request) {
   const configured = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://turxforever.com'
   if (configured) return configured.replace(/\/$/, '')
   if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {

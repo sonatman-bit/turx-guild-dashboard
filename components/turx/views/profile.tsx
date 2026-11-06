@@ -53,6 +53,9 @@ interface UserProfileData {
   discordConnected: boolean
   discordTag: string
   bnetConnected: boolean
+  twitchConnected: boolean
+  twitchLogin: string
+  twitchDisplayName: string
   availability: Record<string, { status: AvailabilityStatus; startTime: string; endTime: string }>
 }
 
@@ -151,6 +154,9 @@ function emptyProfile(email: string): UserProfileData {
     discordConnected: false,
     discordTag: '',
     bnetConnected: false,
+    twitchConnected: false,
+    twitchLogin: '',
+    twitchDisplayName: '',
     availability: Object.fromEntries(
       DAYS_OF_WEEK.map((day) => [day.key, { status: 'none' as AvailabilityStatus, startTime: '21:00', endTime: '00:00' }]),
     ),
@@ -164,6 +170,7 @@ export function ProfileView() {
   const [profile, setProfile] = useState<UserProfileData>(() => emptyProfile(''))
   const [characters, setCharacters] = useState<GuildCharacter[]>([])
   const [staffInterests, setStaffInterests] = useState<StaffRoleId[]>([])
+  const [oauthReady, setOauthReady] = useState({ discord: false, bnet: false, twitch: false })
 
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
   const [editFirstName, setEditFirstName] = useState('')
@@ -240,6 +247,7 @@ export function ProfileView() {
           profile?: Partial<UserProfileData> | null
           characters?: GuildCharacter[]
           staffInterests?: StaffRoleId[]
+          oauth?: { discord?: boolean; bnet?: boolean; twitch?: boolean }
         }
         if (!response.ok || cancelled) return
         if (data.profile) {
@@ -251,6 +259,13 @@ export function ProfileView() {
         }
         if (Array.isArray(data.characters)) setCharacters(data.characters)
         if (Array.isArray(data.staffInterests)) setStaffInterests(data.staffInterests)
+        if (data.oauth) {
+          setOauthReady({
+            discord: Boolean(data.oauth.discord),
+            bnet: Boolean(data.oauth.bnet),
+            twitch: Boolean(data.oauth.twitch),
+          })
+        }
       })
       .catch(() => undefined)
 
@@ -258,6 +273,61 @@ export function ProfileView() {
       cancelled = true
     }
   }, [user])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('oauth')
+    if (!result) return
+    const provider = params.get('provider') || ''
+    const names: Record<string, string> = { discord: 'Discord', bnet: 'Battle.net', twitch: 'Twitch' }
+    const label = names[provider] || 'Hesap'
+    if (result === 'ok') toast({ title: `${label} bağlandı`, description: 'Hesap bağlantın kaydedildi.' })
+    else if (result === 'login') toast({ title: 'Giriş gerekli', description: 'Hesap bağlamak için önce oturum aç.' })
+    else if (result === 'denied') toast({ title: 'İzin verilmedi', description: `${label} bağlantısı iptal edildi.` })
+    else if (result === 'missing') {
+      toast({
+        title: `${label} henüz hazır değil`,
+        description: 'Yönetici bu sağlayıcı için istemci anahtarlarını Vercel’e eklemeli.',
+      })
+    } else toast({ title: 'Bağlantı başarısız', description: `${label} hesabı bağlanamadı. Tekrar dene.` })
+    params.delete('oauth')
+    params.delete('provider')
+    params.delete('reason')
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`
+    window.history.replaceState({}, '', next)
+  }, [toast])
+
+  const startOauth = (provider: 'discord' | 'bnet' | 'twitch') => {
+    if (!user) {
+      toast({ title: 'Giriş gerekli', description: 'Hesap bağlamak için önce oturum aç.' })
+      return
+    }
+    window.location.href = `/api/oauth/${provider}`
+  }
+
+  const disconnectOauth = async (provider: 'discord' | 'bnet' | 'twitch') => {
+    try {
+      const response = await fetch('/api/oauth/disconnect', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ provider }),
+      })
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string }
+        toast({ title: 'Kaldırılamadı', description: data.error || 'Bağlantı kaldırılamadı.' })
+        return
+      }
+      if (provider === 'discord') setProfile((prev) => ({ ...prev, discordConnected: false, discordTag: '' }))
+      if (provider === 'bnet') setProfile((prev) => ({ ...prev, bnetConnected: false }))
+      if (provider === 'twitch') {
+        setProfile((prev) => ({ ...prev, twitchConnected: false, twitchLogin: '', twitchDisplayName: '' }))
+      }
+      toast({ title: 'Bağlantı kaldırıldı', description: 'Hesap bağlantısı silindi.' })
+    } catch {
+      toast({ title: 'Bağlantı kaldırılamadı', description: 'Tekrar dene.' })
+    }
+  }
 
   useEffect(() => {
     if (!ready || !user) return
@@ -794,32 +864,84 @@ export function ProfileView() {
               <Link2 className="size-4" /> Hesap Bağlantıları
             </h3>
             <div className="grid gap-3">
-              <div className="flex items-center justify-between p-4 rounded-xl border border-border bg-background/50">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-xl bg-azure/10 border border-azure/30 flex items-center justify-center text-azure font-bold">DS</div>
-                  <div>
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="size-10 shrink-0 rounded-xl bg-[#5865f2]/15 border border-[#5865f2]/40 flex items-center justify-center text-[#a5adff] font-bold">DC</div>
+                  <div className="min-w-0">
                     <div className="font-bold text-sm text-silver">Discord Hesabı</div>
-                    <div className="text-xs text-muted-foreground">@{profile.discordTag}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {profile.discordConnected ? `@${profile.discordTag}` : 'Lonca Discord’unu bağla'}
+                    </div>
                   </div>
                 </div>
-                <Badge className="border-azure/40 bg-azure/10 text-azure">Birincil Bağlı</Badge>
+                {profile.discordConnected ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
+                    <GhostButton type="button" className="text-xs py-1.5 px-3" onClick={() => disconnectOauth('discord')}>
+                      Kaldır
+                    </GhostButton>
+                  </div>
+                ) : (
+                  <GoldButton type="button" onClick={() => startOauth('discord')} className="text-xs py-1.5 px-3 shrink-0">
+                    + Hesap Bağla
+                  </GoldButton>
+                )}
               </div>
 
-              <div className="flex items-center justify-between p-4 rounded-xl border border-border bg-background/50">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-xl bg-neon/10 border border-neon/30 flex items-center justify-center text-neon font-bold">BN</div>
-                  <div>
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="size-10 shrink-0 rounded-xl bg-neon/10 border border-neon/30 flex items-center justify-center text-neon font-bold">BN</div>
+                  <div className="min-w-0">
                     <div className="font-bold text-sm text-silver">Battle.net Hesabı</div>
-                    <div className="text-xs text-muted-foreground">{profile.bnetId || 'Karakterleri senkronize etmek için bağlayın'}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {profile.bnetConnected ? profile.bnetId : profile.bnetId || 'BattleTag doğrulamak için bağla'}
+                    </div>
                   </div>
                 </div>
-                <GoldButton onClick={() => {
-                  setProfile({ ...profile, bnetConnected: true })
-                  toast({ title: 'Battle.net Bağlandı!', description: 'Armory verileri başarıyla eşitlendi.' })
-                }} className="text-xs py-1.5 px-3">
-                  + Hesap Bağla
-                </GoldButton>
+                {profile.bnetConnected ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
+                    <GhostButton type="button" className="text-xs py-1.5 px-3" onClick={() => disconnectOauth('bnet')}>
+                      Kaldır
+                    </GhostButton>
+                  </div>
+                ) : (
+                  <GoldButton type="button" onClick={() => startOauth('bnet')} className="text-xs py-1.5 px-3 shrink-0">
+                    + Hesap Bağla
+                  </GoldButton>
+                )}
               </div>
+
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="size-10 shrink-0 rounded-xl bg-[#9146ff]/15 border border-[#9146ff]/40 flex items-center justify-center text-[#c4a5ff] font-bold">TW</div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-silver">Twitch Hesabı</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {profile.twitchConnected
+                        ? `${profile.twitchDisplayName || profile.twitchLogin} · yayın açınca Stream Radar’da görünür`
+                        : 'Yayın bildirimi için Twitch bağla'}
+                    </div>
+                  </div>
+                </div>
+                {profile.twitchConnected ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
+                    <GhostButton type="button" className="text-xs py-1.5 px-3" onClick={() => disconnectOauth('twitch')}>
+                      Kaldır
+                    </GhostButton>
+                  </div>
+                ) : (
+                  <GoldButton type="button" onClick={() => startOauth('twitch')} className="text-xs py-1.5 px-3 shrink-0">
+                    + Hesap Bağla
+                  </GoldButton>
+                )}
+              </div>
+              {!oauthReady.discord && !oauthReady.bnet && !oauthReady.twitch ? (
+                <p className="text-xs text-muted-foreground">
+                  Bağla butonları, yönetici Discord / Battle.net / Twitch istemci anahtarlarını ekledikten sonra yönlendirme yapar.
+                </p>
+              ) : null}
             </div>
           </Panel>
 

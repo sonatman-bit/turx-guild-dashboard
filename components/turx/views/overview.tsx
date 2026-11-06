@@ -4,7 +4,8 @@ import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy, 
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { authHeaders, getSessionToken } from '@/lib/client-session'
-import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS, STREAMS } from '@/lib/guild-data'
+import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
+import type { LiveStreamCard } from '@/lib/account-links'
 import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
@@ -374,28 +375,57 @@ function NextRaid({ onNavigate }: { onNavigate: (t: TabId) => void }) {
 }
 
 function StreamRadar() {
+  const [live, setLive] = useState<LiveStreamCard[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      fetch('/api/streams')
+        .then(async (response) => {
+          const data = (await response.json().catch(() => ({}))) as { live?: LiveStreamCard[] }
+          if (!cancelled && Array.isArray(data.live)) setLive(data.live)
+        })
+        .catch(() => {
+          if (!cancelled) setLive([])
+        })
+    }
+    load()
+    const timer = window.setInterval(load, 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
   return (
     <Panel>
       <PanelTitle icon={Radio} action={<Badge className="border-[#9146ff]/50 bg-[#9146ff]/15 text-[#c4a5ff]">Twitch</Badge>}>
         Stream Radar
       </PanelTitle>
       <ul className="flex flex-col gap-2">
-        {STREAMS.length === 0 && (
+        {live.length === 0 && (
           <li className="rounded-lg border border-border bg-[#071422] p-3 text-sm text-muted-foreground">
-            Aktif yayın yok.
+            Aktif yayın yok. Profilinden Twitch bağla; yayın açınca burada Online görünür.
           </li>
         )}
-        {STREAMS.map((s) => (
-          <li key={s.name} className="flex items-center gap-3 rounded-lg border border-border bg-[#071422] p-3">
-            <span className={cn('relative flex size-2.5 shrink-0', !s.live && 'opacity-40')}>
-              {s.live && <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-70" />}
-              <span className={cn('relative inline-flex size-2.5 rounded-full', s.live ? 'bg-red-500' : 'bg-muted-foreground')} />
+        {live.map((stream) => (
+          <li key={stream.login} className="flex items-center gap-3 rounded-lg border border-border bg-[#071422] p-3">
+            <span className="relative flex size-2.5 shrink-0">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-70" />
+              <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">{s.name}</p>
-              <p className="truncate text-xs text-muted-foreground">{s.title}</p>
+              <p className="text-sm font-semibold">
+                <span className="text-foreground">{stream.username}</span>
+                <span className="text-muted-foreground"> · </span>
+                <a href={stream.url} target="_blank" rel="noopener noreferrer" className="text-[#c4a5ff] hover:underline">
+                  {stream.streamer}
+                </a>
+                <Badge className="ml-2 border-red-500/40 bg-red-500/15 text-red-300">Online</Badge>
+              </p>
+              <p className="truncate text-xs text-muted-foreground">{stream.title}</p>
             </div>
-            <span className="text-xs text-silver tabular-nums">{s.live ? `${s.viewers.toLocaleString('tr-TR')} izleyici` : 'Çevrimdışı'}</span>
+            <span className="text-xs text-silver tabular-nums">{stream.viewers.toLocaleString('tr-TR')} izleyici</span>
           </li>
         ))}
       </ul>

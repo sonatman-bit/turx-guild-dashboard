@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { oauthConfigured, publicLinks } from '@/lib/account-links'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
 import { sanitizeStaffInterests } from '@/lib/staff-roles'
@@ -18,11 +19,26 @@ export async function GET(request: Request) {
     const store = await loadGuildStore()
     const found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
     if (!found) return json({ error: 'Hesap bulunamadı.' }, 404)
-    const profile = (found.profile || null) as OnboardingProfile | null
+    const links = publicLinks(found.links)
+    const stored = (found.profile || {}) as Record<string, unknown>
+    const storedTag = typeof stored.discordTag === 'string' ? stored.discordTag : ''
+    const storedBnet = typeof stored.bnetId === 'string' ? stored.bnetId : ''
+    const profile = {
+      ...stored,
+      discordConnected: links.discord.connected,
+      discordTag: links.discord.username || storedTag,
+      bnetConnected: links.bnet.connected,
+      bnetId: links.bnet.battletag || storedBnet,
+      twitchConnected: links.twitch.connected,
+      twitchLogin: links.twitch.login,
+      twitchDisplayName: links.twitch.displayName,
+    } as unknown as OnboardingProfile
     const characters = (found.characters || []) as OnboardingCharacter[]
     return json({
       profile,
       characters,
+      links,
+      oauth: oauthConfigured(),
       staffInterests: sanitizeStaffInterests(found.staffInterests),
       profileComplete: hasRequiredOnboarding(profile, characters),
     })
@@ -42,19 +58,29 @@ export async function PUT(request: Request) {
       characters?: OnboardingCharacter[]
       staffInterests?: unknown
     }
-    const profile = body.profile || {}
+    const profile = { ...(body.profile || {}) } as Record<string, unknown>
     const characters = Array.isArray(body.characters) ? body.characters : []
     const staffInterests = sanitizeStaffInterests(body.staffInterests)
-    const profileComplete = hasRequiredOnboarding(profile, characters)
 
     await mutateGuildStore((store) => {
       const found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
       if (!found) throw new Error('NOT_FOUND')
-      found.profile = profile as Record<string, unknown>
+      const links = publicLinks(found.links)
+      profile.discordConnected = links.discord.connected
+      profile.discordTag = links.discord.username || profile.discordTag || ''
+      profile.bnetConnected = links.bnet.connected
+      if (links.bnet.battletag) profile.bnetId = links.bnet.battletag
+      profile.twitchConnected = links.twitch.connected
+      profile.twitchLogin = links.twitch.login
+      profile.twitchDisplayName = links.twitch.displayName
+      const profileComplete = hasRequiredOnboarding(profile as OnboardingProfile, characters)
+      found.profile = profile
       found.characters = characters
       found.staffInterests = staffInterests
       found.onboardingComplete = profileComplete
     })
+
+    const profileComplete = hasRequiredOnboarding(profile as OnboardingProfile, characters)
 
     return json({ ok: true, profileComplete })
   } catch (err) {

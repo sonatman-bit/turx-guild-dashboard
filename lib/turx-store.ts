@@ -1,4 +1,5 @@
 import { BlobNotFoundError, get, put } from '@vercel/blob'
+import type { AccountLinks, StreamNotice } from '@/lib/account-links'
 import { isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
@@ -11,6 +12,7 @@ export type StoredAccount = {
   characters?: unknown[]
   onboardingComplete?: boolean
   staffInterests?: string[]
+  links?: AccountLinks
 }
 
 export type StoredApplication = {
@@ -51,12 +53,13 @@ export type GuildStore = {
   applications: StoredApplication[]
   polls: StoredPoll[]
   recruitmentNeeds: StoredRecruitNeed[]
+  streamNotices: StreamNotice[]
 }
 
 const PATH = 'turx-guild-store.json'
 
 export function emptyStore(): GuildStore {
-  return { users: [], applications: [], polls: [], recruitmentNeeds: [] }
+  return { users: [], applications: [], polls: [], recruitmentNeeds: [], streamNotices: [] }
 }
 
 export function roleForEmail(email: string): GuildRank {
@@ -86,6 +89,7 @@ async function readStore(): Promise<GuildStore> {
       applications: Array.isArray(data.applications) ? data.applications : [],
       polls: Array.isArray(data.polls) ? data.polls : [],
       recruitmentNeeds: Array.isArray(data.recruitmentNeeds) ? data.recruitmentNeeds : [],
+      streamNotices: Array.isArray(data.streamNotices) ? data.streamNotices : [],
     }
   } catch (err) {
     if (err instanceof BlobNotFoundError) return emptyStore()

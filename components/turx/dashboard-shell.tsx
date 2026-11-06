@@ -16,6 +16,8 @@ import { RecruitView } from './views/recruit'
 import { RosterView } from './views/roster'
 import { StrategyView } from './views/strategy'
 
+const TAB_IDS: TabId[] = ['overview', 'roster', 'applications', 'strategy', 'raids', 'bank', 'anonymous', 'profile', 'admin']
+
 function DashboardShellInner() {
   const { user, profileComplete } = useAuth()
   const toast = useToast()
@@ -32,12 +34,17 @@ function DashboardShellInner() {
 
   useEffect(() => {
     if (!mounted) return
+    const requested = new URLSearchParams(window.location.search).get('tab')
+    if (requested && TAB_IDS.includes(requested as TabId) && (requested !== 'admin' || canOpenAdmin)) {
+      setTab(requested as TabId)
+      return
+    }
     if (!user) {
       setTab('overview')
       return
     }
     if (!profileComplete) setTab('profile')
-  }, [mounted, user, profileComplete])
+  }, [mounted, user, profileComplete, canOpenAdmin])
 
   useEffect(() => {
     if (tab === 'admin' && !canOpenAdmin) setTab('overview')

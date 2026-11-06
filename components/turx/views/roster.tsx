@@ -4,6 +4,7 @@ import { BarChart3, Crown, Search, UserCheck, Users, Star, Wrench, Shield, Sword
 import { useEffect, useMemo, useState } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
+import { classIconUrl, type ArmorySnapshot } from '@/lib/wow-armory'
 import { useToast } from '../toast'
 import { useAuth, type GuildRank } from '../auth-provider' // Auth entegrasyonu
 import { Badge, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
@@ -27,7 +28,7 @@ interface StoredCharacter {
   }
 }
 
-type ServerCharacter = StoredCharacter & { firstName?: string; lastName?: string }
+type ServerCharacter = StoredCharacter & { firstName?: string; lastName?: string; armory?: ArmorySnapshot | null }
 
 type ServerMember = {
   username: string
@@ -40,7 +41,7 @@ interface RosterMemberRow {
   id: string
   charName: string
   realName: string
-  level: number
+  level: number | null
   race: string
   wowClass: WowClass
   spec: string
@@ -53,6 +54,10 @@ interface RosterMemberRow {
     onyxia: boolean
     hyjal: boolean
   }
+  armoryUrl: string | null
+  avatarUrl: string | null
+  renderUrl: string | null
+  classIconUrl: string
 }
 
 const RANK_STYLES: Record<GuildRank, string> = {
@@ -73,24 +78,31 @@ function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
     const displayName = (account.profile?.fullName || account.username).trim()
     return chars
       .filter((character) => character.firstName?.trim() && character.lastName?.trim())
-      .map((character, index) => ({
-        id: character.id || `${account.username}-${index}`,
-        charName: `${character.firstName} ${character.lastName}`,
-        realName: displayName,
-        level: 1,
-        race: character.race || '—',
-        wowClass: isWowClass(character.wowClass) ? character.wowClass : 'Warrior',
-        spec: character.spec || '—',
-        offSpec: character.offSpec || 'Yok',
-        role: character.role || 'MELEE',
-        rank: account.role,
-        type: character.isMain ? 'Main' : 'Alt',
-        professions: character.professions || ['Yok', 'Yok'],
-        attunements: {
-          onyxia: Boolean(character.attunements?.onyxia),
-          hyjal: Boolean(character.attunements?.hyjal),
-        },
-      }))
+      .map((character, index) => {
+        const wowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
+        return {
+          id: character.id || `${account.username}-${index}`,
+          charName: `${character.firstName} ${character.lastName}`,
+          realName: displayName,
+          level: typeof character.armory?.level === 'number' ? character.armory.level : null,
+          race: character.race || '—',
+          wowClass,
+          spec: character.spec || '—',
+          offSpec: character.offSpec || 'Yok',
+          role: character.role || 'MELEE',
+          rank: account.role,
+          type: character.isMain ? 'Main' : 'Alt',
+          professions: character.professions || ['Yok', 'Yok'],
+          attunements: {
+            onyxia: Boolean(character.attunements?.onyxia),
+            hyjal: Boolean(character.attunements?.hyjal),
+          },
+          armoryUrl: character.armory?.url || null,
+          avatarUrl: character.armory?.avatarUrl || character.armory?.renderUrl || null,
+          renderUrl: character.armory?.renderUrl || null,
+          classIconUrl: character.armory?.classIconUrl || classIconUrl(wowClass),
+        }
+      })
   })
 }
 
@@ -131,6 +143,13 @@ function ClassBreakdown({
           const percent = total === 0 ? 0 : Math.round((item.count / total) * 100)
           return (
             <li key={item.wowClass} className="flex items-center gap-2 text-xs">
+              <img
+                src={classIconUrl(item.wowClass)}
+                alt=""
+                width={16}
+                height={16}
+                className="size-4 shrink-0 rounded-sm border border-black/40"
+              />
               <span className="w-[4.5rem] shrink-0 font-semibold" style={{ color: CLASS_COLORS[item.wowClass] }}>
                 {item.wowClass}
               </span>
@@ -398,16 +417,60 @@ export function RosterView() {
               {filtered.map((m) => (
                 <tr key={m.id} className="transition hover:bg-neon/[0.03]">
                   <td className="px-4 py-3">
-                    <span className="flex items-center gap-1.5 font-bold" style={{ color: CLASS_COLORS[m.wowClass] }}>
-                      {m.rank === 'Guild Master' && <Crown className="size-3.5 text-gold shrink-0" />}
-                      {m.charName}
+                    <span className="flex items-center gap-2.5">
+                      {m.avatarUrl ? (
+                        <img
+                          src={m.avatarUrl}
+                          alt={`${m.charName} portresi`}
+                          width={40}
+                          height={40}
+                          className="size-10 shrink-0 rounded-md border border-border object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={m.classIconUrl}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="size-10 shrink-0 rounded-md border border-border"
+                        />
+                      )}
+                      <span className="min-w-0">
+                        <span className="flex items-center gap-1.5 font-bold" style={{ color: CLASS_COLORS[m.wowClass] }}>
+                          {m.rank === 'Guild Master' && <Crown className="size-3.5 text-gold shrink-0" />}
+                          {m.armoryUrl ? (
+                            <a
+                              href={m.armoryUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline underline-offset-2"
+                              aria-label={`${m.charName} Forever Armory`}
+                            >
+                              {m.charName}
+                            </a>
+                          ) : (
+                            m.charName
+                          )}
+                        </span>
+                        <span className="block text-xs text-silver font-medium">{m.realName}</span>
+                      </span>
                     </span>
-                    <span className="block text-xs text-silver font-medium">{m.realName}</span>
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-muted-foreground">Level {m.level}</td>
+                  <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                    {m.level == null ? '—' : `Level ${m.level}`}
+                  </td>
                   <td className="px-4 py-3 text-silver">{m.race}</td>
                   <td className="px-4 py-3">
-                    <span className="font-semibold" style={{ color: CLASS_COLORS[m.wowClass] }}>{m.wowClass} ({m.spec})</span>
+                    <span className="flex items-center gap-1.5 font-semibold" style={{ color: CLASS_COLORS[m.wowClass] }}>
+                      <img
+                        src={m.classIconUrl}
+                        alt=""
+                        width={18}
+                        height={18}
+                        className="size-[18px] shrink-0 rounded-sm border border-black/40"
+                      />
+                      {m.wowClass} ({m.spec})
+                    </span>
                     <span className="block text-xs text-muted-foreground">OS: {m.offSpec}</span>
                     <span className="block text-xs font-semibold mt-0.5">
                       <RoleIcon role={m.role} /> <span className="text-silver">{m.role}</span>
@@ -466,6 +529,7 @@ export function RosterView() {
         </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
           {filtered.length} / {rosterMembers.length} karakter gösteriliyor
+          {' · '}Level ve portre Forever Armory’den gelir (karakter oyundan çıkınca güncellenir).
         </p>
       </Panel>
     </div>

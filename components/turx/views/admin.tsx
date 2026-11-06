@@ -1,9 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Shield, Users, FileText, Calendar, CheckCircle2, XCircle, Trash2, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react'
+import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import { STAFF_ROLES, type StaffRoleId } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
+import { StaffRoleBadge } from '../staff-role-icons'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Panel, PanelTitle, SectionHeader } from '../ui'
 
@@ -35,7 +38,7 @@ interface AdminApplication {
 
 export function AdminDashboardView() {
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'attendance'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'staff' | 'attendance'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
@@ -43,12 +46,28 @@ export function AdminDashboardView() {
 
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
   const [applications, setApplications] = useState<AdminApplication[]>([])
+  const [staffRoles, setStaffRoles] = useState<
+    {
+      id: StaffRoleId
+      title: string
+      slots: number
+      applicantCount: number
+      applicants: { username: string; email: string; mainName: string }[]
+    }[]
+  >([])
 
   useEffect(() => {
     fetch('/api/applications')
       .then(async (response) => {
         const data = (await response.json().catch(() => ({}))) as { applications?: AdminApplication[] }
         if (response.ok) setApplications(data.applications || [])
+      })
+      .catch(() => undefined)
+
+    fetch('/api/staff-interests', { headers: authHeaders() })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { roles?: typeof staffRoles }
+        if (response.ok) setStaffRoles(data.roles || [])
       })
       .catch(() => undefined)
   }, [])
@@ -143,6 +162,15 @@ export function AdminDashboardView() {
           )}
         >
           <FileText className="size-4" /> Detaylı Başvurular ({applications.filter(a => a.status === 'PENDING').length} Bekleyen)
+        </button>
+        <button
+          onClick={() => setActiveTab('staff')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
+            activeTab === 'staff' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <ClipboardList className="size-4" /> Görevli Talipleri
         </button>
         <button
           onClick={() => setActiveTab('attendance')}
@@ -300,6 +328,53 @@ export function AdminDashboardView() {
                 )
               })
             )}
+          </div>
+        </Panel>
+      )}
+
+      {activeTab === 'staff' && (
+        <Panel className="flex flex-col gap-4">
+          <PanelTitle icon={ClipboardList}>Görevli Talep Özeti</PanelTitle>
+          <p className="text-xs text-muted-foreground">
+            Üyelerin profilinden işaretlediği görevler. Kontenjan, açık ilan sayısıdır; talip sayısı bundan fazla olabilir.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <caption className="sr-only">Görevlere talip olan üyeler</caption>
+              <thead className="text-xs uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border">
+                  <th className="px-3 py-2">Görev</th>
+                  <th className="px-3 py-2">Kontenjan</th>
+                  <th className="px-3 py-2">Talip</th>
+                  <th className="px-3 py-2">Adaylar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {(staffRoles.length > 0 ? staffRoles : STAFF_ROLES.map((role) => ({
+                  id: role.id,
+                  title: role.title,
+                  slots: role.slots,
+                  applicantCount: 0,
+                  applicants: [] as { username: string; email: string; mainName: string }[],
+                }))).map((role) => (
+                  <tr key={role.id}>
+                    <td className="px-3 py-3">
+                      <span className="flex items-center gap-2 font-semibold">
+                        <StaffRoleBadge id={role.id} />
+                        {role.title}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 tabular-nums text-gold">{role.slots}</td>
+                    <td className="px-3 py-3 tabular-nums">{role.applicantCount}</td>
+                    <td className="px-3 py-3 text-xs text-silver">
+                      {role.applicants.length === 0
+                        ? 'Henüz talip yok'
+                        : role.applicants.map((person) => `${person.username} (${person.mainName})`).join(', ')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </Panel>
       )}

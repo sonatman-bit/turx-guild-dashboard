@@ -11,7 +11,7 @@ import { useToast } from './toast'
 
 export type { GuildRank }
 type AuthStep = 'form' | 'verify' | 'forgot' | 'reset'
-type LoginResult = 'ok' | 'not_found' | 'bad_password'
+type LoginResult = 'ok' | 'not_found' | 'bad_password' | 'store_down'
 
 interface UserAccount {
   username: string
@@ -169,7 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return 'ok'
       }
       if (response.status === 401) return 'bad_password'
-      if (response.status !== 404 && response.status !== 503) return 'not_found'
+      if (response.status === 503) return 'store_down'
+      if (response.status !== 404) return 'not_found'
     } catch {
       // Fall through to this browser's local cache.
     }
@@ -390,6 +391,13 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
     setBusy(true)
     try {
       const result = await login(username, password)
+      if (result === 'store_down') {
+        toast({
+          title: 'Önizleme deposu bağlı değil',
+          description: 'Waffle hesabı canlı sitede. Yerelde giriş için hesap deposu (Blob) bağlı olmalı.',
+        })
+        return
+      }
       if (result === 'not_found') {
         toast({ title: 'Giriş Hatası', description: 'Bu kullanıcı adı kayıtlı değil. Önce kayıt ol.' })
         return

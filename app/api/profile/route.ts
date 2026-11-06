@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
+import { sanitizeStaffInterests } from '@/lib/staff-roles'
 import { blobConfigured, loadGuildStore, mutateGuildStore } from '@/lib/turx-store'
 
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
     return json({
       profile,
       characters,
+      staffInterests: sanitizeStaffInterests(found.staffInterests),
       profileComplete: hasRequiredOnboarding(profile, characters),
     })
   } catch (err) {
@@ -35,9 +37,14 @@ export async function PUT(request: Request) {
     if (!blobConfigured()) return json({ error: 'Hesap deposu henüz bağlı değil.' }, 503)
     const session = sessionFromRequest(request)
     if (!session) return json({ error: 'Oturum gerekli.' }, 401)
-    const body = (await request.json()) as { profile?: OnboardingProfile; characters?: OnboardingCharacter[] }
+    const body = (await request.json()) as {
+      profile?: OnboardingProfile
+      characters?: OnboardingCharacter[]
+      staffInterests?: unknown
+    }
     const profile = body.profile || {}
     const characters = Array.isArray(body.characters) ? body.characters : []
+    const staffInterests = sanitizeStaffInterests(body.staffInterests)
     const profileComplete = hasRequiredOnboarding(profile, characters)
 
     await mutateGuildStore((store) => {
@@ -45,6 +52,7 @@ export async function PUT(request: Request) {
       if (!found) throw new Error('NOT_FOUND')
       found.profile = profile as Record<string, unknown>
       found.characters = characters
+      found.staffInterests = staffInterests
       found.onboardingComplete = profileComplete
     })
 

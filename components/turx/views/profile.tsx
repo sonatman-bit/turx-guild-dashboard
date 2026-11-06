@@ -10,7 +10,9 @@ import {
   loadOnboardingProfile,
   saveOnboardingSnapshot,
 } from '@/lib/profile-gate'
+import { openPositionsLabel, STAFF_ROLES, type StaffRoleId } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
+import { StaffRoleBadge } from '../staff-role-icons'
 import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Panel, SectionHeader, inputClass } from '../ui'
@@ -173,6 +175,7 @@ export function ProfileView() {
   const [ready, setReady] = useState(false)
   const [profile, setProfile] = useState<UserProfileData>(() => emptyProfile(''))
   const [characters, setCharacters] = useState<GuildCharacter[]>([])
+  const [staffInterests, setStaffInterests] = useState<StaffRoleId[]>([])
 
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
   const [editFirstName, setEditFirstName] = useState('')
@@ -247,6 +250,7 @@ export function ProfileView() {
         const data = (await response.json().catch(() => ({}))) as {
           profile?: Partial<UserProfileData> | null
           characters?: GuildCharacter[]
+          staffInterests?: StaffRoleId[]
         }
         if (!response.ok || cancelled) return
         if (data.profile) {
@@ -257,6 +261,7 @@ export function ProfileView() {
           })
         }
         if (Array.isArray(data.characters)) setCharacters(data.characters)
+        if (Array.isArray(data.staffInterests)) setStaffInterests(data.staffInterests)
       })
       .catch(() => undefined)
 
@@ -278,7 +283,7 @@ export function ProfileView() {
       const response = await fetch('/api/profile', {
         method: 'PUT',
         headers: { ...authHeaders({ 'Content-Type': 'application/json' }) },
-        body: JSON.stringify({ profile: nextProfile, characters: nextCharacters }),
+        body: JSON.stringify({ profile: nextProfile, characters: nextCharacters, staffInterests }),
       })
       const data = (await response.json().catch(() => ({}))) as { profileComplete?: boolean; error?: string }
       if (!response.ok) {
@@ -660,6 +665,66 @@ export function ProfileView() {
                 <GoldButton type="submit">{profileComplete ? 'Değişiklikleri Kaydet' : 'Kaydet ve Kilidi Aç'}</GoldButton>
               </div>
             </form>
+          </Panel>
+
+          <Panel className="flex flex-col gap-4">
+            <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
+              Lonca Görevleri
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              TURX kadrosunda aktif rol almak istediğin görevleri işaretle. GM panelinde kimlerin talip olduğu görünür.
+            </p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {STAFF_ROLES.map((role) => {
+                const selected = staffInterests.includes(role.id)
+                return (
+                  <li key={role.id}>
+                    <label
+                      className={cn(
+                        'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
+                        selected ? 'border-gold/50 bg-gold/10' : 'border-border hover:border-neon/30',
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-2 accent-[#d4af37]"
+                        checked={selected}
+                        onChange={() => {
+                          setStaffInterests((current) =>
+                            current.includes(role.id)
+                              ? current.filter((id) => id !== role.id)
+                              : [...current, role.id],
+                          )
+                        }}
+                      />
+                      <StaffRoleBadge id={role.id} />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-foreground">{role.title}</span>
+                        <span className="block text-xs text-gold">{openPositionsLabel(role.slots)}</span>
+                        <span className="block text-xs text-muted-foreground">{role.blurb}</span>
+                      </span>
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="flex justify-end">
+              <GoldButton
+                type="button"
+                onClick={() => {
+                  void persistGate(profile, characters).then((complete) => {
+                    toast({
+                      title: 'Görev tercihleri kaydedildi',
+                      description: complete
+                        ? 'GM panelinde görünür.'
+                        : 'Tercihlerin kaydedildi. Profil kilidini açmak için kişisel bilgileri de tamamla.',
+                    })
+                  })
+                }}
+              >
+                Görev tercihlerini kaydet
+              </GoldButton>
+            </div>
           </Panel>
 
           <Panel className="flex flex-col gap-6">

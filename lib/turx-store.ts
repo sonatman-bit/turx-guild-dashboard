@@ -10,6 +10,7 @@ export type StoredAccount = {
   profile?: Record<string, unknown> | null
   characters?: unknown[]
   onboardingComplete?: boolean
+  staffInterests?: string[]
 }
 
 export type StoredApplication = {

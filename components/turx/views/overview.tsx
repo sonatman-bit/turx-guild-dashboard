@@ -3,9 +3,12 @@
 import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy, Vote } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
-import { ACTIVE_POLL, ANNOUNCEMENTS, LAUNCH_DATE, PHASES, RAID_DATE, RAIDS, STREAMS } from '@/lib/guild-data'
+import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS, STREAMS } from '@/lib/guild-data'
+import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
 import type { TabId } from '../navigation'
+import { StaffRoleBadge } from '../staff-role-icons'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Modal, Panel, PanelTitle } from '../ui'
 
@@ -28,16 +31,20 @@ function useCountdown(target: string) {
 
 const pad = (n: number | undefined) => (n === undefined ? '--' : String(n).padStart(2, '0'))
 
-function HeroCountdown() {
-  const c = useCountdown(LAUNCH_DATE)
-  const units = [
-    { label: 'Gün', value: c?.days },
-    { label: 'Saat', value: c?.hours },
-    { label: 'Dakika', value: c?.mins },
-    { label: 'Saniye', value: c?.secs },
-  ]
+function StaffHiringHero({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
+  const { user } = useAuth()
+  const toast = useToast()
+
+  const apply = () => {
+    if (!user) {
+      toast({ title: 'Önce giriş yap', description: 'Göreve talip olmak için profilinden işaretlemen yeterli.' })
+      return
+    }
+    onNavigate('profile')
+  }
+
   return (
-    <section className="glow-border relative overflow-hidden rounded-2xl" aria-labelledby="launch-title">
+    <section className="glow-border relative overflow-hidden rounded-2xl" aria-labelledby="staff-title">
       <Image src="/images/hero.png" alt="" fill priority sizes="100vw" className="object-cover opacity-60" />
       <div className="absolute inset-0 bg-gradient-to-r from-[#08121e] via-[#08121e]/85 to-[#08121e]/30" />
       <div className="relative flex flex-col gap-6 p-6 md:p-8 xl:flex-row xl:items-center xl:justify-between">
@@ -46,45 +53,32 @@ function HeroCountdown() {
             <Badge className="border-azure/50 bg-azure/15 text-azure">
               <Shield className="size-3" /> Alliance PvE (EU)
             </Badge>
-            <Badge className="border-gold/40 bg-gold/10 text-gold">Classic+</Badge>
+            <Badge className="border-gold/40 bg-gold/10 text-gold">Görevli alımı</Badge>
           </div>
-          <h2 id="launch-title" className="mt-3 font-display text-3xl font-black text-balance md:text-4xl">
-            WoW: <span className="text-neon text-glow-cyan">Forever</span> Launch
+          <h2 id="staff-title" className="mt-3 font-display text-3xl font-black text-balance md:text-4xl">
+            TURX, ilerlemesinde <span className="text-neon text-glow-cyan">aktif rol</span> oynayacak görevliler arıyor!
           </h2>
           <p className="mt-2 text-sm text-pretty text-silver/90">
-            Azeroth yeniden doğuyor. TURX olarak ilk günden Phase 1 Raid’lerine hazırız.
+            Raid masası, alım, meslek hattı ve loot düzeni için gönüllü kadro kuruyoruz. Giriş yaptıktan sonra profilinden talip olduğun görevleri işaretle.
           </p>
-          <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-            <div className="flex items-center gap-2">
-              <dt className="text-muted-foreground">Launch:</dt>
-              <dd className="font-semibold text-gold">4 Kasım 2026</dd>
-            </div>
-            <div className="flex items-center gap-2">
-              <dt className="text-muted-foreground">Raids:</dt>
-              <dd className="font-semibold text-neon">9 Aralık 2026 · 21:00</dd>
-            </div>
-          </dl>
+          <GoldButton onClick={apply} className="mt-5">
+            Göreve talip ol
+          </GoldButton>
         </div>
-        <div className="grid grid-cols-4 gap-2 sm:gap-3" role="timer" aria-live="off">
-          {units.map((u, i) => (
-            <div
-              key={u.label}
-              className="flex min-w-[68px] flex-col items-center rounded-xl border border-neon/25 bg-[#06101c]/80 px-2 py-3 sm:min-w-[96px] sm:px-4 sm:py-4"
+        <ul className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+          {STAFF_ROLES.map((role) => (
+            <li
+              key={role.id}
+              className="flex items-center gap-3 rounded-xl border border-neon/20 bg-[#06101c]/80 px-3 py-3"
             >
-              <span
-                className={cn(
-                  'font-display text-3xl font-black tabular-nums sm:text-5xl',
-                  i % 2 === 0 ? 'text-neon text-glow-cyan' : 'text-gold text-glow-gold',
-                )}
-              >
-                {pad(u.value)}
-              </span>
-              <span className="mt-1 text-[10px] font-semibold tracking-widest text-muted-foreground uppercase sm:text-xs">
-                {u.label}
-              </span>
-            </div>
+              <StaffRoleBadge id={role.id} />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-foreground">{role.title}</p>
+                <p className="mt-0.5 text-xs font-medium text-gold">{openPositionsLabel(role.slots)}</p>
+              </div>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   )
@@ -353,7 +347,7 @@ function DiscordFeed() {
 export function OverviewView({ onNavigate }: { onNavigate: (t: TabId) => void }) {
   return (
     <div className="flex flex-col gap-6">
-      <HeroCountdown />
+      <StaffHiringHero onNavigate={onNavigate} />
       <PollAlert />
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">

@@ -149,11 +149,11 @@ export function Sidebar({
 
   return (
     <>
-      <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 border-r border-sidebar-border bg-sidebar/90 backdrop-blur lg:block">
+      <aside className="sticky top-11 hidden h-[calc(100dvh-2.75rem)] w-72 shrink-0 border-r border-sidebar-border bg-sidebar/90 backdrop-blur lg:block">
         <SidebarBody active={active} onSelect={onSelect} navigationLocked={navigationLocked} />
       </aside>
 
-      <div className={cn('fixed inset-0 z-50 lg:hidden', mobileOpen ? 'pointer-events-auto' : 'pointer-events-none')}>
+      <div className={cn('fixed inset-0 z-[60] lg:hidden', mobileOpen ? 'pointer-events-auto' : 'pointer-events-none')}>
         <div
           className={cn('absolute inset-0 bg-black/70 transition-opacity', mobileOpen ? 'opacity-100' : 'opacity-0')}
           onClick={onCloseMobile}
@@ -202,7 +202,7 @@ export function Header({
   mobileOpen: boolean 
 }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+    <header className="sticky top-11 z-40 border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 px-4 md:px-6">
         <button
           onClick={onOpenMobile}

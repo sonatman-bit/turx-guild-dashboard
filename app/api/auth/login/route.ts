@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { attachSessionCookie, createSessionToken } from '@/lib/auth-email'
 import { verifyPassword } from '@/lib/password'
 import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
-import { blobConfigured, loadGuildStore, publicAccount } from '@/lib/turx-store'
+import { blobConfigured, findStoredUser, loadGuildStore, publicAccount } from '@/lib/turx-store'
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     }
 
     const store = await loadGuildStore()
-    const found = store.users.find((item) => item.username.toLowerCase() === username.toLowerCase())
+    const found = findStoredUser(store, username)
     if (!found) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
     }

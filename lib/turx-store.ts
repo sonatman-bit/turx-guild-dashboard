@@ -105,3 +105,47 @@ export async function mutateGuildStore<T>(mutator: (store: GuildStore) => T | Pr
   await writeStore(store)
   return result
 }
+
+function isHex(value: string, length: number) {
+  return value.length === length && /^[a-f0-9]+$/i.test(value)
+}
+
+export function findStoredUser(store: GuildStore, usernameOrEmail: string) {
+  const key = usernameOrEmail.trim().toLowerCase()
+  return store.users.find(
+    (item) => item.username.toLowerCase() === key || item.email.toLowerCase() === key,
+  )
+}
+
+export type ImportableAccount = {
+  username?: string
+  email?: string
+  salt?: string
+  passwordHash?: string
+  profile?: Record<string, unknown> | null
+  characters?: unknown[]
+  staffInterests?: string[]
+}
+
+export function upsertMissingAccount(store: GuildStore, incoming: ImportableAccount) {
+  const username = (incoming.username || '').trim()
+  const email = (incoming.email || '').trim().toLowerCase()
+  const salt = (incoming.salt || '').trim()
+  const passwordHash = (incoming.passwordHash || '').trim()
+  if (!username || !email || !isHex(salt, 32) || !isHex(passwordHash, 64)) return 'invalid'
+  const exists = store.users.some(
+    (item) => item.username.toLowerCase() === username.toLowerCase() || item.email.toLowerCase() === email,
+  )
+  if (exists) return 'exists'
+  store.users.push({
+    username,
+    email,
+    role: roleForEmail(email),
+    salt,
+    passwordHash,
+    profile: incoming.profile || null,
+    characters: Array.isArray(incoming.characters) ? incoming.characters : [],
+    staffInterests: Array.isArray(incoming.staffInterests) ? incoming.staffInterests : [],
+  })
+  return 'added'
+}

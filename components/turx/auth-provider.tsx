@@ -3,7 +3,14 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
 import { User, Pencil } from 'lucide-react'
 import { authHeaders, getSessionToken, setSessionToken } from '@/lib/client-session'
-import { isOnboardingComplete, saveOnboardingSnapshot, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
+import {
+  isOnboardingComplete,
+  loadOnboardingCharacters,
+  loadOnboardingProfile,
+  saveOnboardingSnapshot,
+  type OnboardingCharacter,
+  type OnboardingProfile,
+} from '@/lib/profile-gate'
 import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt, verifyPassword } from '@/lib/password'
 import { isGuildMasterEmail, wipeLegacyTurxData, type GuildRank } from '@/lib/turx-identity'
 import { GoldButton, GhostButton, Modal, Field, inputClass } from './ui'
@@ -11,7 +18,7 @@ import { useToast } from './toast'
 
 export type { GuildRank }
 type AuthStep = 'form' | 'verify' | 'forgot' | 'reset'
-type LoginResult = 'ok' | 'not_found' | 'bad_password' | 'store_down'
+type LoginResult = 'ok' | 'not_found' | 'bad_password' | 'store_down' | 'server_error'
 
 interface UserAccount {
   username: string
@@ -41,6 +48,25 @@ function roleForEmail(email: string): GuildRank {
 
 function publicUser(account: StoredAccount): UserAccount {
   return { username: account.username, email: account.email, role: roleForEmail(account.email) }
+}
+
+async function pushLocalAccountsToServer() {
+  if (typeof window === 'undefined') return
+  const accounts = getRegisteredUsers().map((account) => ({
+    username: account.username,
+    email: account.email,
+    salt: account.salt,
+    passwordHash: account.passwordHash,
+    profile: loadOnboardingProfile(account.username),
+    characters: loadOnboardingCharacters(account.username),
+  }))
+  if (accounts.length === 0) return
+  await fetch('/api/auth/sync-local', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accounts }),
+  }).catch(() => undefined)
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -111,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = getSessionToken()
     if (token) setSessionToken(token)
+    void pushLocalAccountsToServer()
   }, [])
 
   useEffect(() => {
@@ -150,46 +177,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.username])
 
+  const applyServerSession = async (response: Response) => {
+    const data = (await response.json()) as {
+      user: UserAccount
+      token?: string
+      profileComplete?: boolean
+      profile?: OnboardingProfile | null
+      characters?: OnboardingCharacter[]
+    }
+    if (data.token) setSessionToken(data.token)
+    if (data.profile || data.characters) {
+      saveOnboardingSnapshot(data.user.username, data.profile || {}, data.characters || [])
+    }
+    setUser(data.user)
+    setProfileComplete(Boolean(data.profileComplete))
+    return 'ok' as const
+  }
+
+  const serverLogin = (name: string, pass: string) =>
+    fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: name, password: pass }),
+    })
+
   const login = async (username: string, password: string): Promise<LoginResult> => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-      if (response.ok) {
-        const data = (await response.json()) as {
-          user: UserAccount
-          token?: string
-          profileComplete?: boolean
-          profile?: OnboardingProfile | null
-          characters?: OnboardingCharacter[]
-        }
-        if (data.token) setSessionToken(data.token)
-        if (data.profile || data.characters) {
-          saveOnboardingSnapshot(data.user.username, data.profile || {}, data.characters || [])
-        }
-        setUser(data.user)
-        setProfileComplete(Boolean(data.profileComplete))
-        return 'ok'
-      }
+      let response = await serverLogin(username, password)
+      if (response.ok) return applyServerSession(response)
       if (response.status === 401) return 'bad_password'
       if (response.status === 503) return 'store_down'
-      if (response.status !== 404) return 'not_found'
-    } catch {
-      // Fall through to this browser's local cache.
-    }
 
-    const users = getRegisteredUsers()
-    const found = users.find((item) => item.username.toLowerCase() === username.toLowerCase())
-    if (!found) return 'not_found'
-    if (!found.salt || !found.passwordHash) return 'bad_password'
-    const matches = await verifyPassword(password, found.salt, found.passwordHash)
-    if (!matches) return 'bad_password'
-    const nextUser = publicUser(found)
-    setUser(nextUser)
-    setProfileComplete(isOnboardingComplete(nextUser.username))
-    return 'ok'
+      if (response.status === 404) {
+        const found = getRegisteredUsers().find(
+          (item) =>
+            item.username.toLowerCase() === username.toLowerCase() ||
+            item.email.toLowerCase() === username.toLowerCase(),
+        )
+        if (found?.salt && found.passwordHash && (await verifyPassword(password, found.salt, found.passwordHash))) {
+          await fetch('/api/auth/register', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: found.username, email: found.email, password }),
+          }).catch(() => undefined)
+        }
+        await pushLocalAccountsToServer()
+        response = await serverLogin(found?.username || username, password)
+        if (response.ok) return applyServerSession(response)
+        if (response.status === 401) return 'bad_password'
+        if (response.status === 404) return 'not_found'
+      }
+
+      return 'server_error'
+    } catch {
+      return 'server_error'
+    }
   }
 
   const logout = () => {
@@ -223,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     saveRegisteredUser(stored)
+    await pushLocalAccountsToServer()
     if (response.ok) {
       const data = (await response.json()) as { user?: UserAccount; token?: string }
       if (data.token) setSessionToken(data.token)
@@ -403,8 +448,18 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
         })
         return
       }
+      if (result === 'server_error') {
+        toast({
+          title: 'Giriş şu an yapılamıyor',
+          description: 'Sunucu hesabı doğrulayamadı. Biraz sonra tekrar dene; tarayıcı kaydı tek başına yeterli değil.',
+        })
+        return
+      }
       if (result === 'not_found') {
-        toast({ title: 'Giriş Hatası', description: 'Bu kullanıcı adı kayıtlı değil. Önce kayıt ol.' })
+        toast({
+          title: 'Giriş Hatası',
+          description: 'Bu kullanıcı adı sunucuda kayıtlı değil. İlk tarayıcıda bir kez giriş yapınca hesap taşınır.',
+        })
         return
       }
       if (result === 'bad_password') {

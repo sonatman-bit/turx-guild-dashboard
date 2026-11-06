@@ -173,8 +173,8 @@ function MainRoleBreakdown({ mains }: { mains: RosterMemberRow[] }) {
       {total === 0 ? (
         <p className="text-sm text-muted-foreground">Main karakter kaydı gelince Tank / Healer / DPS oranı burada durur.</p>
       ) : (
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-          <div className="min-w-0 flex-1">
+        <div className="flex flex-col gap-4">
+          <div className="min-w-0">
             <div
               className="flex h-5 overflow-hidden rounded-full bg-muted"
               role="img"
@@ -193,7 +193,7 @@ function MainRoleBreakdown({ mains }: { mains: RosterMemberRow[] }) {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">Melee ve Ranged DPS olarak birleşir. Sadece Main karakterler sayılır.</p>
           </div>
-          <ul className="grid grid-cols-3 gap-2 lg:w-[28rem] lg:shrink-0">
+          <ul className="grid grid-cols-3 gap-2">
             {roles.map((role) => {
               const Icon = role.icon
               const percent = Math.round((role.count / total) * 100)

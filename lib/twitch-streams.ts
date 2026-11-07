@@ -287,6 +287,7 @@ export async function refreshLiveStreams() {
   }
 
   const twitchLinked = linked.filter((item) => item.platform === 'twitch')
+  let twitchFailed = false
   if (twitchConfigured() && twitchLinked.length > 0) {
     try {
       const helix = await helixLiveStreams([...new Set(twitchLinked.map((item) => item.login))])
@@ -308,6 +309,7 @@ export async function refreshLiveStreams() {
         })
       }
     } catch (err) {
+      twitchFailed = true
       console.error('twitch radar', err)
     }
   }
@@ -361,7 +363,9 @@ export async function refreshLiveStreams() {
   )
 
   const channels = sortRadar([...cards.values()])
-  radarCache = { at: Date.now(), channels }
+  if (!twitchFailed) {
+    radarCache = { at: Date.now(), channels }
+  }
 
   {
     const notices = Array.isArray(store.streamNotices) ? store.streamNotices : []

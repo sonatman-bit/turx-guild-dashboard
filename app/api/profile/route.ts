@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
-import { normalizeTwitchLogin, oauthConfigured, publicLinks } from '@/lib/account-links'
+import {
+  normalizeKickSlug,
+  normalizeTwitchLogin,
+  normalizeYoutubeHandle,
+  oauthConfigured,
+  publicLinks,
+} from '@/lib/account-links'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
 import { sanitizeStaffInterests } from '@/lib/staff-roles'
@@ -25,6 +31,8 @@ export async function GET(request: Request) {
     const storedBnet = typeof stored.bnetId === 'string' ? stored.bnetId : ''
     const storedTwitch = typeof stored.twitchLogin === 'string' ? stored.twitchLogin : ''
     const twitchLogin = links.twitch.login || storedTwitch
+    const kickLogin = typeof stored.kickLogin === 'string' ? stored.kickLogin : ''
+    const youtubeHandle = typeof stored.youtubeHandle === 'string' ? stored.youtubeHandle : ''
     const profile = {
       ...stored,
       discordConnected: links.discord.connected,
@@ -34,6 +42,8 @@ export async function GET(request: Request) {
       twitchConnected: Boolean(twitchLogin),
       twitchLogin,
       twitchDisplayName: links.twitch.displayName || twitchLogin,
+      kickLogin,
+      youtubeHandle,
     } as unknown as OnboardingProfile
     const characters = (found.characters || []) as OnboardingCharacter[]
     return json({
@@ -76,6 +86,8 @@ export async function PUT(request: Request) {
       profile.twitchLogin = twitchLogin
       profile.twitchDisplayName = links.twitch.displayName || twitchLogin
       profile.twitchConnected = Boolean(twitchLogin)
+      profile.kickLogin = normalizeKickSlug(String(profile.kickLogin || ''))
+      profile.youtubeHandle = normalizeYoutubeHandle(String(profile.youtubeHandle || ''))
       const profileComplete = hasRequiredOnboarding(profile as OnboardingProfile, characters)
       found.profile = profile
       found.characters = characters

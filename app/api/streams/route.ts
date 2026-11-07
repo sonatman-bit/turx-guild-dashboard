@@ -6,13 +6,14 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const live = await refreshLiveStreams()
+    const channels = await refreshLiveStreams()
+    const live = channels.filter((item) => item.live)
     return NextResponse.json(
-      { live, twitchConfigured: oauthConfigured().twitch },
+      { channels, live, twitchConfigured: oauthConfigured().twitch },
       { headers: { 'Cache-Control': 'no-store' } },
     )
   } catch (err) {
     console.error('streams GET', err)
-    return NextResponse.json({ live: [], twitchConfigured: oauthConfigured().twitch }, { status: 200 })
+    return NextResponse.json({ channels: [], live: [], twitchConfigured: oauthConfigured().twitch }, { status: 200 })
   }
 }

@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { authHeaders, getSessionToken } from '@/lib/client-session'
 import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
-import type { LiveStreamCard } from '@/lib/account-links'
+import type { StreamPlatform, StreamRadarCard } from '@/lib/account-links'
 import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
@@ -374,19 +374,27 @@ function NextRaid({ onNavigate }: { onNavigate: (t: TabId) => void }) {
   )
 }
 
+const PLATFORM_BADGE: Record<StreamPlatform, { label: string; className: string }> = {
+  twitch: { label: 'Twitch', className: 'border-[#9146ff]/50 bg-[#9146ff]/15 text-[#c4a5ff]' },
+  kick: { label: 'Kick', className: 'border-[#53fc18]/40 bg-[#53fc18]/10 text-[#9dff8a]' },
+  youtube: { label: 'YouTube', className: 'border-red-500/40 bg-red-500/10 text-red-300' },
+}
+
 function StreamRadar() {
-  const [live, setLive] = useState<LiveStreamCard[]>([])
+  const [channels, setChannels] = useState<StreamRadarCard[]>([])
 
   useEffect(() => {
     let cancelled = false
     const load = () => {
       fetch('/api/streams')
         .then(async (response) => {
-          const data = (await response.json().catch(() => ({}))) as { live?: LiveStreamCard[] }
-          if (!cancelled && Array.isArray(data.live)) setLive(data.live)
+          const data = (await response.json().catch(() => ({}))) as { channels?: StreamRadarCard[]; live?: StreamRadarCard[] }
+          if (cancelled) return
+          if (Array.isArray(data.channels)) setChannels(data.channels)
+          else if (Array.isArray(data.live)) setChannels(data.live)
         })
         .catch(() => {
-          if (!cancelled) setLive([])
+          if (!cancelled) setChannels([])
         })
     }
     load()
@@ -399,46 +407,73 @@ function StreamRadar() {
 
   return (
     <Panel>
-      <PanelTitle icon={Radio} action={<Badge className="border-[#9146ff]/50 bg-[#9146ff]/15 text-[#c4a5ff]">Twitch</Badge>}>
+      <PanelTitle
+        icon={Radio}
+        action={
+          <span className="flex gap-1">
+            <Badge className={PLATFORM_BADGE.twitch.className}>Twitch</Badge>
+            <Badge className={PLATFORM_BADGE.kick.className}>Kick</Badge>
+            <Badge className={PLATFORM_BADGE.youtube.className}>YouTube</Badge>
+          </span>
+        }
+      >
         Stream Radar
       </PanelTitle>
       <ul className="flex flex-col gap-2">
-        {live.length === 0 && (
+        {channels.length === 0 && (
           <li className="rounded-lg border border-border bg-[#071422] p-3 text-sm text-muted-foreground">
-            Aktif yayın yok. Profiline Twitch kanal adını yaz; yayın açınca burada Online görünür.
+            Kayıtlı kanal yok. Profiline Twitch, Kick veya YouTube kanal adını yaz.
           </li>
         )}
-        {live.map((stream) => (
-          <li key={stream.login} className="overflow-hidden rounded-lg border border-border bg-[#071422]">
-            <a href={stream.url} target="_blank" rel="noopener noreferrer" className="block">
-              {stream.thumbnailUrl ? (
-                <img
-                  src={stream.thumbnailUrl}
-                  alt={`${stream.streamer} yayın önizlemesi`}
-                  className="h-36 w-full object-cover"
-                />
-              ) : null}
-            </a>
-            <div className="flex items-center gap-3 p-3">
-              <span className="relative flex size-2.5 shrink-0">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-70" />
-                <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">
-                  <span className="text-foreground">{stream.username}</span>
-                  <span className="text-muted-foreground"> · </span>
-                  <a href={stream.url} target="_blank" rel="noopener noreferrer" className="text-[#c4a5ff] hover:underline">
-                    {stream.streamer}
-                  </a>
-                  <Badge className="ml-2 border-red-500/40 bg-red-500/15 text-red-300">Online</Badge>
-                </p>
-                <p className="truncate text-xs text-muted-foreground">{stream.title}</p>
+        {channels.map((stream) =>
+          stream.live ? (
+            <li key={`${stream.platform}-${stream.username}-${stream.login}`} className="overflow-hidden rounded-lg border border-border bg-[#071422]">
+              <a href={stream.url} target="_blank" rel="noopener noreferrer" className="block">
+                {stream.thumbnailUrl ? (
+                  <img
+                    src={stream.thumbnailUrl}
+                    alt={`${stream.streamer} yayın önizlemesi`}
+                    className="h-36 w-full object-cover"
+                  />
+                ) : null}
+              </a>
+              <div className="flex items-center gap-3 p-3">
+                <span className="relative flex size-2.5 shrink-0">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-70" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-emerald-400" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold">
+                    <span className="text-foreground">{stream.username}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    <a href={stream.url} target="_blank" rel="noopener noreferrer" className="text-[#c4a5ff] hover:underline">
+                      {stream.streamer}
+                    </a>
+                    <Badge className="ml-2 border-success/40 bg-success/15 text-success">Online</Badge>
+                    <Badge className={cn('ml-1', PLATFORM_BADGE[stream.platform].className)}>{PLATFORM_BADGE[stream.platform].label}</Badge>
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">{stream.title}</p>
+                </div>
+                <span className="text-xs text-silver tabular-nums">{stream.viewers.toLocaleString('tr-TR')} izleyici</span>
               </div>
-              <span className="text-xs text-silver tabular-nums">{stream.viewers.toLocaleString('tr-TR')} izleyici</span>
-            </div>
-          </li>
-        ))}
+            </li>
+          ) : (
+            <li
+              key={`${stream.platform}-${stream.username}-${stream.login}`}
+              className="flex items-center gap-2 rounded-md border border-border/60 bg-[#071422]/80 px-3 py-1.5 text-sm"
+            >
+              <span className="size-2 shrink-0 rounded-full bg-muted-foreground/50" />
+              <span className="min-w-0 truncate">
+                <span className="font-medium text-silver">{stream.username}</span>
+                <span className="text-muted-foreground"> · </span>
+                <a href={stream.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:underline">
+                  {stream.platform === 'youtube' && !stream.login.startsWith('UC') ? `@${stream.login}` : stream.login}
+                </a>
+              </span>
+              <Badge className="ml-auto shrink-0 border-border bg-transparent text-muted-foreground">Offline</Badge>
+            </li>
+          ),
+        )}
       </ul>
     </Panel>
   )

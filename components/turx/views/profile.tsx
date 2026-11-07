@@ -56,6 +56,8 @@ interface UserProfileData {
   twitchConnected: boolean
   twitchLogin: string
   twitchDisplayName: string
+  kickLogin: string
+  youtubeHandle: string
   availability: Record<string, { status: AvailabilityStatus; startTime: string; endTime: string }>
 }
 
@@ -157,6 +159,8 @@ function emptyProfile(email: string): UserProfileData {
     twitchConnected: false,
     twitchLogin: '',
     twitchDisplayName: '',
+    kickLogin: '',
+    youtubeHandle: '',
     availability: Object.fromEntries(
       DAYS_OF_WEEK.map((day) => [day.key, { status: 'none' as AvailabilityStatus, startTime: '21:00', endTime: '00:00' }]),
     ),
@@ -912,41 +916,78 @@ export function ProfileView() {
                 )}
               </div>
 
-              <div className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-background/50">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 shrink-0 rounded-xl bg-[#9146ff]/15 border border-[#9146ff]/40 flex items-center justify-center text-[#c4a5ff] font-bold">TW</div>
-                  <div className="min-w-0">
-                    <div className="font-bold text-sm text-silver">Twitch kanalı</div>
-                    <div className="text-xs text-muted-foreground">
-                      Kullanıcı veya kanal adını yaz. Yayın açınca ana sayfada Online + önizleme görünür.
+              {[
+                {
+                  key: 'twitch' as const,
+                  mark: 'TW',
+                  markClass: 'bg-[#9146ff]/15 border-[#9146ff]/40 text-[#c4a5ff]',
+                  title: 'Twitch kanalı',
+                  value: profile.twitchLogin,
+                  placeholder: 'waffle veya twitch.tv/waffle',
+                  onChange: (value: string) =>
+                    setProfile({ ...profile, twitchLogin: value, twitchConnected: Boolean(value.trim()) }),
+                  nextProfile: () => ({ ...profile, twitchConnected: Boolean(profile.twitchLogin.trim()) }),
+                },
+                {
+                  key: 'kick' as const,
+                  mark: 'KK',
+                  markClass: 'bg-[#53fc18]/10 border-[#53fc18]/40 text-[#9dff8a]',
+                  title: 'Kick kanalı',
+                  value: profile.kickLogin,
+                  placeholder: 'waffle veya kick.com/waffle',
+                  onChange: (value: string) => setProfile({ ...profile, kickLogin: value }),
+                  nextProfile: () => profile,
+                },
+                {
+                  key: 'youtube' as const,
+                  mark: 'YT',
+                  markClass: 'bg-red-500/10 border-red-500/40 text-red-300',
+                  title: 'YouTube kanalı',
+                  value: profile.youtubeHandle,
+                  placeholder: '@kanal veya youtube.com/@kanal',
+                  onChange: (value: string) => setProfile({ ...profile, youtubeHandle: value }),
+                  nextProfile: () => profile,
+                },
+              ].map((channel) => (
+                <div key={channel.key} className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-background/50">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('size-10 shrink-0 rounded-xl border flex items-center justify-center font-bold', channel.markClass)}>
+                      {channel.mark}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm text-silver">{channel.title}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Kullanıcı veya kanal adını yaz. Yayındayken ana sayfada Online + önizleme, değilse kısa Offline satırı görünür.
+                      </div>
                     </div>
                   </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={channel.value}
+                      onChange={(e) => channel.onChange(e.target.value)}
+                      className={inputClass}
+                      placeholder={channel.placeholder}
+                      autoComplete="off"
+                    />
+                    <GoldButton
+                      type="button"
+                      className="text-xs py-1.5 px-3 shrink-0"
+                      onClick={async () => {
+                        const filled = Boolean(channel.value.trim())
+                        const saved = await persistGate(channel.nextProfile(), characters)
+                        toast({
+                          title: filled ? `${channel.title} kaydedildi` : `${channel.title} temizlendi`,
+                          description: saved
+                            ? 'Kanal Stream Radar’da görünür. Yayın açınca Discord bildirimi gider.'
+                            : 'Kayıt alındı. Profil kilidi için diğer zorunlu alanlar da lazım.',
+                        })
+                      }}
+                    >
+                      Kaydet
+                    </GoldButton>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input
-                    value={profile.twitchLogin}
-                    onChange={(e) => setProfile({ ...profile, twitchLogin: e.target.value, twitchConnected: Boolean(e.target.value.trim()) })}
-                    className={inputClass}
-                    placeholder="waffle veya twitch.tv/waffle"
-                    autoComplete="off"
-                  />
-                  <GoldButton
-                    type="button"
-                    className="text-xs py-1.5 px-3 shrink-0"
-                    onClick={async () => {
-                      const saved = await persistGate({ ...profile, twitchConnected: Boolean(profile.twitchLogin.trim()) }, characters)
-                      toast({
-                        title: profile.twitchLogin.trim() ? 'Twitch kanalı kaydedildi' : 'Twitch kanalı temizlendi',
-                        description: saved
-                          ? 'Yayın açınca Stream Radar ve Discord bildirimi çalışır.'
-                          : 'Kayıt alındı. Profil kilidi için diğer zorunlu alanlar da lazım.',
-                      })
-                    }}
-                  >
-                    Kaydet
-                  </GoldButton>
-                </div>
-              </div>
+              ))}
             </div>
           </Panel>
 

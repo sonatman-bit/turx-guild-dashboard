@@ -14,8 +14,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const live = await refreshLiveStreams()
-    return NextResponse.json({ ok: true, live: live.length })
+    const channels = await refreshLiveStreams()
+    return NextResponse.json({ ok: true, live: channels.filter((item) => item.live).length, channels: channels.length })
   } catch (err) {
     console.error('cron streams', err)
     return NextResponse.json({ error: 'Yayınlar okunamadı.' }, { status: 500 })

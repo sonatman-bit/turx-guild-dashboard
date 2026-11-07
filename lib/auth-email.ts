@@ -156,12 +156,20 @@ export function readResetToken(token: string): { email: string } | null {
   }
 }
 
-export function appOrigin(request: Request) {
-  const configured = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://turxforever.com'
-  if (configured) return configured.replace(/\/$/, '')
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+function cleanOrigin(value: string) {
+  const trimmed = value.trim().replace(/^\[([^\]]+)\]\([^)]+\)$/, '$1').replace(/\/$/, '')
+  try {
+    return new URL(trimmed).origin
+  } catch {
+    return ''
   }
+}
+
+export function appOrigin(request: Request) {
+  const fromEnv = cleanOrigin(process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || '')
+  if (fromEnv) return fromEnv
+  const fromVercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+  if (fromVercel) return `https://${fromVercel.replace(/^https?:\/\//, '')}`
   return new URL(request.url).origin
 }
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { oauthConfigured, publicLinks } from '@/lib/account-links'
+import { normalizeTwitchLogin, oauthConfigured, publicLinks } from '@/lib/account-links'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
 import { sanitizeStaffInterests } from '@/lib/staff-roles'
@@ -23,15 +23,17 @@ export async function GET(request: Request) {
     const stored = (found.profile || {}) as Record<string, unknown>
     const storedTag = typeof stored.discordTag === 'string' ? stored.discordTag : ''
     const storedBnet = typeof stored.bnetId === 'string' ? stored.bnetId : ''
+    const storedTwitch = typeof stored.twitchLogin === 'string' ? stored.twitchLogin : ''
+    const twitchLogin = links.twitch.login || storedTwitch
     const profile = {
       ...stored,
       discordConnected: links.discord.connected,
       discordTag: links.discord.username || storedTag,
       bnetConnected: links.bnet.connected,
       bnetId: links.bnet.battletag || storedBnet,
-      twitchConnected: links.twitch.connected,
-      twitchLogin: links.twitch.login,
-      twitchDisplayName: links.twitch.displayName,
+      twitchConnected: Boolean(twitchLogin),
+      twitchLogin,
+      twitchDisplayName: links.twitch.displayName || twitchLogin,
     } as unknown as OnboardingProfile
     const characters = (found.characters || []) as OnboardingCharacter[]
     return json({
@@ -70,9 +72,10 @@ export async function PUT(request: Request) {
       profile.discordTag = links.discord.username || profile.discordTag || ''
       profile.bnetConnected = links.bnet.connected
       if (links.bnet.battletag) profile.bnetId = links.bnet.battletag
-      profile.twitchConnected = links.twitch.connected
-      profile.twitchLogin = links.twitch.login
-      profile.twitchDisplayName = links.twitch.displayName
+      const twitchLogin = links.twitch.login || normalizeTwitchLogin(String(profile.twitchLogin || ''))
+      profile.twitchLogin = twitchLogin
+      profile.twitchDisplayName = links.twitch.displayName || twitchLogin
+      profile.twitchConnected = Boolean(twitchLogin)
       const profileComplete = hasRequiredOnboarding(profile as OnboardingProfile, characters)
       found.profile = profile
       found.characters = characters

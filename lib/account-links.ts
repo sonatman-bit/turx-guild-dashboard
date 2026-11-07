@@ -37,6 +37,17 @@ export type LiveStreamCard = {
   title: string
   viewers: number
   url: string
+  thumbnailUrl: string | null
+}
+
+export function normalizeTwitchLogin(value: string) {
+  let login = value.trim().toLowerCase()
+  login = login.replace(/^https?:\/\//, '')
+  login = login.replace(/^(www\.)?twitch\.tv\//, '')
+  login = login.replace(/^@/, '')
+  login = login.split(/[/?#]/)[0] || ''
+  login = login.replace(/[^a-z0-9_]/g, '')
+  return login.slice(0, 25)
 }
 
 export function isOauthProvider(value: string | undefined): value is OauthProvider {

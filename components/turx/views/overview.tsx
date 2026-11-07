@@ -405,27 +405,38 @@ function StreamRadar() {
       <ul className="flex flex-col gap-2">
         {live.length === 0 && (
           <li className="rounded-lg border border-border bg-[#071422] p-3 text-sm text-muted-foreground">
-            Aktif yayın yok. Profilinden Twitch bağla; yayın açınca burada Online görünür.
+            Aktif yayın yok. Profiline Twitch kanal adını yaz; yayın açınca burada Online görünür.
           </li>
         )}
         {live.map((stream) => (
-          <li key={stream.login} className="flex items-center gap-3 rounded-lg border border-border bg-[#071422] p-3">
-            <span className="relative flex size-2.5 shrink-0">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-70" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold">
-                <span className="text-foreground">{stream.username}</span>
-                <span className="text-muted-foreground"> · </span>
-                <a href={stream.url} target="_blank" rel="noopener noreferrer" className="text-[#c4a5ff] hover:underline">
-                  {stream.streamer}
-                </a>
-                <Badge className="ml-2 border-red-500/40 bg-red-500/15 text-red-300">Online</Badge>
-              </p>
-              <p className="truncate text-xs text-muted-foreground">{stream.title}</p>
+          <li key={stream.login} className="overflow-hidden rounded-lg border border-border bg-[#071422]">
+            <a href={stream.url} target="_blank" rel="noopener noreferrer" className="block">
+              {stream.thumbnailUrl ? (
+                <img
+                  src={stream.thumbnailUrl}
+                  alt={`${stream.streamer} yayın önizlemesi`}
+                  className="h-36 w-full object-cover"
+                />
+              ) : null}
+            </a>
+            <div className="flex items-center gap-3 p-3">
+              <span className="relative flex size-2.5 shrink-0">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-70" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">
+                  <span className="text-foreground">{stream.username}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  <a href={stream.url} target="_blank" rel="noopener noreferrer" className="text-[#c4a5ff] hover:underline">
+                    {stream.streamer}
+                  </a>
+                  <Badge className="ml-2 border-red-500/40 bg-red-500/15 text-red-300">Online</Badge>
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{stream.title}</p>
+              </div>
+              <span className="text-xs text-silver tabular-nums">{stream.viewers.toLocaleString('tr-TR')} izleyici</span>
             </div>
-            <span className="text-xs text-silver tabular-nums">{stream.viewers.toLocaleString('tr-TR')} izleyici</span>
           </li>
         ))}
       </ul>

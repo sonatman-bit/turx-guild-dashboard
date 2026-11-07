@@ -1,4 +1,4 @@
-import type { LiveStreamCard, StreamNotice } from '@/lib/account-links'
+import { normalizeTwitchLogin, type LiveStreamCard, type StreamNotice } from '@/lib/account-links'
 import { loadGuildStore, mutateGuildStore } from '@/lib/turx-store'
 
 type HelixStream = {
@@ -8,6 +8,7 @@ type HelixStream = {
   user_name?: string
   title?: string
   viewer_count?: number
+  thumbnail_url?: string
 }
 
 let appToken: { value: string; expires: number } | null = null
@@ -47,14 +48,19 @@ async function twitchAppToken() {
   return appToken.value
 }
 
-async function helixLiveStreams(userIds: string[]) {
-  if (userIds.length === 0) return [] as HelixStream[]
+function previewUrl(template: string | undefined) {
+  if (!template) return null
+  return template.replace('{width}', '440').replace('{height}', '248')
+}
+
+async function helixLiveStreams(logins: string[]) {
+  if (logins.length === 0) return [] as HelixStream[]
   const token = await twitchAppToken()
   const live: HelixStream[] = []
-  for (let index = 0; index < userIds.length; index += 100) {
-    const batch = userIds.slice(index, index + 100)
+  for (let index = 0; index < logins.length; index += 100) {
+    const batch = logins.slice(index, index + 100)
     const url = new URL('https://api.twitch.tv/helix/streams')
-    for (const id of batch) url.searchParams.append('user_id', id)
+    for (const login of batch) url.searchParams.append('user_login', login)
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -86,6 +92,7 @@ async function notifyDiscord(card: LiveStreamCard) {
             { name: 'Yayın başlığı', value: card.title || 'Başlıksız', inline: false },
             { name: 'Twitch', value: card.url, inline: false },
           ],
+          image: card.thumbnailUrl ? { url: card.thumbnailUrl } : undefined,
           footer: { text: 'TURX Stream Radar' },
           timestamp: new Date().toISOString(),
         },
@@ -106,23 +113,28 @@ export async function refreshLiveStreams() {
 
   const store = await loadGuildStore()
   const linked = store.users.flatMap((account) => {
-    const twitch = account.links?.twitch
-    if (!twitch?.id) return []
-    return [{ username: account.username, twitch }]
+    const profile = (account.profile || {}) as Record<string, unknown>
+    const login = normalizeTwitchLogin(
+      account.links?.twitch?.login || (typeof profile.twitchLogin === 'string' ? profile.twitchLogin : ''),
+    )
+    if (!login) return []
+    return [{ username: account.username, login }]
   })
-  const helix = await helixLiveStreams(linked.map((item) => item.twitch.id))
-  const byTwitchId = new Map(linked.map((item) => [item.twitch.id, item]))
+  const helix = await helixLiveStreams(linked.map((item) => item.login))
+  const byLogin = new Map(linked.map((item) => [item.login, item]))
   const live: LiveStreamCard[] = helix.flatMap((stream) => {
-    const member = stream.user_id ? byTwitchId.get(stream.user_id) : undefined
-    if (!member || !stream.user_login) return []
+    const login = stream.user_login?.toLowerCase()
+    const member = login ? byLogin.get(login) : undefined
+    if (!member || !login) return []
     return [
       {
         username: member.username,
-        streamer: stream.user_name || member.twitch.displayName,
-        login: stream.user_login,
+        streamer: stream.user_name || login,
+        login,
         title: (stream.title || '').trim() || 'WoW: Forever',
         viewers: typeof stream.viewer_count === 'number' ? stream.viewer_count : 0,
-        url: `https://www.twitch.tv/${stream.user_login}`,
+        url: `https://www.twitch.tv/${login}`,
+        thumbnailUrl: previewUrl(stream.thumbnail_url),
       },
     ]
   })
@@ -134,14 +146,14 @@ export async function refreshLiveStreams() {
     const fresh: StreamNotice[] = []
     for (const stream of helix) {
       if (!stream.user_id || !stream.id) continue
-      const member = byTwitchId.get(stream.user_id)
+      const member = stream.user_login ? byLogin.get(stream.user_login.toLowerCase()) : undefined
       if (!member) continue
       const already = notices.find((item) => item.twitchUserId === stream.user_id && item.streamId === stream.id)
       if (already) {
         fresh.push(already)
         continue
       }
-      const card = live.find((item) => item.login === stream.user_login)
+      const card = live.find((item) => item.login === stream.user_login?.toLowerCase())
       if (card) await notifyDiscord(card)
       fresh.push({
         twitchUserId: stream.user_id,

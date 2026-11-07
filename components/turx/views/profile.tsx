@@ -912,36 +912,41 @@ export function ProfileView() {
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
-                <div className="flex min-w-0 items-center gap-3">
+              <div className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-background/50">
+                <div className="flex items-center gap-3">
                   <div className="size-10 shrink-0 rounded-xl bg-[#9146ff]/15 border border-[#9146ff]/40 flex items-center justify-center text-[#c4a5ff] font-bold">TW</div>
                   <div className="min-w-0">
-                    <div className="font-bold text-sm text-silver">Twitch Hesabı</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {profile.twitchConnected
-                        ? `${profile.twitchDisplayName || profile.twitchLogin} · yayın açınca Stream Radar’da görünür`
-                        : 'Yayın bildirimi için Twitch bağla'}
+                    <div className="font-bold text-sm text-silver">Twitch kanalı</div>
+                    <div className="text-xs text-muted-foreground">
+                      Kullanıcı veya kanal adını yaz. Yayın açınca ana sayfada Online + önizleme görünür.
                     </div>
                   </div>
                 </div>
-                {profile.twitchConnected ? (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
-                    <GhostButton type="button" className="text-xs py-1.5 px-3" onClick={() => disconnectOauth('twitch')}>
-                      Kaldır
-                    </GhostButton>
-                  </div>
-                ) : (
-                  <GoldButton type="button" onClick={() => startOauth('twitch')} className="text-xs py-1.5 px-3 shrink-0">
-                    + Hesap Bağla
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <input
+                    value={profile.twitchLogin}
+                    onChange={(e) => setProfile({ ...profile, twitchLogin: e.target.value, twitchConnected: Boolean(e.target.value.trim()) })}
+                    className={inputClass}
+                    placeholder="waffle veya twitch.tv/waffle"
+                    autoComplete="off"
+                  />
+                  <GoldButton
+                    type="button"
+                    className="text-xs py-1.5 px-3 shrink-0"
+                    onClick={async () => {
+                      const saved = await persistGate({ ...profile, twitchConnected: Boolean(profile.twitchLogin.trim()) }, characters)
+                      toast({
+                        title: profile.twitchLogin.trim() ? 'Twitch kanalı kaydedildi' : 'Twitch kanalı temizlendi',
+                        description: saved
+                          ? 'Yayın açınca Stream Radar ve Discord bildirimi çalışır.'
+                          : 'Kayıt alındı. Profil kilidi için diğer zorunlu alanlar da lazım.',
+                      })
+                    }}
+                  >
+                    Kaydet
                   </GoldButton>
-                )}
+                </div>
               </div>
-              {!oauthReady.discord && !oauthReady.bnet && !oauthReady.twitch ? (
-                <p className="text-xs text-muted-foreground">
-                  Bağla butonları, yönetici Discord / Battle.net / Twitch istemci anahtarlarını ekledikten sonra yönlendirme yapar.
-                </p>
-              ) : null}
             </div>
           </Panel>
 

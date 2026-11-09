@@ -33,6 +33,7 @@ export type StreamNotice = {
   streamId: string
   notifiedAt: string
   sent?: boolean
+  version?: number
 }
 
 export type StreamRadarCard = {

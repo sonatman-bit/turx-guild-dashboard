@@ -285,7 +285,7 @@ export async function announceNewStreams(channels: StreamRadarCard[]) {
     const already = notices.find(
       (item) => (item.channelKey === channelKey || item.twitchUserId === card.login) && item.streamId === streamId,
     )
-    if (already?.sent) {
+    if (already?.sent && already.version === 2) {
       fresh.push(already)
       continue
     }
@@ -296,6 +296,7 @@ export async function announceNewStreams(channels: StreamRadarCard[]) {
       streamId,
       notifiedAt: new Date().toISOString(),
       sent,
+      version: 2,
     })
   }
   const changed =

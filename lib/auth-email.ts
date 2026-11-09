@@ -165,12 +165,16 @@ function cleanOrigin(value: string) {
   }
 }
 
-export function appOrigin(request: Request) {
+export function configuredAppOrigin() {
   const fromEnv = cleanOrigin(process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || '')
   if (fromEnv) return fromEnv
   const fromVercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
   if (fromVercel) return `https://${fromVercel.replace(/^https?:\/\//, '')}`
-  return new URL(request.url).origin
+  return 'https://turxforever.com'
+}
+
+export function appOrigin(request: Request) {
+  return configuredAppOrigin() || new URL(request.url).origin
 }
 
 export function resetLinkFor(request: Request, token: string) {

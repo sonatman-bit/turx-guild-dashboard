@@ -7,6 +7,7 @@ import {
   type StreamPlatform,
   type StreamRadarCard,
 } from '@/lib/account-links'
+import { ensureTwitchOnlineSubscriptions } from '@/lib/twitch-eventsub'
 import { loadGuildStore, mutateGuildStore } from '@/lib/turx-store'
 
 type HelixStream = {
@@ -129,6 +130,22 @@ async function twitchAppToken() {
   return appToken.value
 }
 
+async function helixUserIds(token: string, logins: string[]) {
+  if (logins.length === 0) return [] as string[]
+  const url = new URL('https://api.twitch.tv/helix/users')
+  for (const login of logins) url.searchParams.append('login', login)
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Client-Id': process.env.TWITCH_CLIENT_ID!.trim(),
+    },
+    signal: AbortSignal.timeout(8000),
+  })
+  const body = (await response.json()) as { data?: Array<{ id?: string }> }
+  if (!response.ok) throw new Error(`twitch_users_${response.status}`)
+  return (body.data || []).flatMap((item) => (item.id ? [item.id] : []))
+}
+
 async function helixLiveStreams(logins: string[]) {
   if (logins.length === 0) return [] as HelixStream[]
   const token = await twitchAppToken()
@@ -205,35 +222,96 @@ async function youtubeLive(handle: string) {
   }
 }
 
-async function notifyDiscord(card: StreamRadarCard) {
-  const webhook = streamWebhookUrl()
-  if (!webhook) return
+function discordPayload(card: StreamRadarCard, includeImage: boolean) {
   const platformLabel = card.platform === 'twitch' ? 'Twitch' : card.platform === 'kick' ? 'Kick' : 'YouTube'
-  const response = await fetch(webhook, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      embeds: [
-        {
-          title: '🟢 TURX yayını başladı',
-          color: card.platform === 'youtube' ? 0xff0000 : card.platform === 'kick' ? 0x53fc18 : 0x9146ff,
-          fields: [
-            { name: 'Site kullanıcı adı', value: card.username, inline: true },
-            { name: 'Yayıncı adı', value: card.streamer, inline: true },
-            { name: 'Platform', value: platformLabel, inline: true },
-            { name: 'Yayın başlığı', value: card.title || 'Başlıksız', inline: false },
-            { name: platformLabel, value: card.url, inline: false },
-          ],
-          image: card.thumbnailUrl ? { url: card.thumbnailUrl } : undefined,
-          footer: { text: 'TURX Stream Radar' },
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(8000),
-  })
+  return {
+    embeds: [
+      {
+        title: '🟢 TURX yayını başladı',
+        color: card.platform === 'youtube' ? 0xff0000 : card.platform === 'kick' ? 0x53fc18 : 0x9146ff,
+        fields: [
+          { name: 'Site kullanıcı adı', value: card.username.slice(0, 256) || '—', inline: true },
+          { name: 'Yayıncı adı', value: card.streamer.slice(0, 256) || card.login, inline: true },
+          { name: 'Platform', value: platformLabel, inline: true },
+          { name: 'Yayın başlığı', value: (card.title || 'Başlıksız').slice(0, 1024), inline: false },
+          { name: platformLabel, value: card.url, inline: false },
+        ],
+        image: includeImage && card.thumbnailUrl ? { url: card.thumbnailUrl } : undefined,
+        footer: { text: 'TURX Stream Radar' },
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  }
+}
+
+export async function notifyDiscord(card: StreamRadarCard) {
+  const webhook = streamWebhookUrl()
+  if (!webhook) {
+    console.error('stream discord webhook missing DISCORD_STREAM_WEBHOOK_URL')
+    return false
+  }
+  const post = async (includeImage: boolean) =>
+    fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(discordPayload(card, includeImage)),
+      signal: AbortSignal.timeout(8000),
+    })
+  let response = await post(true)
+  if (!response.ok && card.thumbnailUrl) {
+    const detail = await response.text().catch(() => '')
+    console.error('stream discord webhook', response.status, detail)
+    response = await post(false)
+  }
   if (!response.ok) {
     console.error('stream discord webhook', response.status, await response.text().catch(() => ''))
+    return false
+  }
+  return true
+}
+
+function noticeKey(notice: StreamNotice) {
+  return notice.channelKey || (notice.twitchUserId ? `twitch:${notice.twitchUserId}` : '')
+}
+
+export async function announceNewStreams(channels: StreamRadarCard[]) {
+  const liveCards = channels.filter((item) => item.live && item.streamId)
+  const store = await loadGuildStore()
+  const notices = Array.isArray(store.streamNotices) ? store.streamNotices : []
+  const fresh: StreamNotice[] = []
+  for (const card of liveCards) {
+    const streamId = card.streamId!
+    const channelKey = `${card.platform}:${card.login}`
+    const already = notices.find(
+      (item) => (item.channelKey === channelKey || item.twitchUserId === card.login) && item.streamId === streamId,
+    )
+    if (already?.sent) {
+      fresh.push(already)
+      continue
+    }
+    const sent = await notifyDiscord(card)
+    fresh.push({
+      platform: card.platform,
+      channelKey,
+      streamId,
+      notifiedAt: new Date().toISOString(),
+      sent,
+    })
+  }
+  const changed =
+    fresh.length !== notices.length ||
+    fresh.some((item, index) => {
+      const prev = notices[index]
+      return (
+        item.streamId !== prev?.streamId ||
+        noticeKey(item) !== noticeKey(prev || { streamId: '', notifiedAt: '' }) ||
+        Boolean(item.sent) !== Boolean(prev?.sent)
+      )
+    })
+  if (changed) {
+    await mutateGuildStore((next) => {
+      next.streamNotices = fresh
+    })
   }
 }
 
@@ -276,6 +354,7 @@ function collectChannels(store: Awaited<ReturnType<typeof loadGuildStore>>) {
 
 export async function refreshLiveStreams() {
   if (radarCache && radarCache.at + LIVE_CACHE_MS > Date.now()) {
+    await announceNewStreams(radarCache.channels)
     return radarCache.channels
   }
 
@@ -367,40 +446,15 @@ export async function refreshLiveStreams() {
     radarCache = { at: Date.now(), channels }
   }
 
-  {
-    const notices = Array.isArray(store.streamNotices) ? store.streamNotices : []
-    const liveCards = channels.filter((item) => item.live)
-    const fresh: StreamNotice[] = []
-    for (const card of liveCards) {
-      const streamId = card.streamId || `${card.platform}:${card.login}`
-      const channelKey = `${card.platform}:${card.login}`
-      const already = notices.find(
-        (item) =>
-          (item.channelKey === channelKey || item.twitchUserId === card.login) && item.streamId === streamId,
-      )
-      if (already) {
-        fresh.push(already)
-        continue
-      }
-      await notifyDiscord(card)
-      fresh.push({
-        platform: card.platform,
-        channelKey,
-        streamId,
-        notifiedAt: new Date().toISOString(),
-      })
-    }
-    const changed =
-      fresh.length !== notices.length ||
-      fresh.some(
-        (item, index) =>
-          item.streamId !== notices[index]?.streamId ||
-          (item.channelKey || item.twitchUserId) !== (notices[index]?.channelKey || notices[index]?.twitchUserId),
-      )
-    if (changed) {
-      await mutateGuildStore((next) => {
-        next.streamNotices = fresh
-      })
+  await announceNewStreams(channels)
+
+  if (twitchConfigured() && twitchLinked.length > 0) {
+    try {
+      const token = await twitchAppToken()
+      const ids = await helixUserIds(token, [...new Set(twitchLinked.map((item) => item.login))])
+      await ensureTwitchOnlineSubscriptions(token, process.env.TWITCH_CLIENT_ID!.trim(), ids)
+    } catch (err) {
+      console.error('eventsub ensure', err)
     }
   }
 

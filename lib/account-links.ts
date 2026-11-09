@@ -32,6 +32,7 @@ export type StreamNotice = {
   twitchUserId?: string
   streamId: string
   notifiedAt: string
+  sent?: boolean
 }
 
 export type StreamRadarCard = {

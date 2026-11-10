@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { CLASS_COLORS, raceChoicesForClass, racesForClass, type AllianceRace, type WowClass } from '@/lib/guild-data'
+import { ACTIVE_POLL, CLASS_COLORS, raceChoicesForClass, racesForClass, type AllianceRace, type WowClass } from '@/lib/guild-data'
 import { authHeaders } from '@/lib/client-session'
 import {
   commitOnboardingStatus,
@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils'
 import { StaffRoleBadge } from '../staff-role-icons'
 import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
-import { Badge, GhostButton, GoldButton, Panel, SectionHeader, inputClass } from '../ui'
-import { Plus, Trash2, Shield, Calendar, Link2, CheckCircle2, Edit3, Wrench, Clock, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor, Lock } from 'lucide-react'
+import { Badge, GhostButton, GoldButton, Modal, Panel, SectionHeader, inputClass } from '../ui'
+import { Plus, Trash2, Shield, Calendar, Link2, CheckCircle2, Edit3, Wrench, Clock, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor, Lock, Vote } from 'lucide-react'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 type AvailabilityStatus = 'none' | 'available' | 'maybe' | 'busy'
@@ -50,6 +50,7 @@ interface UserProfileData {
   phoneCountry: string
   phoneNumber: string
   selectedAvatar: string
+  showRealNameInRoster: boolean
   discordConnected: boolean
   discordTag: string
   bnetConnected: boolean
@@ -153,6 +154,7 @@ function emptyProfile(email: string): UserProfileData {
     phoneCountry: '+90',
     phoneNumber: '',
     selectedAvatar: 'Druid',
+    showRealNameInRoster: true,
     discordConnected: false,
     discordTag: '',
     bnetConnected: false,
@@ -167,6 +169,183 @@ function emptyProfile(email: string): UserProfileData {
   }
 }
 
+type PollState = {
+  pollId?: string
+  question: string
+  endsIn: string
+  total: number
+  myVote: string | null
+  options: { id: string; label: string; votes: number }[]
+}
+
+function ProfilePollSection() {
+  const { user } = useAuth()
+  const toast = useToast()
+  const [choice, setChoice] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [poll, setPoll] = useState<PollState>({
+    question: ACTIVE_POLL.question,
+    endsIn: ACTIVE_POLL.endsIn,
+    total: 0,
+    myVote: null,
+    options: ACTIVE_POLL.options.map((option) => ({ ...option, votes: 0 })),
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/poll', { credentials: 'same-origin', headers: authHeaders() })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as Partial<PollState>
+        if (!response.ok || cancelled || !Array.isArray(data.options)) return
+        setPoll({
+          pollId: data.pollId || ACTIVE_POLL.id,
+          question: data.question || ACTIVE_POLL.question,
+          endsIn: data.endsIn || ACTIVE_POLL.endsIn,
+          total: data.total || 0,
+          myVote: data.myVote || null,
+          options: data.options,
+        })
+        if (data.myVote) setChoice(data.myVote)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [user?.username])
+
+  const voted = poll.myVote
+  const total = Math.max(poll.total, 1)
+
+  const submitVote = async () => {
+    if (!user) {
+      toast({ title: 'Giriş gerekli', description: 'Oy verebilmek için oturum açmalısınız.' })
+      return
+    }
+    if (!choice) return
+    setBusy(true)
+    try {
+      const response = await fetch('/api/poll', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ optionId: choice }),
+      })
+      const data = (await response.json().catch(() => ({}))) as Partial<PollState> & { error?: string }
+      if (response.status === 409) {
+        toast({ title: 'Zaten oy kullandınız', description: 'Her üye bu ankette yalnızca bir kez oy verebilir.' })
+        return
+      }
+      if (!response.ok || !Array.isArray(data.options)) {
+        toast({ title: 'Oy kaydedilemedi', description: data.error || 'Lütfen tekrar deneyin.' })
+        return
+      }
+      setPoll({
+        question: data.question || poll.question,
+        endsIn: data.endsIn || poll.endsIn,
+        total: data.total || 0,
+        myVote: data.myVote || choice,
+        options: data.options,
+      })
+      toast({ title: 'Oyunuz Kaydedildi', description: 'Görüşünüz lonca yönetimine iletildi. Teşekkür ederiz!' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Panel className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2">
+          <Vote className="size-4 text-gold" /> Lonca Karar Anketi
+        </h3>
+        <div className="flex items-center gap-2">
+          <Badge className="border-neon/40 bg-neon/10 text-neon text-xs">
+            Bitiş: {poll.endsIn}
+          </Badge>
+          <Badge className="border-gold/30 bg-gold/10 text-gold text-xs">
+            {poll.total} Toplam Oy
+          </Badge>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-silver">{poll.question}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Profillerinizi düzenlerken loncamızın geleceği için oyunuzu kullanın. Yeni anketler bu alanda yayınlanır.
+        </p>
+      </div>
+
+      <fieldset className="grid gap-2.5 sm:grid-cols-2">
+        <legend className="sr-only">Anket Seçenekleri</legend>
+        {poll.options.map((o) => {
+          const isSelected = (voted ?? choice) === o.id
+          const pct = Math.round((o.votes / total) * 100)
+          return (
+            <label
+              key={o.id}
+              className={cn(
+                'relative flex flex-col justify-between overflow-hidden rounded-xl border p-3 transition cursor-pointer',
+                isSelected
+                  ? 'border-gold bg-gold/10 shadow-[0_0_12px_rgb(212,175,55/0.15)]'
+                  : 'border-border bg-background/50 hover:border-border/80',
+                voted && 'cursor-default'
+              )}
+            >
+              {voted && (
+                <div
+                  className="absolute inset-y-0 left-0 bg-gold/15 pointer-events-none transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              )}
+              <div className="relative flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <input
+                    type="radio"
+                    name="profile_poll_choice"
+                    value={o.id}
+                    disabled={Boolean(voted) || busy}
+                    checked={isSelected}
+                    onChange={() => setChoice(o.id)}
+                    className="accent-[#d4af37] size-4 shrink-0"
+                  />
+                  <span className="text-sm font-semibold text-silver truncate">{o.label}</span>
+                </span>
+                {voted && (
+                  <span className="text-xs font-bold font-mono text-gold tabular-nums shrink-0">
+                    %{pct} ({o.votes})
+                  </span>
+                )}
+              </div>
+            </label>
+          )
+        })}
+      </fieldset>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/60">
+        <span className="text-xs text-muted-foreground">
+          {voted ? (
+            <span className="text-emerald-400 font-medium flex items-center gap-1.5">
+              <CheckCircle2 className="size-3.5" /> Bu ankette oyunuzu kullandınız (1 oy / hesap).
+            </span>
+          ) : (
+            'Oyunuzu vermek için bir seçeneği işaretleyin ve "Oyu Kaydet" düğmesine basın.'
+          )}
+        </span>
+        {!voted && (
+          <GoldButton
+            type="button"
+            disabled={!choice || busy}
+            onClick={() => void submitVote()}
+            className="text-xs py-2 px-4"
+          >
+            {busy ? 'Kaydediliyor...' : 'Oyu Kaydet'}
+          </GoldButton>
+        )}
+      </div>
+    </Panel>
+  )
+}
+
 export function ProfileView() {
   const toast = useToast()
   const { user, profileComplete, refreshProfileGate } = useAuth()
@@ -178,6 +357,8 @@ export function ProfileView() {
 
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
   const [savingAvailability, setSavingAvailability] = useState(false)
+  const [linkModal, setLinkModal] = useState<{ open: boolean; provider: 'discord' | 'bnet'; value: string } | null>(null)
+  const [linkingBusy, setLinkingBusy] = useState(false)
   const [editFirstName, setEditFirstName] = useState('')
   const [editLastName, setEditLastName] = useState('')
   const [editRace, setEditRace] = useState('')
@@ -310,6 +491,50 @@ export function ProfileView() {
     window.location.href = `/api/oauth/${provider}`
   }
 
+  const connectManual = async (provider: 'discord' | 'bnet', value: string) => {
+    if (!user) {
+      toast({ title: 'Giriş gerekli', description: 'Hesap bağlamak için önce oturum açın.' })
+      return
+    }
+    const clean = value.trim()
+    if (!clean) {
+      toast({
+        title: 'Hata',
+        description: provider === 'discord' ? 'Discord kullanıcı adı boş olamaz.' : 'BattleTag boş olamaz.',
+      })
+      return
+    }
+
+    setLinkingBusy(true)
+    try {
+      const res = await fetch('/api/oauth/connect', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ provider, value: clean }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        toast({ title: 'Bağlantı Başarısız', description: data.error || 'İşlem gerçekleştirilemedi.' })
+        return
+      }
+
+      if (provider === 'discord') {
+        const tag = clean.replace(/^@/, '')
+        setProfile((prev) => ({ ...prev, discordConnected: true, discordTag: tag }))
+        toast({ title: 'Discord Hesabı Bağlandı', description: `@${tag} profilinize başarıyla bağlandı.` })
+      } else {
+        setProfile((prev) => ({ ...prev, bnetConnected: true, bnetId: clean }))
+        toast({ title: 'Battle.net Hesabı Bağlandı', description: `${clean} profilinize başarıyla bağlandı.` })
+      }
+      setLinkModal(null)
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı. Tekrar deneyin.' })
+    } finally {
+      setLinkingBusy(false)
+    }
+  }
+
   const disconnectOauth = async (provider: 'discord' | 'bnet' | 'twitch') => {
     try {
       const response = await fetch('/api/oauth/disconnect', {
@@ -324,7 +549,7 @@ export function ProfileView() {
         return
       }
       if (provider === 'discord') setProfile((prev) => ({ ...prev, discordConnected: false, discordTag: '' }))
-      if (provider === 'bnet') setProfile((prev) => ({ ...prev, bnetConnected: false }))
+      if (provider === 'bnet') setProfile((prev) => ({ ...prev, bnetConnected: false, bnetId: '' }))
       if (provider === 'twitch') {
         setProfile((prev) => ({ ...prev, twitchConnected: false, twitchLogin: '', twitchDisplayName: '' }))
       }
@@ -645,6 +870,40 @@ export function ProfileView() {
                 />
               </div>
 
+              {/* Gerçek İsim Görünürlük Tercihi Aç/Kapa Düğmesi */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-background/50 md:col-span-2">
+                <div className="flex flex-col">
+                  <span className="text-xs font-semibold text-silver">Guild Kadrosunda Gerçek İsmim Görünsün</span>
+                  <span className="text-[11px] text-muted-foreground mt-0.5">
+                    {profile.showRealNameInRoster
+                      ? 'Açık: Kadro sayfasında karakterinizin altında adınız ve soyadınız listelenir.'
+                      : 'Kapalı: Adınız ve soyadınız kadroda gizlenir, sadece oyun içi karakteriniz görünür.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={profile.showRealNameInRoster}
+                  onClick={() => setProfile({ ...profile, showRealNameInRoster: !profile.showRealNameInRoster })}
+                  className={cn(
+                    "relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none",
+                    profile.showRealNameInRoster
+                      ? "bg-emerald-600 border-emerald-500 shadow-[0_0_12px_rgb(16_185_129/0.4)]"
+                      : "bg-red-700/80 border-red-600 shadow-[0_0_10px_rgb(220_38_38/0.3)]"
+                  )}
+                  title={profile.showRealNameInRoster ? 'Açık: Gerçek isim kadroda görünüyor' : 'Kapalı: Gerçek isim gizli'}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block size-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[11px] font-bold",
+                      profile.showRealNameInRoster ? "translate-x-7 text-emerald-700" : "translate-x-0 text-red-700"
+                    )}
+                  >
+                    {profile.showRealNameInRoster ? "✓" : "✕"}
+                  </span>
+                </button>
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-silver">Doğum Tarihi *</label>
                 <input
@@ -751,6 +1010,8 @@ export function ProfileView() {
               </div>
             </form>
           </Panel>
+
+          <ProfilePollSection />
 
           <Panel className="flex flex-col gap-4">
             <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
@@ -908,19 +1169,34 @@ export function ProfileView() {
                   <div className="min-w-0">
                     <div className="font-bold text-sm text-silver">Discord Hesabı</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {profile.discordConnected ? `@${profile.discordTag}` : 'Lonca Discord’unu bağla'}
+                      {profile.discordConnected && profile.discordTag ? `@${profile.discordTag}` : 'Lonca Discord’unu bağla'}
                     </div>
                   </div>
                 </div>
-                {profile.discordConnected ? (
+                {profile.discordConnected && profile.discordTag ? (
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
-                    <GhostButton type="button" className="text-xs py-1.5 px-3" onClick={() => disconnectOauth('discord')}>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5"
+                      onClick={() => setLinkModal({ open: true, provider: 'discord', value: profile.discordTag })}
+                    >
+                      Düzenle
+                    </GhostButton>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5 text-destructive hover:bg-destructive/10"
+                      onClick={() => disconnectOauth('discord')}
+                    >
                       Kaldır
                     </GhostButton>
                   </div>
                 ) : (
-                  <GoldButton type="button" onClick={() => startOauth('discord')} className="text-xs py-1.5 px-3 shrink-0">
+                  <GoldButton
+                    type="button"
+                    onClick={() => setLinkModal({ open: true, provider: 'discord', value: profile.discordTag || '' })}
+                    className="text-xs py-1.5 px-3 shrink-0"
+                  >
                     + Hesap Bağla
                   </GoldButton>
                 )}
@@ -932,19 +1208,34 @@ export function ProfileView() {
                   <div className="min-w-0">
                     <div className="font-bold text-sm text-silver">Battle.net Hesabı</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {profile.bnetConnected ? profile.bnetId : profile.bnetId || 'BattleTag doğrulamak için bağla'}
+                      {profile.bnetConnected && profile.bnetId ? profile.bnetId : (profile.bnetId || 'BattleTag doğrulamak için bağla')}
                     </div>
                   </div>
                 </div>
-                {profile.bnetConnected ? (
+                {profile.bnetConnected && profile.bnetId ? (
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
-                    <GhostButton type="button" className="text-xs py-1.5 px-3" onClick={() => disconnectOauth('bnet')}>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5"
+                      onClick={() => setLinkModal({ open: true, provider: 'bnet', value: profile.bnetId })}
+                    >
+                      Düzenle
+                    </GhostButton>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5 text-destructive hover:bg-destructive/10"
+                      onClick={() => disconnectOauth('bnet')}
+                    >
                       Kaldır
                     </GhostButton>
                   </div>
                 ) : (
-                  <GoldButton type="button" onClick={() => startOauth('bnet')} className="text-xs py-1.5 px-3 shrink-0">
+                  <GoldButton
+                    type="button"
+                    onClick={() => setLinkModal({ open: true, provider: 'bnet', value: profile.bnetId || '' })}
+                    className="text-xs py-1.5 px-3 shrink-0"
+                  >
                     + Hesap Bağla
                   </GoldButton>
                 )}
@@ -1351,6 +1642,66 @@ export function ProfileView() {
         </div>
 
       </div>
+
+      {linkModal && (
+        <Modal
+          open={linkModal.open}
+          onClose={() => setLinkModal(null)}
+          title={linkModal.provider === 'discord' ? 'Discord Hesabı Bağla' : 'Battle.net Hesabı Bağla'}
+          description={
+            linkModal.provider === 'discord'
+              ? 'Lonca Discord sunucumuzdaki rol ve online/offline durumunuzun kadroda görünmesi için Discord kullanıcı adınızı girin.'
+              : 'World of Warcraft ve Battle.net durumunuzun guild kadrosunda anlık olarak yeşil/kırmızı nokta ile görünmesi için BattleTag bilginizi girin.'
+          }
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-silver">
+                {linkModal.provider === 'discord' ? 'Discord Kullanıcı Adı / Tag *' : 'BattleTag (Real ID) *'}
+              </label>
+              <input
+                type="text"
+                value={linkModal.value}
+                onChange={(e) => setLinkModal({ ...linkModal, value: e.target.value })}
+                placeholder={linkModal.provider === 'discord' ? 'Örn: waffle veya Sonat#1234' : 'Örn: Waffle#2657'}
+                className={inputClass}
+                autoFocus
+              />
+              <span className="text-[11px] text-muted-foreground">
+                {linkModal.provider === 'discord'
+                  ? 'Discord profilinizde görünen kullanıcı adınızı (başında @ olmadan da yazabilirsiniz) girin.'
+                  : 'Blizzard BattleTag bilginizi (İsim#Sayı) formatında girin.'}
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-border">
+              {oauthReady[linkModal.provider] ? (
+                <GhostButton
+                  type="button"
+                  className="text-xs w-full sm:w-auto"
+                  onClick={() => startOauth(linkModal.provider)}
+                >
+                  OAuth ile Yetkilendir
+                </GhostButton>
+              ) : (
+                <span className="text-[11px] text-muted-foreground">Doğrudan hesap eşlemesi</span>
+              )}
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <GhostButton type="button" onClick={() => setLinkModal(null)}>
+                  İptal
+                </GhostButton>
+                <GoldButton
+                  type="button"
+                  disabled={!linkModal.value.trim() || linkingBusy}
+                  onClick={() => void connectManual(linkModal.provider, linkModal.value)}
+                >
+                  {linkingBusy ? 'Bağlanıyor...' : 'Bağla & Kaydet'}
+                </GoldButton>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

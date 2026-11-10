@@ -33,11 +33,13 @@ export async function GET(request: Request) {
     const twitchLogin = links.twitch.login || storedTwitch
     const kickLogin = typeof stored.kickLogin === 'string' ? stored.kickLogin : ''
     const youtubeHandle = typeof stored.youtubeHandle === 'string' ? stored.youtubeHandle : ''
+    const showRealNameInRoster = stored.showRealNameInRoster !== false
     const profile = {
       ...stored,
-      discordConnected: links.discord.connected,
+      showRealNameInRoster,
+      discordConnected: links.discord.connected || Boolean(storedTag),
       discordTag: links.discord.username || storedTag,
-      bnetConnected: links.bnet.connected,
+      bnetConnected: links.bnet.connected || Boolean(storedBnet),
       bnetId: links.bnet.battletag || storedBnet,
       twitchConnected: Boolean(twitchLogin),
       twitchLogin,
@@ -77,14 +79,44 @@ export async function PUT(request: Request) {
     await mutateGuildStore((store) => {
       const found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
       if (!found) throw new Error('NOT_FOUND')
-      const links = publicLinks(found.links)
-      profile.discordConnected = links.discord.connected
-      profile.discordTag = links.discord.username || profile.discordTag || ''
-      profile.bnetConnected = links.bnet.connected
-      if (links.bnet.battletag) profile.bnetId = links.bnet.battletag
-      const twitchLogin = links.twitch.login || normalizeTwitchLogin(String(profile.twitchLogin || ''))
+
+      const prevProfile = (found.profile || {}) as Record<string, unknown>
+      const showRealName = typeof profile.showRealNameInRoster === 'boolean'
+        ? profile.showRealNameInRoster
+        : prevProfile.showRealNameInRoster !== false
+      profile.showRealNameInRoster = showRealName
+
+      // Keep links in sync with profile bnet / discord
+      const links = { ...(found.links || {}) }
+      const bnetTag = typeof profile.bnetId === 'string' ? profile.bnetId.trim() : ''
+      if (bnetTag) {
+        links.bnet = { id: bnetTag, battletag: bnetTag }
+        profile.bnetConnected = true
+        profile.bnetId = bnetTag
+      } else if (!links.bnet) {
+        profile.bnetConnected = false
+      } else {
+        profile.bnetConnected = true
+        profile.bnetId = links.bnet.battletag
+      }
+
+      const discordUser = typeof profile.discordTag === 'string' ? profile.discordTag.trim().replace(/^@/, '') : ''
+      if (discordUser) {
+        links.discord = { id: discordUser, username: discordUser, globalName: discordUser }
+        profile.discordConnected = true
+        profile.discordTag = discordUser
+      } else if (!links.discord) {
+        profile.discordConnected = false
+      } else {
+        profile.discordConnected = true
+        profile.discordTag = links.discord.username
+      }
+
+      found.links = links
+
+      const twitchLogin = links.twitch?.login || normalizeTwitchLogin(String(profile.twitchLogin || ''))
       profile.twitchLogin = twitchLogin
-      profile.twitchDisplayName = links.twitch.displayName || twitchLogin
+      profile.twitchDisplayName = links.twitch?.displayName || twitchLogin
       profile.twitchConnected = Boolean(twitchLogin)
       profile.kickLogin = normalizeKickSlug(String(profile.kickLogin || ''))
       profile.youtubeHandle = normalizeYoutubeHandle(String(profile.youtubeHandle || ''))

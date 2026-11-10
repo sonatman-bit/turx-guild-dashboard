@@ -187,7 +187,7 @@ export const ADDONS = [
 export const ACTIVE_POLL = {
   id: 'phase1-loot',
   question: 'Phase 1 için ana loot sistemimiz ne olsun?',
-  endsIn: '2 gün 4 saat',
+  endsIn: '9 Aralık 2026 (İlk Raid Günü)',
   options: [
     { id: 'lc', label: 'Loot Council' },
     { id: 'epgp', label: 'EPGP' },

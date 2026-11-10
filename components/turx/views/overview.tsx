@@ -1,10 +1,10 @@
 'use client'
 
-import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy, Vote } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { authHeaders, getSessionToken } from '@/lib/client-session'
-import { ACTIVE_POLL, ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
+import { ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
 import type { StreamPlatform, StreamRadarCard } from '@/lib/account-links'
 import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
@@ -12,7 +12,7 @@ import { useAuth } from '../auth-provider'
 import type { TabId } from '../navigation'
 import { StaffRoleBadge } from '../staff-role-icons'
 import { useToast } from '../toast'
-import { Badge, GhostButton, GoldButton, Modal, Panel, PanelTitle } from '../ui'
+import { Badge, GhostButton, GoldButton, Panel, PanelTitle } from '../ui'
 import { HeroLanding } from '../hero-landing'
 
 function useCountdown(target: string) {
@@ -84,165 +84,6 @@ function StaffHiringHero({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
         </ul>
       </div>
     </section>
-  )
-}
-
-type PollState = {
-  question: string
-  endsIn: string
-  total: number
-  myVote: string | null
-  options: { id: string; label: string; votes: number }[]
-}
-
-function PollAlert() {
-  const { user } = useAuth()
-  const toast = useToast()
-  const [open, setOpen] = useState(false)
-  const [choice, setChoice] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [poll, setPoll] = useState<PollState>({
-    question: ACTIVE_POLL.question,
-    endsIn: ACTIVE_POLL.endsIn,
-    total: 0,
-    myVote: null,
-    options: ACTIVE_POLL.options.map((option) => ({ ...option, votes: 0 })),
-  })
-
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/poll', { credentials: 'same-origin', headers: authHeaders() })
-      .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as Partial<PollState>
-        if (!response.ok || cancelled || !Array.isArray(data.options)) return
-        setPoll({
-          question: data.question || ACTIVE_POLL.question,
-          endsIn: data.endsIn || ACTIVE_POLL.endsIn,
-          total: data.total || 0,
-          myVote: data.myVote || null,
-          options: data.options,
-        })
-        if (data.myVote) setChoice(data.myVote)
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-    }
-  }, [user?.username])
-
-  const voted = poll.myVote
-  const total = Math.max(poll.total, 1)
-
-  const submitVote = async () => {
-    if (!user || !getSessionToken()) {
-      toast({
-        title: 'Oturum doğrulanamadı',
-        description: 'Oy kaydı için çıkış yapıp tekrar giriş yap.',
-      })
-      return
-    }
-    if (!choice) return
-    setBusy(true)
-    try {
-      const response = await fetch('/api/poll', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ optionId: choice }),
-      })
-      const data = (await response.json().catch(() => ({}))) as Partial<PollState> & { error?: string }
-      if (response.status === 401) {
-        toast({
-          title: 'Oturum doğrulanamadı',
-          description: 'Hesabın görünüyor ama oy kaydı için tekrar giriş yapman gerekiyor.',
-        })
-        return
-      }
-      if (response.status === 409) {
-        toast({ title: 'Zaten oy kullandın', description: 'Her hesap bu ankette yalnızca bir kez oy verebilir.' })
-        return
-      }
-      if (!response.ok || !Array.isArray(data.options)) {
-        toast({ title: 'Oy kaydedilemedi', description: data.error || 'Tekrar dene.' })
-        return
-      }
-      setPoll({
-        question: data.question || poll.question,
-        endsIn: data.endsIn || poll.endsIn,
-        total: data.total || 0,
-        myVote: data.myVote || choice,
-        options: data.options,
-      })
-      toast({ title: 'Oyunuz kaydedildi', description: 'Sonuçlar GM panelinde de görünür. İkinci oy verilemez.' })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <div className="glow-border flex flex-col gap-4 rounded-xl bg-gradient-to-r from-neon/10 via-card to-gold/10 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <span className="rounded-lg bg-gold/15 p-2 text-gold">
-            <Vote className="size-5" />
-          </span>
-          <div>
-            <p className="text-xs font-bold tracking-widest text-neon uppercase">Aktif Anket · {poll.endsIn} kaldı</p>
-            <p className="mt-0.5 font-semibold text-pretty">{poll.question}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{poll.total} oy · her hesap 1 oy</p>
-          </div>
-        </div>
-        <GoldButton onClick={() => setOpen(true)} className="shrink-0">
-          {voted ? 'Sonuçları Gör' : 'Ankete Katıl'}
-        </GoldButton>
-      </div>
-
-      <Modal open={open} onClose={() => setOpen(false)} title="Lonca Anketi" description={poll.question}>
-        <fieldset className="flex flex-col gap-2">
-          <legend className="sr-only">Seçenekler</legend>
-          {poll.options.map((o) => {
-            const pct = Math.round((o.votes / total) * 100)
-            return (
-              <label
-                key={o.id}
-                className={cn(
-                  'relative cursor-pointer overflow-hidden rounded-lg border p-3 transition',
-                  (voted ?? choice) === o.id ? 'border-neon bg-neon/5' : 'border-border hover:border-neon/40',
-                  voted && 'cursor-default',
-                )}
-              >
-                {voted && <span className="absolute inset-y-0 left-0 bg-neon/10" style={{ width: `${pct}%` }} aria-hidden />}
-                <span className="relative flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="poll"
-                    value={o.id}
-                    disabled={!!voted || busy}
-                    checked={(voted ?? choice) === o.id}
-                    onChange={() => setChoice(o.id)}
-                    className="accent-[#00f2fe]"
-                  />
-                  <span className="flex-1 text-sm font-medium">{o.label}</span>
-                  {voted && (
-                    <span className="text-xs font-semibold text-neon tabular-nums">
-                      {o.votes} · %{pct}
-                    </span>
-                  )}
-                </span>
-              </label>
-            )
-          })}
-        </fieldset>
-        <div className="mt-5 flex justify-end gap-2">
-          <GhostButton onClick={() => setOpen(false)}>Kapat</GhostButton>
-          {!voted && (
-            <GoldButton disabled={!choice || busy} onClick={() => void submitVote()}>
-              {user ? 'Oy Ver' : 'Giriş yapıp oy ver'}
-            </GoldButton>
-          )}
-        </div>
-      </Modal>
-    </>
   )
 }
 
@@ -510,7 +351,6 @@ export function OverviewView({ onNavigate }: { onNavigate: (t: TabId) => void })
     <div className="flex flex-col gap-6">
       <HeroLanding onNavigate={onNavigate} />
       <StaffHiringHero onNavigate={onNavigate} />
-      <PollAlert />
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <Roadmap />

@@ -58,3 +58,27 @@ export function emptyStatus(source: GmStatusPayload['source'] = 'none'): GmStatu
     source,
   }
 }
+
+export type DiscordPresenceMember = {
+  id: string
+  username: string
+  discriminator?: string
+  status: string
+  game?: { name?: string } | null
+  activity?: { name?: string } | null
+}
+
+export async function fetchDiscordWidgetMembers(): Promise<DiscordPresenceMember[]> {
+  try {
+    const res = await fetch(`https://discord.com/api/guilds/${DISCORD_GUILD_ID}/widget.json`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(3500),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as { members?: DiscordPresenceMember[] }
+    return Array.isArray(data.members) ? data.members : []
+  } catch {
+    return []
+  }
+}

@@ -5,11 +5,13 @@ import { blobConfigured, loadGuildStore } from '@/lib/turx-store'
 
 export const dynamic = 'force-dynamic'
 
+const DEFAULT_STREAM_WEBHOOK =
+  'https://discord.com/api/webhooks/1568543616773656710/mW8av4N8uRHSMzddWyQVGiEphtYnAEmqr5Pdttda1GnPb-fOKA-V6lEFmKFjkx2Cy020'
+
 function streamWebhookUrl() {
   return (
     process.env.DISCORD_STREAM_WEBHOOK_URL?.trim() ||
-    process.env.DISCORD_RECRUITMENT_WEBHOOK_URL?.trim() ||
-    ''
+    DEFAULT_STREAM_WEBHOOK
   )
 }
 

@@ -1,11 +1,16 @@
 export type OnboardingProfile = {
   fullName?: string
+  nickname?: string
   birthDate?: string
   gender?: string
   bnetId?: string
   email?: string
   phoneNumber?: string
   selectedAvatar?: string
+  showRealNameInRoster?: boolean
+  discordTag?: string
+  discordConnected?: boolean
+  bnetConnected?: boolean
 }
 
 export type OnboardingCharacter = {

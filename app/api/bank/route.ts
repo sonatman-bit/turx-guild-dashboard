@@ -92,8 +92,10 @@ export async function POST(request: Request) {
       }
     })
 
-    // Forward notification to Discord recruitment/general webhook
-    const webhook = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL || process.env.DISCORD_STREAM_WEBHOOK_URL
+    // Forward notification to Discord guild bank webhook
+    const DEFAULT_BANK_WEBHOOK =
+      'https://discord.com/api/webhooks/1569765240902652004/6kSaGjairxDqVvFrCamZUNTsO2m0d6F7zlaaGy0K2IZi31DPZsB7bmC4Qq1ZCJ69Gtp_'
+    const webhook = process.env.DISCORD_BANK_WEBHOOK_URL?.trim() || DEFAULT_BANK_WEBHOOK
     if (webhook) {
       const embed = {
         title: '📦 Yeni Guild Bankası Malzeme Talebi',

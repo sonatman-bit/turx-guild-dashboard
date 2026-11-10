@@ -34,7 +34,9 @@ type ServerCharacter = StoredCharacter & { firstName?: string; lastName?: string
 type ServerMember = {
   username: string
   role: GuildRank
-  profile?: { fullName?: string } | null
+  profile?: { fullName?: string; showRealName?: boolean } | null
+  bnet?: { tag: string; connected: boolean; online: boolean }
+  discord?: { tag: string; connected: boolean; online: boolean }
   characters?: ServerCharacter[]
 }
 
@@ -50,6 +52,8 @@ interface RosterMemberRow {
   offSpec: string
   role: ExtendedRole
   rank: GuildRank
+  bnet?: { tag: string; connected: boolean; online: boolean }
+  discord?: { tag: string; connected: boolean; online: boolean }
   type: 'Main' | 'Alt'
   professions: [string, string]
   attunements: {
@@ -81,7 +85,7 @@ function isWowClass(value: string | undefined): value is WowClass {
 function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
   return accounts.flatMap((account) => {
     const chars = Array.isArray(account.characters) ? account.characters : []
-    const displayName = (account.profile?.fullName || account.username).trim()
+    const displayName = (account.profile?.fullName || '').trim()
     return chars
       .filter((character) => character.firstName?.trim() && character.lastName?.trim())
       .map((character, index) => {
@@ -98,6 +102,8 @@ function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
           offSpec: character.offSpec || 'Yok',
           role: character.role || 'MELEE',
           rank: account.role,
+          bnet: account.bnet,
+          discord: account.discord,
           type: character.isMain ? 'Main' : 'Alt',
           professions: character.professions || ['Yok', 'Yok'],
           attunements: {
@@ -243,11 +249,8 @@ function MainRoleBreakdown({ mains }: { mains: RosterMemberRow[] }) {
 
 export function RosterView() {
   const toast = useToast()
-  const { user } = useAuth() // Aktif oturum ve rütbe bilgisi
+  const { user } = useAuth()
   const currentUserRole = user?.role || 'Turx'
-  
-  // Sadece GM veya Görevli rütbeleri yönetim yapabilir
-  const canManageRanks = currentUserRole === 'Guild Master' || currentUserRole === 'Görevli' || currentUserRole === 'Officer'
 
   const [query, setQuery] = useState('')
   const [cls, setCls] = useState<WowClass | 'all'>('all')
@@ -276,50 +279,7 @@ export function RosterView() {
 
   const rosterMembers = defaultMembers
 
-  const handleRankChange = (memberId: string, memberUsername: string, currentRank: GuildRank, newRank: GuildRank) => {
-    if (!canManageRanks) {
-      toast({ title: 'Yetki Hatası', description: 'Bu işlem için GM veya Görevli yetkisi gereklidir.' })
-      return
-    }
-
-    if (currentRank === 'Guild Master') {
-      toast({ title: 'Güvenlik Koruması', description: 'Guild Master rütbesi değiştirilemez veya düşürülemez.' })
-      return
-    }
-
-    if (newRank === 'Guild Master') {
-      toast({ title: 'Yetki Reddedildi', description: 'Panel üzerinden yeni bir Guild Master atanamaz.' })
-      return
-    }
-
-    const previous = defaultMembers
-    setDefaultMembers(prev => prev.map(m => m.username === memberUsername ? { ...m, rank: newRank } : m))
-
-    fetch('/api/roster/rank', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: memberUsername, rank: newRank }),
-    })
-      .then(async (res) => {
-        const data = (await res.json().catch(() => ({}))) as { error?: string }
-        if (!res.ok) {
-          setDefaultMembers(previous)
-          toast({ title: 'Rütbe Değiştirilemedi', description: data.error || 'İşlem başarısız oldu.' })
-          return
-        }
-        toast({
-          title: 'Guild Rank Güncellendi',
-          description: `${memberUsername} hesabının yeni rütbesi "${newRank}" olarak kaydedildi.`,
-        })
-      })
-      .catch(() => {
-        setDefaultMembers(previous)
-        toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
-      })
-  }
-
-  const players = new Set(rosterMembers.map((m) => m.realName)).size
+  const players = new Set(rosterMembers.map((m) => m.realName || m.username)).size
   const totalChars = rosterMembers.length
   const mainCharacters = rosterMembers.filter((member) => member.type === 'Main')
   const altCharacters = rosterMembers.filter((member) => member.type === 'Alt')
@@ -343,7 +303,7 @@ export function RosterView() {
       <SectionHeader
         eyebrow="Phase 1 Hazırlıkları"
         title="Guild Kadrosu & Roster Yönetimi"
-        description={`Aktif Oturum Rütbesi: ${currentUserRole} ${canManageRanks ? '· (Yönetim Yetkisi Aktif)' : '· (Salt Okunur)'}`}
+        description="WoW: Forever Alliance lonca kadrosu, sınıf dağılımı ve anlık Battle.net / Discord durumu"
       />
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -445,7 +405,7 @@ export function RosterView() {
             <caption className="sr-only">Lonca üye listesi</caption>
             <thead className="text-xs tracking-wider text-muted-foreground uppercase">
               <tr className="border-b border-border">
-                {['Karakter / Oyuncu', 'Level', 'Race', 'Class / Spec / Rol', 'Guild Rank', 'Main/Alt', 'Meslekler', 'Attunements'].map((h) => (
+                {['Karakter / Oyuncu', 'Level', 'Race', 'Class / Spec / Rol', 'Guild Rank', 'Battle.net', 'Discord', 'Main/Alt', 'Meslekler'].map((h) => (
                   <th key={h} scope="col" className="px-4 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
@@ -489,7 +449,9 @@ export function RosterView() {
                             m.charName
                           )}
                         </span>
-                        <span className="block text-xs text-silver font-medium">{m.realName}</span>
+                        {m.realName ? (
+                          <span className="block text-xs text-silver font-medium">{m.realName}</span>
+                        ) : null}
                       </span>
                     </span>
                   </td>
@@ -514,23 +476,45 @@ export function RosterView() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
-                      {/* Sadece GM veya Officer yetkisi varsa ve üye GM değilse rank değiştirme select'i gösterilir */}
-                      {canManageRanks && m.rank !== 'Guild Master' && (
-                        <select
-                          aria-label="Üye rütbesini değiştir"
-                          value={m.rank}
-                          onChange={(e) => handleRankChange(m.id, m.username, m.rank, e.target.value as GuildRank)}
-                          className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px] text-foreground cursor-pointer hover:border-gold/50 transition"
-                        >
-                          {currentUserRole === 'Guild Master' && <option value="Görevli">Görevli</option>}
-                          <option value="Turx">Turx</option>
-                          <option value="Alt">Alt</option>
-                          <option value="Sosyal">Sosyal</option>
-                        </select>
-                      )}
-                    </div>
+                    <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    {m.bnet?.connected ? (
+                      <div className="flex items-center gap-1.5" title={m.bnet.online ? 'Battle.net Çevrimiçi' : 'Battle.net Çevrimdışı'}>
+                        <span
+                          className={cn(
+                            "size-2.5 rounded-full shrink-0 transition-colors",
+                            m.bnet.online
+                              ? "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]"
+                              : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
+                          )}
+                        />
+                        <span className="font-mono text-xs text-silver font-medium truncate max-w-[125px]">
+                          {m.bnet.tag}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground/50 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {m.discord?.connected ? (
+                      <div className="flex items-center gap-1.5" title={m.discord.online ? 'Discord Çevrimiçi' : 'Discord Çevrimdışı'}>
+                        <span
+                          className={cn(
+                            "size-2.5 rounded-full shrink-0 transition-colors",
+                            m.discord.online
+                              ? "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]"
+                              : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
+                          )}
+                        />
+                        <span className="text-xs text-silver font-medium truncate max-w-[125px]">
+                          @{m.discord.tag}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground/50 text-xs">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <Badge className={m.type === 'Main' ? 'border-gold/40 text-gold bg-gold/10' : 'border-border text-silver bg-muted/30'}>
@@ -543,17 +527,11 @@ export function RosterView() {
                       <Wrench className="size-3 text-muted-foreground" /> {m.professions.join(', ')}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 text-[10px]">
-                      <span className={cn("px-1.5 py-0.5 rounded border", m.attunements?.onyxia ? "border-success/40 bg-success/10 text-success" : "border-border text-muted-foreground")}>Ony</span>
-                      <span className={cn("px-1.5 py-0.5 rounded border", m.attunements?.hyjal ? "border-success/40 bg-success/10 text-success" : "border-border text-muted-foreground")}>Hyjal</span>
-                    </div>
-                  </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                     {rosterMembers.length === 0
                       ? 'Henüz kayıtlı karakter yok. Üyeler profilini doldurunca burada görünür.'
                       : 'Aramanızı eşleşen karakter bulunamadı.'}

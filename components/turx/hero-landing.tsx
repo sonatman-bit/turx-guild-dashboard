@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Headphones, LogIn, Shield, UserCheck, Users, Volume2 } from 'lucide-react'
+import { ArrowRight, Gamepad2, Headphones, LogIn, Shield, UserCheck, Users, Volume2 } from 'lucide-react'
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { DISCORD_INVITE_URL } from '@/lib/guild-presence'
@@ -11,35 +11,14 @@ import type { DiscordOfficer, DiscordVoiceChannel, DiscordWidgetResponse } from 
 
 const FALLBACK_DATA: DiscordWidgetResponse = {
   guildName: 'TURX',
-  presenceCount: 51,
-  voiceCount: 4,
-  totalMembers: 416,
+  presenceCount: 42,
+  voiceCount: 0,
+  totalMembers: 215,
   instantInvite: DISCORD_INVITE_URL,
-  voiceChannels: [
-    {
-      id: 'chan-1',
-      name: 'Ses kanalı',
-      memberCount: 3,
-      members: [
-        { id: 'u1', username: 'Waffle (GM)', avatarUrl: '/images/avatar.png', status: 'online' },
-        { id: 'u2', username: 'PaladinTR', avatarUrl: '/placeholder-user.jpg', status: 'online' },
-        { id: 'u3', username: 'IronforgeHero', avatarUrl: '/placeholder-user.jpg', status: 'dnd' },
-      ],
-    },
-    {
-      id: 'chan-2',
-      name: 'Ses kanalı',
-      memberCount: 1,
-      members: [
-        { id: 'u4', username: 'SkybornMage', avatarUrl: '/placeholder-user.jpg', status: 'idle' },
-      ],
-    },
-  ],
+  members: [],
+  voiceChannels: [],
   officers: [
-    { id: 'o1', name: 'Waffle | Sonat', role: 'Guild Master', status: 'online', avatarUrl: '/images/avatar.png' },
-    { id: 'o2', name: 'Asassın | Abdullah', role: 'Görevli', status: 'online', avatarUrl: '/placeholder-user.jpg' },
-    { id: 'o3', name: 'Esiona | Oğuz', role: 'Görevli', status: 'idle', avatarUrl: '/placeholder-user.jpg' },
-    { id: 'o4', name: 'Jux | Yücel', role: 'Görevli', status: 'online', avatarUrl: '/placeholder-user.jpg' },
+    { id: 'o1', name: 'Waffle | Sonat', role: 'Guild Master', status: 'online', avatarUrl: '/images/avatar.png', game: 'World of Warcraft: Forever' },
   ],
   source: 'fallback',
 }
@@ -226,101 +205,113 @@ export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }
                 <p className="font-display text-lg font-black text-gold">
                   {discordData.totalMembers}
                 </p>
-                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">KULLANICI</p>
+                <p className="text-[10px] font-bold tracking-wider text-muted-foreground uppercase">TOPLAM ÜYE</p>
               </div>
             </div>
 
-            {/* Active Voice Channels */}
-            <div className="mt-4 flex flex-col gap-2">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-silver/80 uppercase">
-                <Headphones className="size-3.5 text-cyan-400" />
-                <span>SESLİ KANALLAR</span>
-              </div>
+            {/* Active Voice Channels (Only if non-empty) */}
+            {discordData.voiceChannels.length > 0 && (
+              <div className="mt-4 flex flex-col gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-cyan-400 uppercase">
+                  <Headphones className="size-3.5 text-cyan-400" />
+                  <span>SESLİ KANALLAR ({discordData.voiceCount})</span>
+                </div>
 
-              <div className="flex flex-col gap-2">
-                {discordData.voiceChannels.slice(0, 2).map((channel) => (
-                  <div
-                    key={channel.id}
-                    className="flex flex-col gap-2 rounded-xl border border-white/5 bg-[#06101c]/90 px-3 py-2.5"
-                  >
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 font-medium text-silver">
+                <div className="flex flex-col gap-1.5">
+                  {discordData.voiceChannels.map((channel) => (
+                    <div
+                      key={channel.id}
+                      className="flex items-center justify-between rounded-xl border border-white/5 bg-[#06101c]/90 px-3 py-2 text-xs"
+                    >
+                      <div className="flex items-center gap-2 font-medium text-silver min-w-0">
                         <Volume2 className="size-3.5 text-cyan-400 shrink-0" />
                         <span className="truncate">{channel.name}</span>
                       </div>
-                      <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                        {channel.memberCount}
+                      <span className="rounded-full bg-cyan-400/10 px-2 py-0.5 text-[11px] font-semibold text-cyan-300 border border-cyan-400/20 shrink-0">
+                        {channel.memberCount} kişi
                       </span>
                     </div>
-
-                    {/* Member avatars in channel */}
-                    {channel.members.length > 0 && (
-                      <div className="flex items-center gap-2 pt-0.5">
-                        <div className="flex -space-x-1.5 overflow-hidden">
-                          {channel.members.slice(0, 5).map((m) => (
-                            <div key={m.id} className="relative size-6 rounded-full border border-[#06101c] bg-zinc-800" title={m.username}>
-                              <Image
-                                src={m.avatarUrl}
-                                alt={m.username}
-                                width={24}
-                                height={24}
-                                className="size-full rounded-full object-cover"
-                              />
-                              <span className="absolute -bottom-0.5 -right-0.5">
-                                <StatusDot status={m.status} />
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        {channel.memberCount > 5 && (
-                          <span className="text-[10px] text-muted-foreground">+{channel.memberCount - 5}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Officer List Section */}
+            {/* Live Online Members List with custom scrollbar */}
             <div className="mt-4 flex flex-col gap-2">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-rose-400 uppercase">
-                <span className="size-2 rounded-full bg-rose-500 shadow-[0_0_6px_#f43f5e]" />
-                <span>GÖREVLİ &amp; YÖNETİM — {discordData.officers.length}</span>
+              <div className="flex items-center justify-between text-[11px] font-bold tracking-wider text-silver/80 uppercase">
+                <span className="flex items-center gap-1.5">
+                  <Users className="size-3.5 text-emerald-400" />
+                  <span>ÇEVRİMİÇİ ÜYELER</span>
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono">
+                  {discordData.members.length || discordData.presenceCount} KİŞİ AKTİF
+                </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {discordData.officers.map((officer) => (
-                  <div
-                    key={officer.id}
-                    className="flex items-center gap-2.5 rounded-lg border border-white/5 bg-[#06101c]/70 px-2.5 py-1.5"
-                  >
-                    <div className="relative size-7 shrink-0 rounded-full bg-zinc-800">
-                      <Image
-                        src={officer.avatarUrl}
-                        alt={officer.name}
-                        width={28}
-                        height={28}
-                        className="size-full rounded-full object-cover"
-                      />
-                      <span className="absolute -bottom-0.5 -right-0.5">
-                        <StatusDot status={officer.status} />
-                      </span>
+              <div className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1 select-none scrollbar-thin">
+                {discordData.members.length > 0 ? (
+                  discordData.members.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-2.5 rounded-lg border border-white/5 bg-[#06101c]/80 px-2.5 py-2 hover:bg-[#06101c] transition"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative size-7 shrink-0 rounded-full bg-zinc-800">
+                          <Image
+                            src={m.avatarUrl}
+                            alt={m.username}
+                            width={28}
+                            height={28}
+                            className="size-full rounded-full object-cover"
+                          />
+                          <span className="absolute -bottom-0.5 -right-0.5">
+                            <StatusDot status={m.status} />
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate text-xs font-semibold text-foreground">
+                              {m.username}
+                            </span>
+                            {m.isGm && (
+                              <span className="rounded border border-gold/60 bg-gold/15 px-1 py-0.2 text-[9px] font-black text-gold shrink-0">
+                                GM
+                              </span>
+                            )}
+                            {m.isOfficer && (
+                              <span className="rounded border border-neon/50 bg-neon/15 px-1 py-0.2 text-[9px] font-bold text-neon shrink-0">
+                                Görevli
+                              </span>
+                            )}
+                          </div>
+                          {m.game ? (
+                            <p className="truncate text-[10px] text-cyan-300 flex items-center gap-1">
+                              <Gamepad2 className="size-3 text-cyan-400 shrink-0" />
+                              <span className="truncate">{m.game}</span>
+                            </p>
+                          ) : m.channelName ? (
+                            <p className="truncate text-[10px] text-emerald-400 flex items-center gap-1">
+                              <Volume2 className="size-3 shrink-0" />
+                              <span className="truncate">{m.channelName}</span>
+                            </p>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground">Discord&apos;da Aktif</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {m.channelName && (
+                        <span className="shrink-0 rounded bg-cyan-400/10 px-1.5 py-0.5 text-[9px] font-mono font-bold text-cyan-300 border border-cyan-400/20">
+                          Seste
+                        </span>
+                      )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-semibold text-foreground">
-                        {officer.name}
-                      </p>
-                      <p className="truncate text-[10px] text-muted-foreground">
-                        {officer.role === 'Guild Master' ? (
-                          <span className="font-bold text-gold">Guild Master</span>
-                        ) : (
-                          <span className="font-semibold text-neon">Görevli</span>
-                        )}
-                      </p>
-                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-xl border border-white/5 bg-[#06101c]/60 p-4 text-center text-xs text-muted-foreground">
+                    {discordData.presenceCount} üye şu an Discord&apos;da çevrimiçi.
                   </div>
-                ))}
+                )}
               </div>
             </div>
 

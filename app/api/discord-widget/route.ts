@@ -35,12 +35,25 @@ export type DiscordOfficer = {
   game?: string | null
 }
 
+export type DiscordOnlineMember = {
+  id: string
+  username: string
+  avatarUrl: string
+  status: PresenceState
+  game: string | null
+  channelId?: string | null
+  channelName?: string | null
+  isGm?: boolean
+  isOfficer?: boolean
+}
+
 export type DiscordWidgetResponse = {
   guildName: string
   presenceCount: number
   voiceCount: number
   totalMembers: number
   instantInvite: string
+  members: DiscordOnlineMember[]
   voiceChannels: DiscordVoiceChannel[]
   officers: DiscordOfficer[]
   source: 'live' | 'fallback'
@@ -82,62 +95,6 @@ function normalizeStatus(value: string | undefined): PresenceState {
   return 'online'
 }
 
-const DEFAULT_OFFICERS: DiscordOfficer[] = [
-  {
-    id: 'officer-gm',
-    name: 'Waffle | Sonat',
-    role: 'Guild Master',
-    status: 'online',
-    avatarUrl: '/images/avatar.png',
-    game: 'World of Warcraft',
-  },
-  {
-    id: 'officer-raidlead',
-    name: 'Arthas | Taktik & Raid',
-    role: 'Görevli',
-    status: 'online',
-    avatarUrl: '/placeholder-user.jpg',
-    game: 'World of Warcraft',
-  },
-  {
-    id: 'officer-recruit',
-    name: 'Lordaeron | Alım Heyeti',
-    role: 'Görevli',
-    status: 'idle',
-    avatarUrl: '/placeholder-user.jpg',
-    game: null,
-  },
-  {
-    id: 'officer-bank',
-    name: 'Valiant | Banka Sorumlusu',
-    role: 'Görevli',
-    status: 'online',
-    avatarUrl: '/placeholder-user.jpg',
-    game: 'World of Warcraft',
-  },
-]
-
-const DEFAULT_CHANNELS: DiscordVoiceChannel[] = [
-  {
-    id: 'chan-1',
-    name: 'Ses kanalı · Raid Odası 1',
-    memberCount: 3,
-    members: [
-      { id: 'u1', username: 'Waffle (GM)', avatarUrl: '/images/avatar.png', status: 'online' },
-      { id: 'u2', username: 'PaladinTR', avatarUrl: '/placeholder-user.jpg', status: 'online' },
-      { id: 'u3', username: 'IronforgeHero', avatarUrl: '/placeholder-user.jpg', status: 'dnd' },
-    ],
-  },
-  {
-    id: 'chan-2',
-    name: 'Ses kanalı · Zindan & Leveling',
-    memberCount: 1,
-    members: [
-      { id: 'u4', username: 'SkybornMage', avatarUrl: '/placeholder-user.jpg', status: 'idle' },
-    ],
-  },
-]
-
 export async function GET() {
   let widgetData: RawWidgetPayload | null = null
 
@@ -145,7 +102,7 @@ export async function GET() {
     const res = await fetch(`https://discord.com/api/guilds/${DISCORD_GUILD_ID}/widget.json`, {
       cache: 'no-store',
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(4500),
     })
     if (res.ok) {
       widgetData = (await res.json()) as RawWidgetPayload
@@ -173,10 +130,13 @@ export async function GET() {
     const rawChannels = Array.isArray(widgetData.channels) ? widgetData.channels : []
     const presenceCount = widgetData.presence_count ?? rawMembers.length
 
-    // Map channels
-    const voiceMembers = rawMembers.filter((m) => Boolean(m.channel_id))
-    const voiceCount = voiceMembers.length
+    // Build channel lookup map
+    const channelMap = new Map<string, string>()
+    for (const ch of rawChannels) {
+      if (ch.id && ch.name) channelMap.set(ch.id, ch.name)
+    }
 
+    // Voice channels
     const voiceChannels: DiscordVoiceChannel[] = rawChannels
       .map((ch) => {
         const inThisChannel = rawMembers
@@ -198,19 +158,58 @@ export async function GET() {
           members: inThisChannel,
         }
       })
-      .filter((ch) => ch.memberCount > 0) // only non-empty voice channels first
+      .filter((ch) => ch.memberCount > 0)
 
-    // If no voice channel is active or widget has no channels, fallback to default display channels
-    const finalChannels = voiceChannels.length > 0 ? voiceChannels : DEFAULT_CHANNELS
+    const voiceCount = rawMembers.filter((m) => Boolean(m.channel_id)).length
+
+    // Map all live online members
+    const onlineMembers: DiscordOnlineMember[] = rawMembers.map((m) => {
+      const isGm = matchesGmIdentity(m.username)
+      const isOfficerInStore = storeUsers.some(
+        (u) =>
+          (u.role === 'Görevli' || u.role === 'Officer') &&
+          u.username.toLowerCase() === m.username.toLowerCase(),
+      )
+      const gameName = m.game?.name || m.activity?.name || null
+      const chName = m.channel_id ? channelMap.get(m.channel_id) || 'Ses Kanalı' : null
+
+      return {
+        id: m.id,
+        username: m.username,
+        avatarUrl: m.avatar_url || '/placeholder-user.jpg',
+        status: normalizeStatus(m.status),
+        game: gameName,
+        channelId: m.channel_id || null,
+        channelName: chName,
+        isGm,
+        isOfficer: isOfficerInStore,
+      }
+    })
+
+    // Sort: GM > Officer > In voice > Playing game > Status (online > idle > dnd) > Alphabetical
+    onlineMembers.sort((a, b) => {
+      if (a.isGm && !b.isGm) return -1
+      if (!a.isGm && b.isGm) return 1
+      if (a.isOfficer && !b.isOfficer) return -1
+      if (!a.isOfficer && b.isOfficer) return 1
+      if (a.channelId && !b.channelId) return -1
+      if (!a.channelId && b.channelId) return 1
+      if (a.game && !b.game) return -1
+      if (!a.game && b.game) return 1
+      const weight: Record<string, number> = { online: 3, idle: 2, dnd: 1, offline: 0, unknown: 0 }
+      const diff = (weight[b.status] || 0) - (weight[a.status] || 0)
+      if (diff !== 0) return diff
+      return a.username.localeCompare(b.username, 'tr-TR')
+    })
 
     // Identify officers in Discord widget
     const liveOfficers: DiscordOfficer[] = []
 
     for (const m of rawMembers) {
       const isGm = matchesGmIdentity(m.username)
-      const isOfficerInStore = storeUsers.some(
+      const officerUser = storeUsers.find(
         (u) =>
-          (u.role === 'Görevli' || u.role === 'Officer' || u.role === 'Guild Master') &&
+          (u.role === 'Görevli' || u.role === 'Officer') &&
           u.username.toLowerCase() === m.username.toLowerCase(),
       )
 
@@ -223,7 +222,7 @@ export async function GET() {
           avatarUrl: m.avatar_url || '/images/avatar.png',
           game: m.game?.name || m.activity?.name || null,
         })
-      } else if (isOfficerInStore) {
+      } else if (officerUser) {
         liveOfficers.push({
           id: m.id,
           name: m.username,
@@ -235,19 +234,48 @@ export async function GET() {
       }
     }
 
-    // Ensure we have officers displayed
-    const finalOfficers = liveOfficers.length > 0 ? liveOfficers : DEFAULT_OFFICERS
+    if (!liveOfficers.some((o) => o.role === 'Guild Master')) {
+      liveOfficers.unshift({
+        id: 'officer-gm',
+        name: 'Waffle | Sonat',
+        role: 'Guild Master',
+        status: 'online',
+        avatarUrl: '/images/avatar.png',
+        game: 'World of Warcraft: Forever',
+      })
+    }
 
-    const totalEstimate = Math.max(380, presenceCount * 6 + storeUsers.length)
+    // Attempt to fetch exact approximate_member_count from Discord invite API
+    let totalMembers = Math.max(presenceCount * 5, 215)
+    try {
+      const inviteUrl = widgetData.instant_invite || DISCORD_INVITE_URL
+      const code = inviteUrl.split('/').pop()?.split('?')[0]?.trim()
+      if (code) {
+        const invRes = await fetch(`https://discord.com/api/v10/invites/${code}?with_counts=true`, {
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(3000),
+        })
+        if (invRes.ok) {
+          const invJson = (await invRes.json()) as { approximate_member_count?: number }
+          if (typeof invJson.approximate_member_count === 'number' && invJson.approximate_member_count > 0) {
+            totalMembers = invJson.approximate_member_count
+          }
+        }
+      }
+    } catch {
+      // fallback to computed estimate
+    }
 
     const responsePayload: DiscordWidgetResponse = {
       guildName: widgetData.name || 'TURX',
       presenceCount,
-      voiceCount: Math.max(voiceCount, finalChannels.reduce((acc, c) => acc + c.memberCount, 0)),
-      totalMembers: totalEstimate,
+      voiceCount,
+      totalMembers,
       instantInvite: widgetData.instant_invite || DISCORD_INVITE_URL,
-      voiceChannels: finalChannels,
-      officers: finalOfficers,
+      members: onlineMembers,
+      voiceChannels,
+      officers: liveOfficers,
       source: 'live',
     }
 
@@ -257,15 +285,25 @@ export async function GET() {
     })
   }
 
-  // Graceful fallback payload
+  // Graceful fallback payload if widget cannot be contacted
   const fallbackPayload: DiscordWidgetResponse = {
     guildName: 'TURX',
-    presenceCount: 51,
-    voiceCount: 4,
-    totalMembers: 416,
+    presenceCount: 42,
+    voiceCount: 0,
+    totalMembers: 215,
     instantInvite: DISCORD_INVITE_URL,
-    voiceChannels: DEFAULT_CHANNELS,
-    officers: DEFAULT_OFFICERS,
+    members: [],
+    voiceChannels: [],
+    officers: [
+      {
+        id: 'officer-gm',
+        name: 'Waffle | Sonat',
+        role: 'Guild Master',
+        status: 'online',
+        avatarUrl: '/images/avatar.png',
+        game: 'World of Warcraft: Forever',
+      },
+    ],
     source: 'fallback',
   }
 

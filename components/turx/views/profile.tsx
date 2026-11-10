@@ -177,6 +177,7 @@ export function ProfileView() {
   const [oauthReady, setOauthReady] = useState({ discord: false, bnet: false, twitch: false })
 
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
+  const [savingAvailability, setSavingAvailability] = useState(false)
   const [editFirstName, setEditFirstName] = useState('')
   const [editLastName, setEditLastName] = useState('')
   const [editRace, setEditRace] = useState('')
@@ -407,6 +408,25 @@ export function ProfileView() {
         }
       }
     }))
+  }
+
+  const handleSaveAvailability = async () => {
+    if (!user) {
+      toast({ title: 'Giriş gerekli', description: 'Müsaitlik kaydetmek için önce oturum açın.' })
+      return
+    }
+    setSavingAvailability(true)
+    try {
+      await persistGate(profile, characters)
+      toast({
+        title: 'Müsaitlik Güncellendi! 📅',
+        description: 'Haftalık raid müsaitlik bilgileriniz sunucuya kaydedildi ve GM paneline aktarıldı.',
+      })
+    } catch {
+      toast({ title: 'Kaydedilemedi', description: 'Sunucuya ulaşılamadı.' })
+    } finally {
+      setSavingAvailability(false)
+    }
   }
 
   const handleSetMain = (id: string) => {
@@ -860,6 +880,20 @@ export function ProfileView() {
                   </div>
                 )
               })}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/60">
+              <p className="text-xs text-muted-foreground">
+                Müsaitlik durumunuz ve saatleriniz GM/Officer panelindeki Raid Müsaitlik Matrisine anlık olarak aktarılır.
+              </p>
+              <GoldButton
+                type="button"
+                onClick={handleSaveAvailability}
+                disabled={savingAvailability}
+                className="text-xs py-2 px-4"
+              >
+                <Calendar className="size-3.5 mr-1.5" />
+                {savingAvailability ? 'Kaydediliyor...' : 'Müsaitlik Tercihlerini Kaydet'}
+              </GoldButton>
             </div>
           </Panel>
 

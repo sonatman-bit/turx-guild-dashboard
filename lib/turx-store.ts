@@ -48,29 +48,94 @@ export type StoredRecruitNeed = {
   need: string
 }
 
+export type StoredRaidSignup = {
+  id: string
+  raidId: string
+  username: string
+  characterId: string
+  characterName: string
+  wowClass: string
+  spec: string
+  role: 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
+  status: 'Confirmed' | 'Pending' | 'Declined'
+  rosterStatus: 'signup' | 'roster' | 'bench'
+  createdAt: string
+  confirmedAt?: string
+}
+
+export type StoredRaidState = {
+  raidId: string
+  publishedAt?: string
+  publishedBy?: string
+  signups: StoredRaidSignup[]
+}
+
+export type StoredBankRequest = {
+  id: string
+  username: string
+  item: string
+  qty: number
+  raid?: string
+  note?: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  createdAt: string
+  updatedAt?: string
+  reviewedBy?: string
+}
+
+export type StoredBankTransaction = {
+  id: string
+  who: string
+  what: string
+  time: string
+}
+
 export type GuildStore = {
   users: StoredAccount[]
   applications: StoredApplication[]
   polls: StoredPoll[]
   recruitmentNeeds: StoredRecruitNeed[]
   streamNotices: StreamNotice[]
+  raidStates?: Record<string, StoredRaidState>
+  bankRequests?: StoredBankRequest[]
+  bankLedger?: StoredBankTransaction[]
 }
 
 const PATH = 'turx-guild-store.json'
 
 export function emptyStore(): GuildStore {
-  return { users: [], applications: [], polls: [], recruitmentNeeds: [], streamNotices: [] }
+  return {
+    users: [],
+    applications: [],
+    polls: [],
+    recruitmentNeeds: [],
+    streamNotices: [],
+    raidStates: {},
+    bankRequests: [],
+    bankLedger: [],
+  }
 }
 
-export function roleForEmail(email: string): GuildRank {
-  return isGuildMasterEmail(email) ? 'Guild Master' : 'Member'
+export function resolveUserRole(account: { email: string; role?: GuildRank }): GuildRank {
+  if (isGuildMasterEmail(account.email)) return 'Guild Master'
+  const r = account.role
+  if (r === 'Officer' || r === 'Raid Leader' || r === 'Raider' || r === 'Member') {
+    return r
+  }
+  return 'Member'
+}
+
+export function roleForEmail(email: string, currentRole?: GuildRank): GuildRank {
+  if (isGuildMasterEmail(email)) return 'Guild Master'
+  if (currentRole && currentRole !== 'Guild Master') return currentRole
+  return 'Member'
 }
 
 export function publicAccount(account: StoredAccount) {
   return {
     username: account.username,
     email: account.email,
-    role: roleForEmail(account.email),
+    role: resolveUserRole(account),
   }
 }
 
@@ -90,6 +155,9 @@ async function readStore(): Promise<GuildStore> {
       polls: Array.isArray(data.polls) ? data.polls : [],
       recruitmentNeeds: Array.isArray(data.recruitmentNeeds) ? data.recruitmentNeeds : [],
       streamNotices: Array.isArray(data.streamNotices) ? data.streamNotices : [],
+      raidStates: typeof data.raidStates === 'object' && data.raidStates !== null ? data.raidStates : {},
+      bankRequests: Array.isArray(data.bankRequests) ? data.bankRequests : [],
+      bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
     }
   } catch (err) {
     if (err instanceof BlobNotFoundError) return emptyStore()

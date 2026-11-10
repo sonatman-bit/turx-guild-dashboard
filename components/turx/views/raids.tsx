@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Clock, HeartPulse, Shield, Swords, UserCheck, UserX, Users, Sparkles, UserPlus, Send } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, RAIDS, type Raid } from '@/lib/guild-data'
 import { loadOnboardingCharacters } from '@/lib/profile-gate'
 import { cn } from '@/lib/utils'
@@ -86,7 +87,17 @@ function getActiveRaids(raids: Raid[]) {
   return raids.filter(() => true)
 }
 
-function RaidCard({ raid, myCharacters }: { raid: Raid; myCharacters: GuildCharacter[] }) {
+function RaidCard({
+  raid,
+  myCharacters,
+  currentUsername,
+  canManageRaid,
+}: {
+  raid: Raid
+  myCharacters: GuildCharacter[]
+  currentUsername?: string
+  canManageRaid?: boolean
+}) {
   const toast = useToast()
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedChar, setSelectedChar] = useState<GuildCharacter | null>(myCharacters[0] ?? null)
@@ -96,40 +107,72 @@ function RaidCard({ raid, myCharacters }: { raid: Raid; myCharacters: GuildChara
 
   const theme = getZoneTheme(raid.name)
 
-  const storagePoolKey = `turx_raid_pool_${raid.id}`
-  const storageRosterKey = `turx_raid_roster_${raid.id}`
-
-  const [signupPool, setSignupPool] = useState<RaidMember[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(storagePoolKey)
-      if (saved) {
-        try { return JSON.parse(saved) } catch (e) { /* fallback */ }
-      }
-    }
-    return []
-  })
-
-  const [publishedRoster, setPublishedRoster] = useState<RaidMember[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(storageRosterKey)
-      if (saved) {
-        try { return JSON.parse(saved) } catch (e) { /* fallback */ }
-      }
-    }
-    return []
-  })
+  const [signupPool, setSignupPool] = useState<RaidMember[]>([])
+  const [publishedRoster, setPublishedRoster] = useState<RaidMember[]>([])
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(storagePoolKey, JSON.stringify(signupPool))
-    }
-  }, [signupPool, storagePoolKey])
+    let cancelled = false
+    fetch('/api/raids')
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as {
+          raidStates?: Record<
+            string,
+            {
+              raidId: string
+              signups: Array<{
+                id: string
+                username: string
+                characterName: string
+                wowClass: keyof typeof CLASS_COLORS
+                spec: string
+                role: ExtendedRole
+                status: Status
+                rosterStatus: 'signup' | 'roster' | 'bench'
+              }>
+            }
+          >
+        }
+        if (!res.ok || cancelled) return
+        const raidState = data.raidStates?.[raid.id]
+        if (raidState && Array.isArray(raidState.signups)) {
+          const pool: RaidMember[] = []
+          const roster: RaidMember[] = []
+          let userSignup: (typeof raidState.signups)[number] | undefined
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(storageRosterKey, JSON.stringify(publishedRoster))
+          for (const s of raidState.signups) {
+            const member: RaidMember = {
+              id: s.id,
+              name: s.characterName,
+              wowClass: s.wowClass in CLASS_COLORS ? s.wowClass : 'Warrior',
+              spec: s.spec || 'DPS',
+              role: s.role || 'MELEE',
+              status: s.rosterStatus,
+            }
+            if (s.rosterStatus === 'roster') {
+              roster.push(member)
+            } else {
+              pool.push(member)
+            }
+            if (currentUsername && s.username.toLowerCase() === currentUsername.toLowerCase()) {
+              userSignup = s
+            }
+          }
+
+          setSignupPool(pool)
+          setPublishedRoster(roster)
+          if (userSignup) {
+            setSignedUp(true)
+            setMyStatus(userSignup.status)
+            const matched = myCharacters.find((c) => c.name === userSignup?.characterName)
+            if (matched) setSelectedChar(matched)
+          }
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
     }
-  }, [publishedRoster, storageRosterKey])
+  }, [raid.id, currentUsername, myCharacters])
 
   const roles: { key: ExtendedRole; label: string }[] = [
     { key: 'TANK', label: 'Tank' },
@@ -139,37 +182,104 @@ function RaidCard({ raid, myCharacters }: { raid: Raid; myCharacters: GuildChara
   ]
 
   const moveToRoster = (member: RaidMember, role: ExtendedRole) => {
-    setSignupPool(signupPool.filter(m => m.id !== member.id))
-    setPublishedRoster([...publishedRoster, { ...member, role, status: 'roster' }])
+    setSignupPool(prev => prev.filter(m => m.id !== member.id))
+    setPublishedRoster(prev => [...prev, { ...member, role, status: 'roster' }])
+    void fetch('/api/raids', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'move_to_roster', raidId: raid.id, memberId: member.id, role }),
+    }).catch(() => undefined)
   }
 
   const returnToPool = (member: RaidMember) => {
-    setPublishedRoster(publishedRoster.filter(m => m.id !== member.id))
-    setSignupPool([...signupPool, { ...member, status: 'signup' }])
+    setPublishedRoster(prev => prev.filter(m => m.id !== member.id))
+    setSignupPool(prev => [...prev, { ...member, status: 'signup' }])
+    void fetch('/api/raids', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'return_to_pool', raidId: raid.id, memberId: member.id }),
+    }).catch(() => undefined)
   }
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     setIsPublished(true)
-    toast({ 
-      title: 'Kadro Başarıyla Yayınlandı! 🚀', 
-      description: `${raid.name} resmi rosterı güncellendi ve Discord webhook kuyruğuna eklendi.` 
-    })
-    setTimeout(() => setIsPublished(false), 3000)
+    try {
+      const res = await fetch('/api/raids', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish', raidId: raid.id }),
+      })
+      if (res.ok) {
+        toast({ 
+          title: 'Kadro Başarıyla Yayınlandı! 🚀', 
+          description: `${raid.name} resmi rosterı kaydedildi ve Discord kanalına iletildi.` 
+        })
+      } else {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        toast({ title: 'Yayınlama Hatası', description: data.error || 'İşlem başarısız oldu.' })
+      }
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    } finally {
+      setTimeout(() => setIsPublished(false), 3000)
+    }
   }
 
-  const handleSignupSubmit = () => {
+  const handleSignupSubmit = async () => {
     if (!selectedChar) {
       toast({ title: 'Karakter yok', description: 'Önce profilinden bir Main karakter ekle.' })
       return
     }
     setModalOpen(false)
     setSignedUp(true)
+    const newSignup: RaidMember = { ...selectedChar, id: `${currentUsername || 'user'}-${selectedChar.id}`, status: 'signup' }
     const existingInPool = signupPool.some(m => m.name === selectedChar.name)
     if (!existingInPool) {
-      const newSignup: RaidMember = { ...selectedChar, id: Date.now().toString(), status: 'signup' }
-      setSignupPool([...signupPool, newSignup])
+      setSignupPool(prev => [...prev, newSignup])
     }
-    toast({ title: 'Ön Kayıt Başarılı!', description: `${selectedChar.name} (${selectedChar.spec}) ile kayıt olundu.` })
+
+    try {
+      const res = await fetch('/api/raids', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'signup',
+          raidId: raid.id,
+          character: selectedChar,
+        }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        toast({ title: 'Kayıt Hatası', description: data.error || 'Ön kayıt sunucuya kaydedilemedi.' })
+        return
+      }
+      toast({ title: 'Ön Kayıt Başarılı!', description: `${selectedChar.name} (${selectedChar.spec}) ile kayıt olundu ve sunucuya işlendi.` })
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    }
+  }
+
+  const handleConfirmAttendance = async () => {
+    setMyStatus('Confirmed')
+    try {
+      const res = await fetch('/api/raids', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', raidId: raid.id }),
+      })
+      if (!res.ok) {
+        toast({ title: 'Hata', description: 'Katılım onaylanamadı.' })
+        return
+      }
+      toast({ title: 'Katılım Onaylandı!', description: 'Raid katılım durumunuz sunucuda güncellendi.' })
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    }
   }
 
   return (
@@ -234,7 +344,7 @@ function RaidCard({ raid, myCharacters }: { raid: Raid; myCharacters: GuildChara
             <Badge className={STATUS_STYLES[myStatus]}>{myStatus}</Badge>
           </div>
           <div className="flex gap-2">
-            <GoldButton onClick={() => setMyStatus('Confirmed')}>
+            <GoldButton onClick={handleConfirmAttendance}>
               <CheckCircle2 className="size-4" /> Katılımı Onayla
             </GoldButton>
             <GhostButton onClick={() => setModalOpen(true)}>
@@ -315,6 +425,7 @@ export function RaidsView() {
   const { user } = useAuth()
   const myCharacters = charactersFromAccount(user?.username)
   const activeRaids = getActiveRaids(RAIDS)
+  const canManageRaid = user?.role === 'Guild Master' || user?.role === 'Officer' || user?.role === 'Raid Leader'
 
   return (
     <div>
@@ -330,7 +441,13 @@ export function RaidsView() {
       />
       <div className="grid gap-8 mt-6">
         {activeRaids.map((r) => (
-          <RaidCard key={r.id} raid={r} myCharacters={myCharacters} />
+          <RaidCard
+            key={r.id}
+            raid={r}
+            myCharacters={myCharacters}
+            currentUsername={user?.username}
+            canManageRaid={canManageRaid}
+          />
         ))}
       </div>
     </div>

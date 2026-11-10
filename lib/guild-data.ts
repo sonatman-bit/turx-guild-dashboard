@@ -87,7 +87,26 @@ export const PHASES = [
   { phase: 'Phase 5', title: 'Ahn’Qiraj', date: 'Q4 2027', status: 'future' as const, items: ['AQ20 / AQ40', 'Gates Event', 'Kalimdor Ödülleri'] },
 ]
 
-export const ANNOUNCEMENTS: { author: string; rank: string; time: string; text: string }[] = []
+export const ANNOUNCEMENTS: { author: string; rank: string; time: string; text: string }[] = [
+  {
+    author: 'Sonat',
+    rank: 'Guild Master',
+    time: 'Bugün 20:30',
+    text: 'WoW: Forever sunucu açılışı ve Phase 1 hazırlıkları tüm hızıyla sürüyor! Barrow Deeps, Hyjal Summit ve Onyxia raid kadroları için ön kayıtlar açıldı. Lütfen profilinizden Main karakterinizi, rolünüzü ve mesleklerinizi eksiksiz tanımlayın.',
+  },
+  {
+    author: 'TURX Subay Heyeti',
+    rank: 'Officer',
+    time: 'Dün 18:45',
+    text: 'Guild Bankası malzeme ve consumable destek fonu devrede. Raid öncesi iksir, flask ve enchant ihtiyaçlarınızı Banka sekmesinden talep edebilirsiniz. Talepler subay heyetimiz tarafından onaylanacaktır.',
+  },
+  {
+    author: 'Raid Lead',
+    rank: 'Raid Leader',
+    time: '2 gün önce',
+    text: 'Raid saatlerimiz 21:00 UTC+3 olarak sabitlenmiştir. Raide katılacak tüm üyelerimizin en geç 20:45\'te Discord ses kanalında hazır bulunmaları ve gerekli boss taktiklerini strateji sekmesinden incelemeleri önemlidir.',
+  },
+]
 
 export const STREAMS: { name: string; title: string; viewers: number; live: boolean }[] = []
 

@@ -2,6 +2,7 @@
 
 import { BarChart3, Crown, Search, UserCheck, Users, Star, Wrench, Shield, Swords, Cross, Target } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
 import { classIconUrl, type ArmorySnapshot } from '@/lib/wow-armory'
@@ -39,6 +40,7 @@ type ServerMember = {
 
 interface RosterMemberRow {
   id: string
+  username: string
   charName: string
   realName: string
   level: number | null
@@ -82,6 +84,7 @@ function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
         const wowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
         return {
           id: character.id || `${account.username}-${index}`,
+          username: account.username,
           charName: `${character.firstName} ${character.lastName}`,
           realName: displayName,
           level: typeof character.armory?.level === 'number' ? character.armory.level : null,
@@ -269,17 +272,47 @@ export function RosterView() {
 
   const rosterMembers = defaultMembers
 
-  const handleRankChange = (memberId: string, newRank: GuildRank) => {
+  const handleRankChange = (memberId: string, memberUsername: string, currentRank: GuildRank, newRank: GuildRank) => {
     if (!canManageRanks) {
       toast({ title: 'Yetki Hatası', description: 'Bu işlem için GM veya Officer yetkisi gereklidir.' })
       return
     }
 
-    setDefaultMembers(prev => prev.map(m => m.id === memberId ? { ...m, rank: newRank } : m))
-    toast({
-      title: 'Guild Rank Güncellendi',
-      description: `Üyenin yeni rütbesi başarıyla "${newRank}" olarak ayarlandı.`,
+    if (currentRank === 'Guild Master') {
+      toast({ title: 'Güvenlik Koruması', description: 'Guild Master rütbesi değiştirilemez veya düşürülemez.' })
+      return
+    }
+
+    if (newRank === 'Guild Master') {
+      toast({ title: 'Yetki Reddedildi', description: 'Panel üzerinden yeni bir Guild Master atanamaz.' })
+      return
+    }
+
+    const previous = defaultMembers
+    setDefaultMembers(prev => prev.map(m => m.username === memberUsername ? { ...m, rank: newRank } : m))
+
+    fetch('/api/roster/rank', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: memberUsername, rank: newRank }),
     })
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) {
+          setDefaultMembers(previous)
+          toast({ title: 'Rütbe Değiştirilemedi', description: data.error || 'İşlem başarısız oldu.' })
+          return
+        }
+        toast({
+          title: 'Guild Rank Güncellendi',
+          description: `${memberUsername} hesabının yeni rütbesi "${newRank}" olarak kaydedildi.`,
+        })
+      })
+      .catch(() => {
+        setDefaultMembers(previous)
+        toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+      })
   }
 
   const players = new Set(rosterMembers.map((m) => m.realName)).size
@@ -479,15 +512,14 @@ export function RosterView() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
-                      {/* Sadece GM veya Officer yetkisi varsa rank değiştirme select'i gösterilir */}
-                      {canManageRanks && (
+                      {/* Sadece GM veya Officer yetkisi varsa ve üye GM değilse rank değiştirme select'i gösterilir */}
+                      {canManageRanks && m.rank !== 'Guild Master' && (
                         <select
                           aria-label="Üye rütbesini değiştir"
                           value={m.rank}
-                          onChange={(e) => handleRankChange(m.id, e.target.value as GuildRank)}
+                          onChange={(e) => handleRankChange(m.id, m.username, m.rank, e.target.value as GuildRank)}
                           className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px] text-foreground cursor-pointer hover:border-gold/50 transition"
                         >
-                          <option value="Guild Master">Guild Master</option>
                           <option value="Officer">Officer</option>
                           <option value="Raid Leader">Raid Leader</option>
                           <option value="Raider">Raider</option>

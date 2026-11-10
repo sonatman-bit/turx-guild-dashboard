@@ -218,6 +218,8 @@ export function AdminDashboardView() {
         }
       })
       .catch(() => undefined)
+
+    loadAttendance()
   }, [])
 
   useEffect(() => {

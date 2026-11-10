@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth-email'
-import { isGuildMasterEmail } from '@/lib/turx-identity'
+import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { blobConfigured, loadGuildStore, resolveUserRole } from '@/lib/turx-store'
 
 export const dynamic = 'force-dynamic'
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Hesap bulunamadı.' }, { status: 404 })
     }
 
-    const isAuthorized = isGuildMasterEmail(caller.email) || caller.role === 'Guild Master' || caller.role === 'Officer'
+    const isAuthorized = canAccessAdminPanel(resolveUserRole(caller))
     if (!isAuthorized) {
       return NextResponse.json({ error: 'Bu panel için GM veya Officer yetkisi gereklidir.' }, { status: 403 })
     }

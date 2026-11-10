@@ -42,7 +42,7 @@ export function BankView() {
   const [ledger, setLedger] = useState<BankLedgerDto[]>([])
   const [requests, setRequests] = useState<BankRequestDto[]>([])
 
-  const isOfficerOrGm = user?.role === 'Guild Master' || user?.role === 'Officer'
+  const isOfficerOrGm = user?.role === 'Guild Master' || user?.role === 'Görevli' || user?.role === 'Officer'
 
   const loadBankData = () => {
     fetch('/api/bank')
@@ -138,7 +138,7 @@ export function BankView() {
       <SectionHeader
         eyebrow="Guild Bank"
         title="Guild Bankası & Malzeme Talebi"
-        description="Raid consumable stokları ve lonca fonu. Talepler Officer ekibi tarafından 24 saat içinde onaylanır."
+        description="Raid consumable stokları ve lonca fonu. Talepler Görevli ekibi tarafından 24 saat içinde onaylanır."
         action={
           <GoldButton onClick={() => openRequest()}>
             <PackagePlus className="size-4" /> Malzeme Talep Et
@@ -260,7 +260,7 @@ export function BankView() {
         ))}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="Malzeme Talep Et" description="Talebiniz Officer onayına ve Discord'a iletilir.">
+      <Modal open={open} onClose={() => setOpen(false)} title="Malzeme Talep Et" description="Talebiniz Görevli onayına ve Discord'a iletilir.">
         <form
           key={preset}
           className="flex flex-col gap-4"

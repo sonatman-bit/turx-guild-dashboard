@@ -58,8 +58,12 @@ interface MemberAttendanceDto {
   availability: Record<DayKey, { status: 'available' | 'maybe' | 'busy' | 'none'; startTime: string; endTime: string }>
 }
 
-const RANK_STYLES: Record<GuildRank, string> = {
+const RANK_STYLES: Record<string, string> = {
   'Guild Master': 'border-gold/60 bg-gold/15 text-gold',
+  'Görevli': 'border-neon/50 bg-neon/10 text-neon',
+  'Turx': 'border-azure/50 bg-azure/10 text-azure',
+  'Alt': 'border-purple-500/40 bg-purple-500/10 text-purple-300',
+  'Sosyal': 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
   'Officer': 'border-neon/50 bg-neon/10 text-neon',
   'Raid Leader': 'border-azure/50 bg-azure/10 text-azure',
   'Raider': 'border-success/40 bg-success/10 text-success',
@@ -424,7 +428,7 @@ export function AdminDashboardView() {
     <div className="flex flex-col gap-8 pb-10">
       <SectionHeader
         eyebrow="Yetkili Yönetim Paneli"
-        title="GM & Officer Kontrol Merkezi"
+        title="GM & Görevli Kontrol Merkezi"
         description="Hesap bazlı rütbe yönetimi yapın ve detaylı guild başvuru bilgilerini denetleyin."
         action={
           <GoldButton onClick={handleTestWebhook} disabled={testingWebhook} className="text-xs py-1.5 px-3">
@@ -437,7 +441,7 @@ export function AdminDashboardView() {
       <div className="flex items-center gap-3 p-4 rounded-xl border border-gold/40 bg-gold/10 text-gold">
         <Shield className="size-6 shrink-0" />
         <div className="text-xs leading-relaxed">
-          <strong>Güvenlik Notu:</strong> Bu panel yalnızca <strong>Guild Master</strong> ve <strong>Officer</strong> rütbesine sahip yetkililer tarafından görüntülenebilir. Yetkiler site hesaplarına (profil isimlerine) verilmiştir.
+          <strong>Güvenlik Notu:</strong> Bu panel yalnızca <strong>Guild Master</strong> ve <strong>Görevli</strong> rütbesine sahip yetkililer tarafından görüntülenebilir. Yetkiler site hesaplarına (profil isimlerine) verilmiştir.
         </div>
       </div>
 
@@ -545,10 +549,10 @@ export function AdminDashboardView() {
                         )}
                       >
                         <option value="Guild Master">Guild Master (GM)</option>
-                        <option value="Officer">Officer</option>
-                        <option value="Raid Leader">Raid Leader</option>
-                        <option value="Raider">Raider</option>
-                        <option value="Member">Member</option>
+                        <option value="Görevli">Görevli</option>
+                        <option value="Turx">Turx</option>
+                        <option value="Alt">Alt</option>
+                        <option value="Sosyal">Sosyal</option>
                       </select>
                     </td>
                     <td className="py-3 px-4 text-xs text-muted-foreground font-mono">{member.joinDate}</td>

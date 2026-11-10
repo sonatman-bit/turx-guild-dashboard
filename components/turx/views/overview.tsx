@@ -13,6 +13,7 @@ import type { TabId } from '../navigation'
 import { StaffRoleBadge } from '../staff-role-icons'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Modal, Panel, PanelTitle } from '../ui'
+import { HeroLanding } from '../hero-landing'
 
 function useCountdown(target: string) {
   const [now, setNow] = useState<number | null>(null)
@@ -507,6 +508,7 @@ function DiscordFeed() {
 export function OverviewView({ onNavigate }: { onNavigate: (t: TabId) => void }) {
   return (
     <div className="flex flex-col gap-6">
+      <HeroLanding onNavigate={onNavigate} />
       <StaffHiringHero onNavigate={onNavigate} />
       <PollAlert />
       <div className="grid gap-6 xl:grid-cols-3">

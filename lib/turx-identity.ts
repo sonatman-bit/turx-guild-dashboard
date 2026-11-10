@@ -1,4 +1,17 @@
-export type GuildRank = 'Guild Master' | 'Officer' | 'Raid Leader' | 'Raider' | 'Member'
+export type GuildRank =
+  | 'Guild Master'
+  | 'Görevli'
+  | 'Turx'
+  | 'Alt'
+  | 'Sosyal'
+  // Legacy aliases for backward compatibility:
+  | 'Officer'
+  | 'Member'
+  | 'Raid Leader'
+  | 'Raider'
+
+export const PRIMARY_GUILD_RANKS = ['Guild Master', 'Görevli', 'Turx', 'Alt', 'Sosyal'] as const
+export type PrimaryGuildRank = (typeof PRIMARY_GUILD_RANKS)[number]
 
 export const GM_EMAIL = 'sonatman@hotmail.com'
 export const DATA_EPOCH = '2026-11-03-auth-passwords'
@@ -9,7 +22,15 @@ export function isGuildMasterEmail(email: string | null | undefined) {
 }
 
 export function canAccessAdminPanel(role: string | null | undefined) {
-  return role === 'Guild Master' || role === 'Officer'
+  return role === 'Guild Master' || role === 'Görevli' || role === 'Officer'
+}
+
+export function normalizeGuildRank(role: string | null | undefined): PrimaryGuildRank {
+  if (role === 'Guild Master') return 'Guild Master'
+  if (role === 'Görevli' || role === 'Officer') return 'Görevli'
+  if (role === 'Alt') return 'Alt'
+  if (role === 'Sosyal' || role === 'Newbie' || role === 'Social') return 'Sosyal'
+  return 'Turx'
 }
 
 export function wipeLegacyTurxData() {

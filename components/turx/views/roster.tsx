@@ -62,8 +62,12 @@ interface RosterMemberRow {
   classIconUrl: string
 }
 
-const RANK_STYLES: Record<GuildRank, string> = {
+const RANK_STYLES: Record<string, string> = {
   'Guild Master': 'border-gold/60 bg-gold/15 text-gold',
+  'Görevli': 'border-neon/50 bg-neon/10 text-neon',
+  'Turx': 'border-azure/50 bg-azure/10 text-azure',
+  'Alt': 'border-purple-500/40 bg-purple-500/10 text-purple-300',
+  'Sosyal': 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
   'Officer': 'border-neon/50 bg-neon/10 text-neon',
   'Raid Leader': 'border-azure/50 bg-azure/10 text-azure',
   'Raider': 'border-success/40 bg-success/10 text-success',
@@ -240,10 +244,10 @@ function MainRoleBreakdown({ mains }: { mains: RosterMemberRow[] }) {
 export function RosterView() {
   const toast = useToast()
   const { user } = useAuth() // Aktif oturum ve rütbe bilgisi
-  const currentUserRole = user?.role || 'Member'
+  const currentUserRole = user?.role || 'Turx'
   
-  // Sadece GM veya Officer rütbeleri yönetim yapabilir
-  const canManageRanks = currentUserRole === 'Guild Master' || currentUserRole === 'Officer'
+  // Sadece GM veya Görevli rütbeleri yönetim yapabilir
+  const canManageRanks = currentUserRole === 'Guild Master' || currentUserRole === 'Görevli' || currentUserRole === 'Officer'
 
   const [query, setQuery] = useState('')
   const [cls, setCls] = useState<WowClass | 'all'>('all')
@@ -274,7 +278,7 @@ export function RosterView() {
 
   const handleRankChange = (memberId: string, memberUsername: string, currentRank: GuildRank, newRank: GuildRank) => {
     if (!canManageRanks) {
-      toast({ title: 'Yetki Hatası', description: 'Bu işlem için GM veya Officer yetkisi gereklidir.' })
+      toast({ title: 'Yetki Hatası', description: 'Bu işlem için GM veya Görevli yetkisi gereklidir.' })
       return
     }
 
@@ -402,10 +406,10 @@ export function RosterView() {
             <select aria-label="Rank filtresi" value={rank} onChange={(e) => setRank(e.target.value as GuildRank | 'all')} className={inputClass}>
               <option value="all">Tüm Ranklar</option>
               <option value="Guild Master">Guild Master</option>
-              <option value="Officer">Officer</option>
-              <option value="Raid Leader">Raid Leader</option>
-              <option value="Raider">Raider</option>
-              <option value="Member">Member</option>
+              <option value="Görevli">Görevli</option>
+              <option value="Turx">Turx</option>
+              <option value="Alt">Alt</option>
+              <option value="Sosyal">Sosyal</option>
             </select>
             <select aria-label="Meslek filtresi" value={professionFilter} onChange={(e) => setProfessionFilter(e.target.value)} className={inputClass}>
               <option value="all">Tüm Meslekler</option>
@@ -520,10 +524,10 @@ export function RosterView() {
                           onChange={(e) => handleRankChange(m.id, m.username, m.rank, e.target.value as GuildRank)}
                           className="rounded border border-border bg-background px-1.5 py-0.5 text-[11px] text-foreground cursor-pointer hover:border-gold/50 transition"
                         >
-                          <option value="Officer">Officer</option>
-                          <option value="Raid Leader">Raid Leader</option>
-                          <option value="Raider">Raider</option>
-                          <option value="Member">Member</option>
+                          {currentUserRole === 'Guild Master' && <option value="Görevli">Görevli</option>}
+                          <option value="Turx">Turx</option>
+                          <option value="Alt">Alt</option>
+                          <option value="Sosyal">Sosyal</option>
                         </select>
                       )}
                     </div>

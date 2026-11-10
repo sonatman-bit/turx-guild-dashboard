@@ -354,11 +354,11 @@ function RaidCard({
         </div>
       )}
 
-      {/* Officer / Subay Yönetim Paneli (Draft & Publish) */}
+      {/* Görevli Yönetim Paneli (Draft & Publish) */}
       <div className="rounded-xl border border-gold/30 bg-gold/5 p-4 flex flex-col gap-3 shadow-sm">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <span className="text-xs font-bold uppercase tracking-wider text-gold flex items-center gap-2">
-            <Users className="size-4" /> Officer Ön Kayıt Havuzu ({signupPool.length})
+            <Users className="size-4" /> Görevli Ön Kayıt Havuzu ({signupPool.length})
           </span>
           <GoldButton 
             onClick={handlePublish} 
@@ -425,7 +425,7 @@ export function RaidsView() {
   const { user } = useAuth()
   const myCharacters = charactersFromAccount(user?.username)
   const activeRaids = getActiveRaids(RAIDS)
-  const canManageRaid = user?.role === 'Guild Master' || user?.role === 'Officer' || user?.role === 'Raid Leader'
+  const canManageRaid = user?.role === 'Guild Master' || user?.role === 'Görevli' || user?.role === 'Officer' || user?.role === 'Raid Leader'
 
   return (
     <div>

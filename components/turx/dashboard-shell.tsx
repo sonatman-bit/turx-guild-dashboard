@@ -63,7 +63,7 @@ function DashboardShellInner() {
     if (id === 'admin' && !canOpenAdmin) {
       toast({
         title: 'Yetki yok',
-        description: 'GM Yönetim Paneli yalnızca Guild Master ve Officer hesaplarına açıktır.',
+        description: 'GM Yönetim Paneli yalnızca Guild Master ve Görevli hesaplarına açıktır.',
       })
       return
     }

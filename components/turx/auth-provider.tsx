@@ -323,6 +323,12 @@ export function useAuth() {
   return context
 }
 
+export function openTurxAuthModal() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('turx:open-auth'))
+  }
+}
+
 export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile') => void }) {
   const { user, login, logout, signup, resetPasswordForEmail } = useAuth()
   const [mounted, setMounted] = useState(false)
@@ -332,6 +338,12 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
   }, [])
 
   const [authModalOpen, setAuthModalOpen] = useState(false)
+
+  useEffect(() => {
+    const handleOpen = () => setAuthModalOpen(true)
+    window.addEventListener('turx:open-auth', handleOpen)
+    return () => window.removeEventListener('turx:open-auth', handleOpen)
+  }, [])
   const [isSignup, setIsSignup] = useState(false)
   const [step, setStep] = useState<AuthStep>('form')
   const [pendingData, setPendingData] = useState<{ username: string; email: string; pass: string } | null>(null)

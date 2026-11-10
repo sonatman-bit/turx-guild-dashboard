@@ -58,8 +58,8 @@ export function FeedbackView() {
     <div>
       <SectionHeader
         eyebrow="Gizli Kanal"
-        title="Anonim GM & Officer Mesaj Kutusu"
-        description="Öneri, şikayet veya hassas konuları kimliğiniz paylaşılmadan doğrudan Guild Master ve Officer ekibine iletin."
+        title="Anonim GM & Görevli Mesaj Kutusu"
+        description="Öneri, şikayet veya hassas konuları kimliğiniz paylaşılmadan doğrudan Guild Master ve Görevli ekibine iletin."
       />
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <Panel className="glow-border">
@@ -68,7 +68,7 @@ export function FeedbackView() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Alıcı">
                 <select name="to" className={inputClass}>
-                  <option>Guild Master + Officer’lar</option>
+                  <option>Guild Master + Görevliler</option>
                   <option>Sadece Guild Master</option>
                 </select>
               </Field>
@@ -108,7 +108,7 @@ export function FeedbackView() {
           <PanelTitle icon={ShieldCheck}>Gizlilik Güvencesi</PanelTitle>
           <ul className="flex flex-col gap-3 text-sm leading-relaxed text-silver">
             <li>Karakter adınız, Discord hesabınız ve IP bilginiz mesajla birlikte saklanmaz.</li>
-            <li>Mesajlar yalnızca GM ve Officer ekibi tarafından görüntülenebilir.</li>
+            <li>Mesajlar yalnızca GM ve Görevli ekibi tarafından görüntülenebilir.</li>
             <li>Kötüye kullanım tespit edilirse mesaj silinir; kimlik takibi yapılmaz.</li>
           </ul>
         </Panel>

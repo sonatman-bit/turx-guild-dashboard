@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 function isOfficerOrGm(username: string, store: Awaited<ReturnType<typeof loadGuildStore>>) {
   const user = store.users.find((u) => u.username.toLowerCase() === username.toLowerCase())
   if (!user) return false
-  return isGuildMasterEmail(user.email) || user.role === 'Guild Master' || user.role === 'Officer'
+  return isGuildMasterEmail(user.email) || user.role === 'Guild Master' || user.role === 'Görevli' || user.role === 'Officer'
 }
 
 export async function GET() {

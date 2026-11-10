@@ -348,7 +348,7 @@ export function RecruitView() {
                       className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-border bg-card text-silver hover:text-foreground cursor-pointer self-start sm:self-auto"
                     >
                       {isExpanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-                      {isExpanded ? 'Detayları Gizle' : 'Officer Detaylarını Gör'}
+                      {isExpanded ? 'Detayları Gizle' : 'Görevli Detaylarını Gör'}
                     </button>
                   )}
                 </div>

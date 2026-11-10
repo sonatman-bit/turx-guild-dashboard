@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { TurxLogo } from './logo'
@@ -28,7 +29,7 @@ export const NAV_ITEMS: { id: TabId; label: string; short: string; icon: React.C
   { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText },
   { id: 'raids', label: 'Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
   { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins },
-  { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Officer', icon: MessageSquareLock },
+  { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock },
   { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield },
 ]
 
@@ -107,7 +108,14 @@ function SidebarBody({
   return (
     <div className="flex h-full flex-col gap-6 p-4">
       <div className="flex items-center gap-3 px-1">
-        <TurxLogo className="h-14 w-auto drop-shadow-[0_0_12px_rgb(0_242_254/0.35)]" />
+        <Image
+          src="/images/crests/crest-option-1.jpg"
+          alt="TURX"
+          width={56}
+          height={56}
+          priority
+          className="size-14 rounded-xl border border-gold/40 object-cover shadow-[0_0_15px_rgba(212,175,55,0.35)]"
+        />
         <div>
           <p className="font-display text-2xl leading-none font-black tracking-widest text-gold text-glow-gold">TURX</p>
           <p className="mt-1 font-display text-[10px] tracking-[0.3em] text-neon">TURX FOREVER</p>
@@ -215,7 +223,13 @@ export function Header({
         </button>
 
         <div className="flex min-w-0 items-center gap-3">
-          <TurxLogo className="h-9 w-auto lg:hidden" />
+          <Image
+            src="/images/crests/crest-option-1.jpg"
+            alt="TURX"
+            width={36}
+            height={36}
+            className="size-9 rounded-lg border border-gold/40 object-cover lg:hidden"
+          />
           <div className="min-w-0">
             <p className="flex items-baseline gap-2">
               <span className="font-display text-lg font-black tracking-widest text-gold">TURX</span>

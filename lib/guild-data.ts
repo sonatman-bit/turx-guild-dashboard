@@ -42,7 +42,16 @@ export function raceChoicesForClass(wowClass: WowClass, current?: string) {
 }
 
 export type Role = 'Tank' | 'Healer' | 'DPS'
-export type Rank = 'Guild Master' | 'Officer' | 'Raider' | 'Social'
+export type Rank =
+  | 'Guild Master'
+  | 'Görevli'
+  | 'Turx'
+  | 'Alt'
+  | 'Sosyal'
+  | 'Officer'
+  | 'Member'
+  | 'Raider'
+  | 'Social'
 
 export type Member = {
   name: string

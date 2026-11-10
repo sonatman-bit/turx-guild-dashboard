@@ -1,11 +1,21 @@
 import { NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth-email'
-import { isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
+import { isGuildMasterEmail, normalizeGuildRank, type GuildRank } from '@/lib/turx-identity'
 import { blobConfigured, mutateGuildStore } from '@/lib/turx-store'
 
 export const dynamic = 'force-dynamic'
 
-const VALID_RANKS: GuildRank[] = ['Officer', 'Raid Leader', 'Raider', 'Member']
+const VALID_RANKS: GuildRank[] = [
+  'Görevli',
+  'Turx',
+  'Alt',
+  'Sosyal',
+  // legacy:
+  'Officer',
+  'Raid Leader',
+  'Raider',
+  'Member',
+]
 
 export async function POST(request: Request) {
   try {
@@ -20,18 +30,20 @@ export async function POST(request: Request) {
 
     const body = (await request.json()) as { username?: string; rank?: string }
     const username = (body.username || '').trim()
-    const newRank = (body.rank || '').trim() as GuildRank
+    const rawRank = (body.rank || '').trim() as GuildRank
 
-    if (!username || !newRank) {
+    if (!username || !rawRank) {
       return NextResponse.json({ error: 'Kullanıcı adı ve rütbe gerekli.' }, { status: 400 })
     }
 
-    if (!VALID_RANKS.includes(newRank)) {
+    if (!VALID_RANKS.includes(rawRank)) {
       return NextResponse.json({ error: 'Geçersiz rütbe değeri.' }, { status: 400 })
     }
 
+    const newRank = normalizeGuildRank(rawRank)
+
     let targetUpdated = false
-    let targetRole: GuildRank = 'Member'
+    let targetRole: GuildRank = 'Turx'
 
     await mutateGuildStore((store) => {
       // Check caller's permissions
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
       if (!caller) throw new Error('CALLER_NOT_FOUND')
 
       const isCallerGm = isGuildMasterEmail(caller.email) || caller.role === 'Guild Master'
-      const isCallerOfficer = caller.role === 'Officer'
+      const isCallerOfficer = caller.role === 'Görevli' || caller.role === 'Officer'
       if (!isCallerGm && !isCallerOfficer) {
         throw new Error('FORBIDDEN')
       }
@@ -52,8 +64,10 @@ export async function POST(request: Request) {
         throw new Error('CANNOT_MODIFY_GM')
       }
 
-      // Only GM can promote or demote Officers
-      if ((newRank === 'Officer' || target.role === 'Officer') && !isCallerGm) {
+      // Only GM can promote to or demote from Görevli / Officer
+      const isTargetOfficer = target.role === 'Görevli' || target.role === 'Officer'
+      const isNewRankOfficer = newRank === 'Görevli'
+      if ((isNewRankOfficer || isTargetOfficer) && !isCallerGm) {
         throw new Error('OFFICER_CHANGE_REQUIRES_GM')
       }
 
@@ -70,13 +84,13 @@ export async function POST(request: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     if (message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'Bu işlem için GM veya Officer yetkisi gereklidir.' }, { status: 403 })
+      return NextResponse.json({ error: 'Bu işlem için GM veya Görevli yetkisi gereklidir.' }, { status: 403 })
     }
     if (message === 'CANNOT_MODIFY_GM') {
       return NextResponse.json({ error: 'Guild Master rütbesi değiştirilemez veya düşürülemez.' }, { status: 403 })
     }
     if (message === 'OFFICER_CHANGE_REQUIRES_GM') {
-      return NextResponse.json({ error: 'Officer atamaları veya değişiklikleri yalnızca Guild Master tarafından yapılabilir.' }, { status: 403 })
+      return NextResponse.json({ error: 'Görevli atamaları veya değişiklikleri yalnızca Guild Master tarafından yapılabilir.' }, { status: 403 })
     }
     if (message === 'TARGET_NOT_FOUND') {
       return NextResponse.json({ error: 'Kullanıcı bulunamadı.' }, { status: 404 })

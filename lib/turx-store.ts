@@ -118,17 +118,18 @@ export function emptyStore(): GuildStore {
 
 export function resolveUserRole(account: { email: string; role?: GuildRank }): GuildRank {
   if (isGuildMasterEmail(account.email)) return 'Guild Master'
-  const r = account.role
-  if (r === 'Officer' || r === 'Raid Leader' || r === 'Raider' || r === 'Member') {
-    return r
-  }
-  return 'Member'
+  const r = account.role as string | undefined
+  if (r === 'Görevli' || r === 'Officer') return 'Görevli'
+  if (r === 'Alt') return 'Alt'
+  if (r === 'Sosyal' || r === 'Newbie' || r === 'Social') return 'Sosyal'
+  if (r === 'Turx' || r === 'Member' || r === 'Raider' || r === 'Raid Leader') return 'Turx'
+  return 'Turx'
 }
 
 export function roleForEmail(email: string, currentRole?: GuildRank): GuildRank {
   if (isGuildMasterEmail(email)) return 'Guild Master'
-  if (currentRole && currentRole !== 'Guild Master') return currentRole
-  return 'Member'
+  if (currentRole && currentRole !== 'Guild Master') return resolveUserRole({ email, role: currentRole })
+  return 'Turx'
 }
 
 export function publicAccount(account: StoredAccount) {

@@ -259,38 +259,142 @@ async function readBlobStore(): Promise<{ store: GuildStore; etag?: string }> {
   }
 }
 
+export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildStore>): GuildStore {
+  const base = normalizeStore(incoming)
+  const target = normalizeStore(current)
+
+  // Merge users (prefer fuller profile/characters from either side, keep current role if promoted)
+  const userMap = new Map<string, StoredAccount>()
+  for (const u of base.users) {
+    if (u?.username) userMap.set(u.username.toLowerCase(), cloneStore({ ...emptyStore(), users: [u] }).users[0])
+  }
+  for (const u of target.users) {
+    if (!u?.username) continue
+    const key = u.username.toLowerCase()
+    const prev = userMap.get(key)
+    if (!prev) {
+      userMap.set(key, u)
+    } else {
+      userMap.set(key, {
+        ...prev,
+        ...u,
+        role: prev.role && prev.role !== 'Turx' ? prev.role : u.role || prev.role,
+        profile: u.profile && Object.keys(u.profile).length > 0 ? u.profile : prev.profile,
+        characters: Array.isArray(u.characters) && u.characters.length > 0 ? u.characters : prev.characters,
+        staffInterests:
+          Array.isArray(u.staffInterests) && u.staffInterests.length > 0 ? u.staffInterests : prev.staffInterests,
+        links: { ...(prev.links || {}), ...(u.links || {}) },
+      })
+    }
+  }
+
+  // Merge applications by id
+  const appMap = new Map<string, StoredApplication>()
+  for (const a of [...base.applications, ...target.applications]) {
+    if (a?.id) appMap.set(a.id, a)
+  }
+
+  // Merge polls by id
+  const pollMap = new Map<string, StoredPoll>()
+  for (const p of [...base.polls, ...target.polls]) {
+    if (!p?.id) continue
+    const existingPoll = pollMap.get(p.id)
+    if (!existingPoll) {
+      pollMap.set(p.id, p)
+    } else {
+      const voteMap = new Map<string, StoredPollVote>()
+      for (const v of [...(existingPoll.votes || []), ...(p.votes || [])]) {
+        if (v?.username) voteMap.set(v.username.toLowerCase(), v)
+      }
+      pollMap.set(p.id, { id: p.id, votes: [...voteMap.values()] })
+    }
+  }
+
+  // Merge raid states
+  const raidStates: Record<string, StoredRaidState> = { ...(base.raidStates || {}) }
+  for (const [raidId, state] of Object.entries(target.raidStates || {})) {
+    const prev = raidStates[raidId]
+    if (!prev) {
+      raidStates[raidId] = state
+    } else {
+      const signupMap = new Map<string, StoredRaidSignup>()
+      for (const s of [...(prev.signups || []), ...(state.signups || [])]) {
+        if (s?.id) signupMap.set(s.id, s)
+      }
+      raidStates[raidId] = {
+        ...prev,
+        ...state,
+        signups: [...signupMap.values()],
+      }
+    }
+  }
+
+  // Merge bank requests & ledger
+  const bankReqMap = new Map<string, StoredBankRequest>()
+  for (const r of [...(base.bankRequests || []), ...(target.bankRequests || [])]) {
+    if (r?.id) bankReqMap.set(r.id, r)
+  }
+  const bankLedgerMap = new Map<string, StoredBankTransaction>()
+  for (const t of [...(base.bankLedger || []), ...(target.bankLedger || [])]) {
+    if (t?.id) bankLedgerMap.set(t.id, t)
+  }
+
+  return {
+    users: [...userMap.values()],
+    applications: [...appMap.values()],
+    polls: [...pollMap.values()],
+    recruitmentNeeds:
+      target.recruitmentNeeds.length > 0 ? target.recruitmentNeeds : base.recruitmentNeeds,
+    streamNotices: target.streamNotices.length > 0 ? target.streamNotices : base.streamNotices,
+    raidStates,
+    bankRequests: [...bankReqMap.values()],
+    bankLedger: [...bankLedgerMap.values()],
+  }
+}
+
 async function fetchStoreFromBackend(): Promise<GuildStore> {
   const redis = getRedisCredentials()
   if (redis) {
     const fromRedis = await redisGetStore(redis)
-    if (fromRedis) {
+    const needsBlobHydration =
+      !fromRedis ||
+      (fromRedis.users.length <= 2 &&
+        fromRedis.applications.length === 0 &&
+        fromRedis.polls.length === 0)
+
+    if (fromRedis && !needsBlobHydration) {
       globalForStore.__turxStoreCache = {
         store: fromRedis,
         fetchedAt: Date.now(),
       }
       return fromRedis
     }
-    // Auto-migrate existing data from Vercel Blob to Redis on first read if Blob is available
+
+    // Auto-migrate or merge existing data from Vercel Blob to Redis when Blob becomes available
     if (hasBlobToken()) {
       try {
         const migrated = await readBlobStore()
-        await redisSetStore(redis, migrated.store)
-        globalForStore.__turxStoreCache = {
-          store: migrated.store,
-          fetchedAt: Date.now(),
-          etag: migrated.etag,
+        if (migrated.store.users.length > 0 || migrated.store.applications.length > 0 || migrated.store.polls.length > 0) {
+          const merged = fromRedis ? mergeGuildStores(fromRedis, migrated.store) : migrated.store
+          await redisSetStore(redis, merged)
+          globalForStore.__turxStoreCache = {
+            store: merged,
+            fetchedAt: Date.now(),
+            etag: migrated.etag,
+          }
+          return merged
         }
-        return migrated.store
       } catch {
-        // Blob might be empty or rate-limited; start fresh in Redis
+        // Blob might still be locked; fall back to whatever is in Redis
       }
     }
-    const fresh = emptyStore()
+
+    const fallback = fromRedis ?? emptyStore()
     globalForStore.__turxStoreCache = {
-      store: fresh,
+      store: fallback,
       fetchedAt: Date.now(),
     }
-    return fresh
+    return fallback
   }
 
   if (!hasBlobToken()) return emptyStore()

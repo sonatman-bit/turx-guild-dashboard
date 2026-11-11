@@ -11,6 +11,7 @@ __v0_jsx-dev-runtime.ts
 .env
 .env*.local
 .env.vercel.tmp
+backups/
 
 # Common ignores
 node_modules

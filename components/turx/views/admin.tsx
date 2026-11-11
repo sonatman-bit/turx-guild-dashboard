@@ -20,6 +20,9 @@ import {
   HeartPulse,
   Swords,
   Clock,
+  Download,
+  Upload,
+  Database,
 } from 'lucide-react'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
@@ -389,6 +392,118 @@ export function AdminDashboardView() {
   }
 
   const [testingWebhook, setTestingWebhook] = useState(false)
+  const [backupBusy, setBackupBusy] = useState(false)
+
+  // Otomatik tarayıcı yedeği: Yetkili paneli her açıldığında güncel veritabanını tarayıcı hafızasına yedekler
+  useEffect(() => {
+    fetch('/api/admin/backup', { credentials: 'same-origin', headers: authHeaders() })
+      .then(async (res) => {
+        if (!res.ok) return
+        const text = await res.text()
+        if (text && text.length > 50) {
+          localStorage.setItem('turx_gm_auto_backup', text)
+          localStorage.setItem('turx_gm_auto_backup_at', new Date().toISOString())
+        }
+      })
+      .catch(() => undefined)
+  }, [])
+
+  const handleDownloadBackup = async () => {
+    setBackupBusy(true)
+    try {
+      const res = await fetch('/api/admin/backup', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      })
+      if (!res.ok) {
+        toast({ title: 'Yedek İndirilemedi ⚠️', description: 'Yetki veya sunucu hatası oluştu.' })
+        return
+      }
+      const text = await res.text()
+      localStorage.setItem('turx_gm_auto_backup', text)
+      localStorage.setItem('turx_gm_auto_backup_at', new Date().toISOString())
+      const blob = new Blob([text], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `turx-guild-store-backup-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast({ title: 'Yedek İndirildi 💾', description: 'Veritabanı yedeği bilgisayarınıza kaydedildi.' })
+    } catch {
+      toast({ title: 'Hata', description: 'Yedek indirilirken bağlantı hatası oluştu.' })
+    } finally {
+      setBackupBusy(false)
+    }
+  }
+
+  const handleDiscordBackup = async () => {
+    setBackupBusy(true)
+    try {
+      const res = await fetch('/api/admin/backup', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; users?: number; error?: string }
+      if (res.ok && data.ok) {
+        toast({
+          title: 'Discord Yedeği Gönderildi! 📦',
+          description: `${data.users ?? 0} üyelik güncel veritabanı dosyası Discord kanalına iletildi.`,
+        })
+      } else {
+        toast({
+          title: 'Discord Yedek Hatası ⚠️',
+          description: data.error || 'Yedek Discord kanalına gönderilemedi.',
+        })
+      }
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    } finally {
+      setBackupBusy(false)
+    }
+  }
+
+  const handleRestoreBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBackupBusy(true)
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text)
+      const res = await fetch('/api/admin/backup', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(parsed),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        users?: number
+        applications?: number
+        error?: string
+      }
+      if (res.ok && data.ok) {
+        toast({
+          title: 'Yedek Başarıyla Yüklendi! ✅',
+          description: `Toplam ${data.users ?? 0} üye ve ${data.applications ?? 0} başvuru birleştirildi.`,
+        })
+        window.location.reload()
+      } else {
+        toast({
+          title: 'Geri Yükleme Hatası ⚠️',
+          description: data.error || 'Yedek dosyası işlenemedi.',
+        })
+      }
+    } catch {
+      toast({ title: 'Geçersiz Dosya', description: 'Seçilen dosya geçerli bir JSON yedeği değil.' })
+    } finally {
+      setBackupBusy(false)
+    }
+  }
 
   const handleTestWebhook = async () => {
     setTestingWebhook(true)
@@ -431,10 +546,31 @@ export function AdminDashboardView() {
         title="GM & Görevli Kontrol Merkezi"
         description="Hesap bazlı rütbe yönetimi yapın ve detaylı guild başvuru bilgilerini denetleyin."
         action={
-          <GoldButton onClick={handleTestWebhook} disabled={testingWebhook} className="text-xs py-1.5 px-3">
-            <Radio className="size-3.5 mr-1" />
-            {testingWebhook ? 'Test Ediliyor...' : '#canlıyayın Webhook Testi'}
-          </GoldButton>
+          <div className="flex flex-wrap items-center gap-2">
+            <GhostButton onClick={handleDownloadBackup} disabled={backupBusy} className="text-xs py-1.5 px-3">
+              <Download className="size-3.5 mr-1" />
+              Yedeği İndir (.json)
+            </GhostButton>
+            <GhostButton onClick={handleDiscordBackup} disabled={backupBusy} className="text-xs py-1.5 px-3">
+              <Database className="size-3.5 mr-1" />
+              Discord&apos;a Yedekle
+            </GhostButton>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:border-gold/50 hover:text-gold">
+              <Upload className="size-3.5" />
+              Yedek Yükle
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={handleRestoreBackupFile}
+                disabled={backupBusy}
+                className="hidden"
+              />
+            </label>
+            <GoldButton onClick={handleTestWebhook} disabled={testingWebhook} className="text-xs py-1.5 px-3">
+              <Radio className="size-3.5 mr-1" />
+              {testingWebhook ? 'Test Ediliyor...' : '#canlıyayın Webhook Testi'}
+            </GoldButton>
+          </div>
         }
       />
 

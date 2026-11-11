@@ -117,6 +117,7 @@ type StoreCacheEntry = {
 const globalForStore = globalThis as unknown as {
   __turxStoreCache?: StoreCacheEntry
   __turxStoreInFlight?: Promise<GuildStore> | null
+  __turxLastDailyBackupDate?: string
 }
 
 export function emptyStore(): GuildStore {
@@ -447,6 +448,46 @@ async function readStore(forceRefresh = false): Promise<GuildStore> {
   return cloneStore(store)
 }
 
+async function saveDailySnapshotIfNeeded(
+  redis: { url: string; token: string },
+  store: GuildStore,
+) {
+  const today = new Date().toISOString().slice(0, 10)
+  if (globalForStore.__turxLastDailyBackupDate === today) return
+  globalForStore.__turxLastDailyBackupDate = today
+
+  const snapshotKey = `${REDIS_KEY}:backup:${today}`
+  try {
+    // Keep daily Redis snapshot for 14 days (1209600 seconds)
+    await fetch(`${redis.url}/set/${encodeURIComponent(snapshotKey)}?EX=1209600`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${redis.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(store),
+      cache: 'no-store',
+    })
+  } catch (err) {
+    console.warn('Daily Redis snapshot failed:', err)
+  }
+
+  // Secondary cloud replica to Vercel Blob at most once per day (~30 writes/month)
+  if (hasBlobToken()) {
+    try {
+      await put(PATH, JSON.stringify(store), {
+        access: 'private',
+        addRandomSuffix: false,
+        allowOverwrite: true,
+        cacheControlMaxAge: 60,
+        contentType: 'application/json',
+      })
+    } catch {
+      // Ignore if Blob is disabled or unavailable
+    }
+  }
+}
+
 async function writeStore(store: GuildStore) {
   const normalized = normalizeStore(store)
   const redis = getRedisCredentials()
@@ -457,6 +498,7 @@ async function writeStore(store: GuildStore) {
       store: cloneStore(normalized),
       fetchedAt: Date.now(),
     }
+    void saveDailySnapshotIfNeeded(redis, normalized)
     return
   }
 

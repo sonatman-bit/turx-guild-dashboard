@@ -1,6 +1,7 @@
 import { BlobNotFoundError, get, put } from '@vercel/blob'
+import { Resend } from 'resend'
 import type { AccountLinks, StreamNotice } from '@/lib/account-links'
-import { isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
+import { GM_EMAIL, isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
   username: string
@@ -448,6 +449,39 @@ async function readStore(forceRefresh = false): Promise<GuildStore> {
   return cloneStore(store)
 }
 
+async function sendDailyBackupEmail(dateStr: string, jsonText: string, store: GuildStore) {
+  const apiKey = process.env.RESEND_API_KEY?.trim()
+  if (!apiKey) return
+  const fromRaw = (process.env.RESEND_FROM || 'TURX Forever <noreply@turxforever.com>')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+  const resend = new Resend(apiKey)
+  await resend.emails.send({
+    from: fromRaw || 'TURX Forever <noreply@turxforever.com>',
+    to: GM_EMAIL,
+    subject: `[TURX Yedek] Günlük Veritabanı Yedeği (${dateStr})`,
+    html: `<div style="background:#08121e;color:#d7e2ee;font-family:Arial,sans-serif;padding:24px">
+      <div style="max-width:480px;margin:0 auto;border:1px solid #d4af3740;border-radius:16px;padding:24px;background:#0b1b2d">
+        <h2 style="margin:0 0 12px;color:#d4af37">TURX Otomatik Günlük Veritabanı Yedeği</h2>
+        <p style="margin:0 0 12px;line-height:1.5">Sitenizde bugün yapılan değişiklikler sonrası güncel veritabanı yedeğiniz otomatik olarak oluşturulmuş ve bu e-postaya eklenmiştir.</p>
+        <ul style="margin:0 0 16px;padding-left:20px;line-height:1.6">
+          <li><strong>Tarih:</strong> ${dateStr}</li>
+          <li><strong>Kayıtlı Üye:</strong> ${store.users.length}</li>
+          <li><strong>Başvuru:</strong> ${store.applications.length}</li>
+          <li><strong>Anket:</strong> ${store.polls.length}</li>
+        </ul>
+        <p style="margin:0;font-size:12px;color:#8aa0b5">Bu dosya tamamen kendi e-posta kutunuzda güvendedir; hiçbir bulut sağlayıcının kotasına veya kilidine bağlı değildir.</p>
+      </div>
+    </div>`,
+    attachments: [
+      {
+        filename: `turx-guild-store-backup-${dateStr}.json`,
+        content: Buffer.from(jsonText, 'utf8'),
+      },
+    ],
+  })
+}
+
 async function saveDailySnapshotIfNeeded(
   redis: { url: string; token: string },
   store: GuildStore,
@@ -458,33 +492,36 @@ async function saveDailySnapshotIfNeeded(
 
   const snapshotKey = `${REDIS_KEY}:backup:${today}`
   try {
-    // Keep daily Redis snapshot for 14 days (1209600 seconds)
+    // Check in Redis if today's backup already exists so we only run once per day even across cold starts
+    const checkRes = await fetch(`${redis.url}/exists/${encodeURIComponent(snapshotKey)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${redis.token}` },
+      cache: 'no-store',
+    })
+    if (checkRes.ok) {
+      const checkPayload = (await checkRes.json().catch(() => ({}))) as { result?: number }
+      if (checkPayload.result === 1) {
+        return
+      }
+    }
+
+    const jsonText = JSON.stringify(store, null, 2)
+
+    // 1. Keep daily Redis snapshot for 14 days (1209600 seconds)
     await fetch(`${redis.url}/set/${encodeURIComponent(snapshotKey)}?EX=1209600`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${redis.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(store),
+      body: jsonText,
       cache: 'no-store',
     })
-  } catch (err) {
-    console.warn('Daily Redis snapshot failed:', err)
-  }
 
-  // Secondary cloud replica to Vercel Blob at most once per day (~30 writes/month)
-  if (hasBlobToken()) {
-    try {
-      await put(PATH, JSON.stringify(store), {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        cacheControlMaxAge: 60,
-        contentType: 'application/json',
-      })
-    } catch {
-      // Ignore if Blob is disabled or unavailable
-    }
+    // 2. Automatically email the .json backup attachment directly to Guild Master (sonatman@hotmail.com)
+    await sendDailyBackupEmail(today, jsonText, store)
+  } catch (err) {
+    console.warn('Daily snapshot/email backup failed:', err)
   }
 }
 

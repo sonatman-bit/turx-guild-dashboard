@@ -8,7 +8,7 @@ import {
   type StreamRadarCard,
 } from '@/lib/account-links'
 import { ensureTwitchOnlineSubscriptions } from '@/lib/twitch-eventsub'
-import { loadGuildStore, mutateGuildStore } from '@/lib/turx-store'
+import { loadGuildStore, mutateGuildStore, type GuildStore } from '@/lib/turx-store'
 
 type HelixStream = {
   id?: string
@@ -41,7 +41,7 @@ type KickChannel = {
 
 let appToken: { value: string; expires: number } | null = null
 let radarCache: { at: number; channels: StreamRadarCard[] } | null = null
-const LIVE_CACHE_MS = 45_000
+const LIVE_CACHE_MS = 120_000
 const FETCH_CONCURRENCY = 4
 
 function twitchConfigured() {
@@ -276,9 +276,9 @@ function noticeKey(notice: StreamNotice) {
   return notice.channelKey || (notice.twitchUserId ? `twitch:${notice.twitchUserId}` : '')
 }
 
-export async function announceNewStreams(channels: StreamRadarCard[]) {
+export async function announceNewStreams(channels: StreamRadarCard[], preloadedStore?: GuildStore) {
   const liveCards = channels.filter((item) => item.live && item.streamId)
-  const store = await loadGuildStore()
+  const store = preloadedStore ?? (await loadGuildStore())
   const notices = Array.isArray(store.streamNotices) ? store.streamNotices : []
   const fresh: StreamNotice[] = []
   for (const card of liveCards) {
@@ -357,7 +357,6 @@ function collectChannels(store: Awaited<ReturnType<typeof loadGuildStore>>) {
 
 export async function refreshLiveStreams() {
   if (radarCache && radarCache.at + LIVE_CACHE_MS > Date.now()) {
-    await announceNewStreams(radarCache.channels)
     return radarCache.channels
   }
 
@@ -449,7 +448,7 @@ export async function refreshLiveStreams() {
     radarCache = { at: Date.now(), channels }
   }
 
-  await announceNewStreams(channels)
+  await announceNewStreams(channels, store)
 
   if (twitchConfigured() && twitchLinked.length > 0) {
     try {

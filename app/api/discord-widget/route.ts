@@ -95,7 +95,24 @@ function normalizeStatus(value: string | undefined): PresenceState {
   return 'online'
 }
 
+const WIDGET_CACHE_TTL_MS = 60_000
+
+const globalForWidget = globalThis as unknown as {
+  __turxDiscordWidgetCache?: {
+    payload: DiscordWidgetResponse
+    fetchedAt: number
+  }
+}
+
 export async function GET() {
+  const cached = globalForWidget.__turxDiscordWidgetCache
+  if (cached && Date.now() - cached.fetchedAt < WIDGET_CACHE_TTL_MS) {
+    return NextResponse.json(cached.payload, {
+      status: 200,
+      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+    })
+  }
+
   let widgetData: RawWidgetPayload | null = null
 
   try {
@@ -279,9 +296,14 @@ export async function GET() {
       source: 'live',
     }
 
+    globalForWidget.__turxDiscordWidgetCache = {
+      payload: responsePayload,
+      fetchedAt: Date.now(),
+    }
+
     return NextResponse.json(responsePayload, {
       status: 200,
-      headers: { 'Cache-Control': 'no-store' },
+      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
     })
   }
 

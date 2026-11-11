@@ -102,6 +102,22 @@ export type GuildStore = {
 }
 
 const PATH = 'turx-guild-store.json'
+const REDIS_KEY = 'turx-guild-store'
+
+// Cache reads in memory for 60s across warm Vercel Fluid Compute invocations
+// and immediately update cache on every write (mutateGuildStore).
+const READ_CACHE_TTL_MS = 60_000
+
+type StoreCacheEntry = {
+  store: GuildStore
+  fetchedAt: number
+  etag?: string
+}
+
+const globalForStore = globalThis as unknown as {
+  __turxStoreCache?: StoreCacheEntry
+  __turxStoreInFlight?: Promise<GuildStore> | null
+}
 
 export function emptyStore(): GuildStore {
   return {
@@ -114,6 +130,24 @@ export function emptyStore(): GuildStore {
     bankRequests: [],
     bankLedger: [],
   }
+}
+
+function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStore {
+  if (!data || typeof data !== 'object') return emptyStore()
+  return {
+    users: Array.isArray(data.users) ? data.users : [],
+    applications: Array.isArray(data.applications) ? data.applications : [],
+    polls: Array.isArray(data.polls) ? data.polls : [],
+    recruitmentNeeds: Array.isArray(data.recruitmentNeeds) ? data.recruitmentNeeds : [],
+    streamNotices: Array.isArray(data.streamNotices) ? data.streamNotices : [],
+    raidStates: typeof data.raidStates === 'object' && data.raidStates !== null ? data.raidStates : {},
+    bankRequests: Array.isArray(data.bankRequests) ? data.bankRequests : [],
+    bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
+  }
+}
+
+function cloneStore(store: GuildStore): GuildStore {
+  return structuredClone(store)
 }
 
 export function resolveUserRole(account: { email: string; role?: GuildRank }): GuildRank {
@@ -140,48 +174,210 @@ export function publicAccount(account: StoredAccount) {
   }
 }
 
-export function blobConfigured() {
+function getRedisCredentials(): { url: string; token: string } | null {
+  const url = (
+    process.env.UPSTASH_REDIS_REST_URL ||
+    process.env.KV_REST_API_URL ||
+    process.env.STORAGE_KV_REST_API_URL ||
+    process.env.STORAGE_REST_API_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '')
+  const token = (
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    process.env.KV_REST_API_TOKEN ||
+    process.env.STORAGE_KV_REST_API_TOKEN ||
+    process.env.STORAGE_REST_API_TOKEN ||
+    ''
+  ).trim()
+  if (url && token) return { url, token }
+  return null
+}
+
+function hasBlobToken() {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim())
 }
 
-async function readStore(): Promise<GuildStore> {
-  if (!blobConfigured()) return emptyStore()
-  try {
-    const result = await get(PATH, { access: 'private', useCache: false })
-    if (!result || result.statusCode !== 200 || !result.stream) return emptyStore()
-    const data = (await new Response(result.stream).json()) as Partial<GuildStore>
-    return {
-      users: Array.isArray(data.users) ? data.users : [],
-      applications: Array.isArray(data.applications) ? data.applications : [],
-      polls: Array.isArray(data.polls) ? data.polls : [],
-      recruitmentNeeds: Array.isArray(data.recruitmentNeeds) ? data.recruitmentNeeds : [],
-      streamNotices: Array.isArray(data.streamNotices) ? data.streamNotices : [],
-      raidStates: typeof data.raidStates === 'object' && data.raidStates !== null ? data.raidStates : {},
-      bankRequests: Array.isArray(data.bankRequests) ? data.bankRequests : [],
-      bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
-    }
-  } catch (err) {
-    if (err instanceof BlobNotFoundError) return emptyStore()
-    throw err
+export function blobConfigured() {
+  return Boolean(getRedisCredentials() || hasBlobToken())
+}
+
+async function redisGetStore(creds: { url: string; token: string }): Promise<GuildStore | null> {
+  const res = await fetch(`${creds.url}/get/${encodeURIComponent(REDIS_KEY)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${creds.token}` },
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    throw new Error(`Redis GET failed with status ${res.status}`)
+  }
+  const payload = (await res.json()) as { result?: string | Partial<GuildStore> | null }
+  if (!payload.result) return null
+  const parsed =
+    typeof payload.result === 'string'
+      ? (JSON.parse(payload.result) as Partial<GuildStore>)
+      : payload.result
+  return normalizeStore(parsed)
+}
+
+async function redisSetStore(creds: { url: string; token: string }, store: GuildStore): Promise<void> {
+  const res = await fetch(`${creds.url}/set/${encodeURIComponent(REDIS_KEY)}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${creds.token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(store),
+    cache: 'no-store',
+  })
+  if (!res.ok) {
+    throw new Error(`Redis SET failed with status ${res.status}`)
   }
 }
 
+async function readBlobStore(): Promise<{ store: GuildStore; etag?: string }> {
+  const cached = globalForStore.__turxStoreCache
+  const result = await get(PATH, {
+    access: 'private',
+    useCache: true,
+    ...(cached?.etag ? { ifNoneMatch: cached.etag } : {}),
+  })
+  if (!result) {
+    return { store: emptyStore() }
+  }
+  if (result.statusCode === 304 && cached) {
+    return { store: cached.store, etag: result.blob.etag || cached.etag }
+  }
+  if (result.statusCode !== 200 || !result.stream) {
+    return { store: cached?.store ?? emptyStore(), etag: cached?.etag }
+  }
+  const data = (await new Response(result.stream).json()) as Partial<GuildStore>
+  return {
+    store: normalizeStore(data),
+    etag: result.blob.etag,
+  }
+}
+
+async function fetchStoreFromBackend(): Promise<GuildStore> {
+  const redis = getRedisCredentials()
+  if (redis) {
+    const fromRedis = await redisGetStore(redis)
+    if (fromRedis) {
+      globalForStore.__turxStoreCache = {
+        store: fromRedis,
+        fetchedAt: Date.now(),
+      }
+      return fromRedis
+    }
+    // Auto-migrate existing data from Vercel Blob to Redis on first read if Blob is available
+    if (hasBlobToken()) {
+      try {
+        const migrated = await readBlobStore()
+        await redisSetStore(redis, migrated.store)
+        globalForStore.__turxStoreCache = {
+          store: migrated.store,
+          fetchedAt: Date.now(),
+          etag: migrated.etag,
+        }
+        return migrated.store
+      } catch {
+        // Blob might be empty or rate-limited; start fresh in Redis
+      }
+    }
+    const fresh = emptyStore()
+    globalForStore.__turxStoreCache = {
+      store: fresh,
+      fetchedAt: Date.now(),
+    }
+    return fresh
+  }
+
+  if (!hasBlobToken()) return emptyStore()
+
+  try {
+    const { store, etag } = await readBlobStore()
+    globalForStore.__turxStoreCache = {
+      store,
+      fetchedAt: Date.now(),
+      etag,
+    }
+    return store
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) {
+      const fresh = emptyStore()
+      globalForStore.__turxStoreCache = {
+        store: fresh,
+        fetchedAt: Date.now(),
+      }
+      return fresh
+    }
+    // If Vercel Blob quota is temporarily exhausted or rate-limited, serve from warm memory cache if available
+    if (globalForStore.__turxStoreCache) {
+      console.warn('Blob read failed, serving from in-memory cache:', err)
+      return globalForStore.__turxStoreCache.store
+    }
+    console.warn('Blob read failed with cold cache, returning empty store fallback:', err)
+    return emptyStore()
+  }
+}
+
+async function readStore(forceRefresh = false): Promise<GuildStore> {
+  if (!blobConfigured()) return emptyStore()
+
+  const cached = globalForStore.__turxStoreCache
+  if (!forceRefresh && cached && Date.now() - cached.fetchedAt < READ_CACHE_TTL_MS) {
+    return cloneStore(cached.store)
+  }
+
+  if (!forceRefresh && globalForStore.__turxStoreInFlight) {
+    const shared = await globalForStore.__turxStoreInFlight
+    return cloneStore(shared)
+  }
+
+  const promise = fetchStoreFromBackend().finally(() => {
+    globalForStore.__turxStoreInFlight = null
+  })
+  globalForStore.__turxStoreInFlight = promise
+  const store = await promise
+  return cloneStore(store)
+}
+
 async function writeStore(store: GuildStore) {
-  await put(PATH, JSON.stringify(store), {
+  const normalized = normalizeStore(store)
+  const redis = getRedisCredentials()
+
+  if (redis) {
+    await redisSetStore(redis, normalized)
+    globalForStore.__turxStoreCache = {
+      store: cloneStore(normalized),
+      fetchedAt: Date.now(),
+    }
+    return
+  }
+
+  const putResult = await put(PATH, JSON.stringify(normalized), {
     access: 'private',
     addRandomSuffix: false,
     allowOverwrite: true,
-    cacheControlMaxAge: 0,
+    cacheControlMaxAge: 60,
     contentType: 'application/json',
   })
+
+  globalForStore.__turxStoreCache = {
+    store: cloneStore(normalized),
+    fetchedAt: Date.now(),
+    etag: putResult.etag,
+  }
 }
 
 export async function loadGuildStore() {
-  return readStore()
+  return readStore(false)
 }
 
 export async function mutateGuildStore<T>(mutator: (store: GuildStore) => T | Promise<T>) {
-  const store = await readStore()
+  // Reuse warm cache if available to avoid spending an extra Blob Simple Operation on every write
+  const store = await readStore(false)
   const result = await mutator(store)
   await writeStore(store)
   return result

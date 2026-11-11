@@ -44,8 +44,9 @@ export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }
     let active = true
 
     const fetchWidget = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       try {
-        const res = await fetch('/api/discord-widget', { cache: 'no-store' })
+        const res = await fetch('/api/discord-widget')
         if (res.ok && active) {
           const json = (await res.json()) as DiscordWidgetResponse
           setDiscordData(json)
@@ -55,11 +56,19 @@ export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }
       }
     }
 
-    fetchWidget()
-    const timer = setInterval(fetchWidget, 35000)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchWidget()
+      }
+    }
+
+    void fetchWidget()
+    const timer = setInterval(fetchWidget, 90_000)
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       active = false
       clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])
 

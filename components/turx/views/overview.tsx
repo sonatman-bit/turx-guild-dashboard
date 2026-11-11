@@ -228,6 +228,7 @@ function StreamRadar() {
   useEffect(() => {
     let cancelled = false
     const load = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       fetch('/api/streams')
         .then(async (response) => {
           const data = (await response.json().catch(() => ({}))) as { channels?: StreamRadarCard[]; live?: StreamRadarCard[] }
@@ -239,11 +240,16 @@ function StreamRadar() {
           if (!cancelled) setChannels([])
         })
     }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') load()
+    }
     load()
-    const timer = window.setInterval(load, 60_000)
+    const timer = window.setInterval(load, 120_000)
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])
 

@@ -58,19 +58,25 @@ export function GuildPresenceBar() {
   useEffect(() => {
     let cancelled = false
     const load = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
       try {
-        const response = await fetch('/api/gm-status', { cache: 'no-store' })
+        const response = await fetch('/api/gm-status')
         const data = (await response.json()) as GmStatusPayload
         if (!cancelled && data) setStatus(data)
       } catch {
         if (!cancelled) setStatus(emptyStatus())
       }
     }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
     void load()
-    const timer = window.setInterval(load, 45_000)
+    const timer = window.setInterval(load, 90_000)
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       cancelled = true
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])
 

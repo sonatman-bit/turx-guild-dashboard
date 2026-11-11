@@ -22,8 +22,8 @@ import {
   Clock,
   Download,
   Upload,
-  Database,
 } from 'lucide-react'
+import { useAuth } from '../auth-provider'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { DEFAULT_RECRUITMENT_MATRIX, RECRUIT_NEEDS, type RecruitClassNeed, type RecruitNeed } from '@/lib/recruitment'
@@ -120,6 +120,8 @@ interface AdminApplication {
 }
 
 export function AdminDashboardView() {
+  const { user } = useAuth()
+  const isGm = user?.role === 'Guild Master'
   const toast = useToast()
   const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
@@ -394,8 +396,9 @@ export function AdminDashboardView() {
   const [testingWebhook, setTestingWebhook] = useState(false)
   const [backupBusy, setBackupBusy] = useState(false)
 
-  // Otomatik tarayıcı yedeği: Yetkili paneli her açıldığında güncel veritabanını tarayıcı hafızasına yedekler
+  // Otomatik tarayıcı yedeği: Guild Master paneli her açtığında güncel veritabanını kendi tarayıcı hafızasına yedekler
   useEffect(() => {
+    if (!isGm) return
     fetch('/api/admin/backup', { credentials: 'same-origin', headers: authHeaders() })
       .then(async (res) => {
         if (!res.ok) return
@@ -406,7 +409,7 @@ export function AdminDashboardView() {
         }
       })
       .catch(() => undefined)
-  }, [])
+  }, [isGm])
 
   const handleDownloadBackup = async () => {
     setBackupBusy(true)
@@ -434,33 +437,6 @@ export function AdminDashboardView() {
       toast({ title: 'Yedek İndirildi 💾', description: 'Veritabanı yedeği bilgisayarınıza kaydedildi.' })
     } catch {
       toast({ title: 'Hata', description: 'Yedek indirilirken bağlantı hatası oluştu.' })
-    } finally {
-      setBackupBusy(false)
-    }
-  }
-
-  const handleDiscordBackup = async () => {
-    setBackupBusy(true)
-    try {
-      const res = await fetch('/api/admin/backup', {
-        method: 'PUT',
-        credentials: 'same-origin',
-        headers: authHeaders(),
-      })
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; users?: number; error?: string }
-      if (res.ok && data.ok) {
-        toast({
-          title: 'Discord Yedeği Gönderildi! 📦',
-          description: `${data.users ?? 0} üyelik güncel veritabanı dosyası Discord kanalına iletildi.`,
-        })
-      } else {
-        toast({
-          title: 'Discord Yedek Hatası ⚠️',
-          description: data.error || 'Yedek Discord kanalına gönderilemedi.',
-        })
-      }
-    } catch {
-      toast({ title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
     } finally {
       setBackupBusy(false)
     }
@@ -547,25 +523,25 @@ export function AdminDashboardView() {
         description="Hesap bazlı rütbe yönetimi yapın ve detaylı guild başvuru bilgilerini denetleyin."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <GhostButton onClick={handleDownloadBackup} disabled={backupBusy} className="text-xs py-1.5 px-3">
-              <Download className="size-3.5 mr-1" />
-              Yedeği İndir (.json)
-            </GhostButton>
-            <GhostButton onClick={handleDiscordBackup} disabled={backupBusy} className="text-xs py-1.5 px-3">
-              <Database className="size-3.5 mr-1" />
-              Discord&apos;a Yedekle
-            </GhostButton>
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:border-gold/50 hover:text-gold">
-              <Upload className="size-3.5" />
-              Yedek Yükle
-              <input
-                type="file"
-                accept="application/json,.json"
-                onChange={handleRestoreBackupFile}
-                disabled={backupBusy}
-                className="hidden"
-              />
-            </label>
+            {isGm && (
+              <>
+                <GhostButton onClick={handleDownloadBackup} disabled={backupBusy} className="text-xs py-1.5 px-3">
+                  <Download className="size-3.5 mr-1" />
+                  Yedeği İndir (.json)
+                </GhostButton>
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-secondary/60 px-3 py-1.5 text-xs font-semibold text-foreground transition hover:border-gold/50 hover:text-gold">
+                  <Upload className="size-3.5" />
+                  Yedek Yükle
+                  <input
+                    type="file"
+                    accept="application/json,.json"
+                    onChange={handleRestoreBackupFile}
+                    disabled={backupBusy}
+                    className="hidden"
+                  />
+                </label>
+              </>
+            )}
             <GoldButton onClick={handleTestWebhook} disabled={testingWebhook} className="text-xs py-1.5 px-3">
               <Radio className="size-3.5 mr-1" />
               {testingWebhook ? 'Test Ediliyor...' : '#canlıyayın Webhook Testi'}

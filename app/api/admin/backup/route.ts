@@ -35,18 +35,17 @@ async function isAuthorizedAdmin(request: Request): Promise<boolean> {
     (u) => u.username.toLowerCase() === session.username.toLowerCase(),
   )
   if (!caller) return false
-  return isGuildMasterEmail(caller.email) || canAccessAdminPanel(resolveUserRole(caller))
+  return isGuildMasterEmail(caller.email) || resolveUserRole(caller) === 'Guild Master'
 }
 
 async function sendBackupAttachmentToDiscord(store: GuildStore): Promise<{ ok: boolean; error?: string }> {
-  const webhookUrl = (
-    process.env.DISCORD_BACKUP_WEBHOOK_URL ||
-    process.env.DISCORD_RECRUITMENT_WEBHOOK_URL ||
-    ''
-  ).trim()
+  const webhookUrl = (process.env.DISCORD_BACKUP_WEBHOOK_URL || '').trim()
 
   if (!webhookUrl) {
-    return { ok: false, error: 'Discord Webhook URL tanımlı değil.' }
+    return {
+      ok: false,
+      error: 'Güvenlik için yalnızca size özel bir Discord kanalı webhook\'u (DISCORD_BACKUP_WEBHOOK_URL) tanımlanmalıdır.',
+    }
   }
 
   const dateStr = new Date().toISOString().slice(0, 10)

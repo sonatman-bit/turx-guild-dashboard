@@ -410,19 +410,56 @@ export function upsertMissingAccount(store: GuildStore, incoming: ImportableAcco
   const salt = (incoming.salt || '').trim()
   const passwordHash = (incoming.passwordHash || '').trim()
   if (!username || !email || !isHex(salt, 32) || !isHex(passwordHash, 64)) return 'invalid'
-  const exists = store.users.some(
+
+  const incomingProfile = incoming.profile && typeof incoming.profile === 'object' ? incoming.profile : null
+  const incomingChars = Array.isArray(incoming.characters) ? incoming.characters : []
+
+  const buildLinks = (existingLinks?: AccountLinks, prof?: Record<string, unknown> | null): AccountLinks | undefined => {
+    const links: AccountLinks = { ...(existingLinks || {}) }
+    if (prof) {
+      const bnetTag = typeof prof.bnetId === 'string' ? prof.bnetId.trim() : ''
+      if (bnetTag && !links.bnet) {
+        links.bnet = { id: bnetTag, battletag: bnetTag }
+      }
+      const discordUser = typeof prof.discordTag === 'string' ? prof.discordTag.trim().replace(/^@/, '') : ''
+      if (discordUser && !links.discord) {
+        links.discord = { id: discordUser, username: discordUser, globalName: discordUser }
+      }
+    }
+    return Object.keys(links).length > 0 ? links : existingLinks
+  }
+
+  const existing = store.users.find(
     (item) => item.username.toLowerCase() === username.toLowerCase() || item.email.toLowerCase() === email,
   )
-  if (exists) return 'exists'
+  if (existing) {
+    let updated = false
+    if (!existing.profile && incomingProfile) {
+      existing.profile = incomingProfile
+      updated = true
+    }
+    if ((!existing.characters || existing.characters.length === 0) && incomingChars.length > 0) {
+      existing.characters = incomingChars
+      updated = true
+    }
+    const mergedLinks = buildLinks(existing.links, (existing.profile || incomingProfile) as Record<string, unknown> | null)
+    if (mergedLinks && !existing.links) {
+      existing.links = mergedLinks
+      updated = true
+    }
+    return updated ? 'added' : 'exists'
+  }
+
   store.users.push({
     username,
     email,
     role: roleForEmail(email),
     salt,
     passwordHash,
-    profile: incoming.profile || null,
-    characters: Array.isArray(incoming.characters) ? incoming.characters : [],
+    profile: incomingProfile,
+    characters: incomingChars,
     staffInterests: Array.isArray(incoming.staffInterests) ? incoming.staffInterests : [],
+    links: buildLinks(undefined, incomingProfile),
   })
   return 'added'
 }

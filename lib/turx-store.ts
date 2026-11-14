@@ -119,6 +119,7 @@ const globalForStore = globalThis as unknown as {
   __turxStoreCache?: StoreCacheEntry
   __turxStoreInFlight?: Promise<GuildStore> | null
   __turxLastDailyBackupDate?: string
+  __turxSnapshotsChecked?: boolean
 }
 
 export function emptyStore(): GuildStore {
@@ -205,8 +206,8 @@ export function blobConfigured() {
   return Boolean(getRedisCredentials() || hasBlobToken())
 }
 
-async function redisGetStore(creds: { url: string; token: string }): Promise<GuildStore | null> {
-  const res = await fetch(`${creds.url}/get/${encodeURIComponent(REDIS_KEY)}`, {
+async function redisGetKey(creds: { url: string; token: string }, key: string): Promise<GuildStore | null> {
+  const res = await fetch(`${creds.url}/get/${encodeURIComponent(key)}`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${creds.token}` },
     cache: 'no-store',
@@ -221,6 +222,10 @@ async function redisGetStore(creds: { url: string; token: string }): Promise<Gui
       ? (JSON.parse(payload.result) as Partial<GuildStore>)
       : payload.result
   return normalizeStore(parsed)
+}
+
+async function redisGetStore(creds: { url: string; token: string }): Promise<GuildStore | null> {
+  return redisGetKey(creds, REDIS_KEY)
 }
 
 async function redisSetStore(creds: { url: string; token: string }, store: GuildStore): Promise<void> {
@@ -238,12 +243,12 @@ async function redisSetStore(creds: { url: string; token: string }, store: Guild
   }
 }
 
-async function readBlobStore(): Promise<{ store: GuildStore; etag?: string }> {
+async function readBlobStore(forceRefresh = false): Promise<{ store: GuildStore; etag?: string }> {
   const cached = globalForStore.__turxStoreCache
   const result = await get(PATH, {
     access: 'private',
-    useCache: true,
-    ...(cached?.etag ? { ifNoneMatch: cached.etag } : {}),
+    useCache: !forceRefresh,
+    ...(!forceRefresh && cached?.etag ? { ifNoneMatch: cached.etag } : {}),
   })
   if (!result) {
     return { store: emptyStore() }
@@ -290,11 +295,14 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
     }
   }
 
-  // Merge applications by id
+  // Merge applications by id (keep newest first)
   const appMap = new Map<string, StoredApplication>()
   for (const a of [...base.applications, ...target.applications]) {
     if (a?.id) appMap.set(a.id, a)
   }
+  const mergedApplications = [...appMap.values()].sort(
+    (a, b) => (Number(b.id) || 0) - (Number(a.id) || 0),
+  )
 
   // Merge polls by id
   const pollMap = new Map<string, StoredPoll>()
@@ -343,7 +351,7 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
 
   return {
     users: [...userMap.values()],
-    applications: [...appMap.values()],
+    applications: mergedApplications,
     polls: [...pollMap.values()],
     recruitmentNeeds:
       target.recruitmentNeeds.length > 0 ? target.recruitmentNeeds : base.recruitmentNeeds,
@@ -354,10 +362,46 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
   }
 }
 
-async function fetchStoreFromBackend(): Promise<GuildStore> {
+async function recoverFromRecentSnapshots(
+  redis: { url: string; token: string },
+  current: GuildStore,
+): Promise<GuildStore> {
+  if (globalForStore.__turxSnapshotsChecked) return current
+  globalForStore.__turxSnapshotsChecked = true
+
+  let merged = current
+  let changed = false
+  const now = Date.now()
+  for (let daysAgo = 0; daysAgo <= 3; daysAgo++) {
+    const dateStr = new Date(now - daysAgo * 86_400_000).toISOString().slice(0, 10)
+    const snapshotKey = `${REDIS_KEY}:backup:${dateStr}`
+    try {
+      const snap = await redisGetKey(redis, snapshotKey)
+      if (!snap) continue
+      const prevApps = merged.applications.length
+      const prevUsers = merged.users.length
+      merged = mergeGuildStores(merged, snap)
+      if (merged.applications.length > prevApps || merged.users.length > prevUsers) {
+        changed = true
+      }
+    } catch {
+      // ignore missing/unreachable snapshot
+    }
+  }
+  if (changed) {
+    try {
+      await redisSetStore(redis, merged)
+    } catch {
+      // ignore write error during recovery
+    }
+  }
+  return merged
+}
+
+async function fetchStoreFromBackend(forceRefresh = false): Promise<GuildStore> {
   const redis = getRedisCredentials()
   if (redis) {
-    const fromRedis = await redisGetStore(redis)
+    let fromRedis = await redisGetStore(redis)
     const needsBlobHydration =
       !fromRedis ||
       (fromRedis.users.length <= 2 &&
@@ -365,6 +409,7 @@ async function fetchStoreFromBackend(): Promise<GuildStore> {
         fromRedis.polls.length === 0)
 
     if (fromRedis && !needsBlobHydration) {
+      fromRedis = await recoverFromRecentSnapshots(redis, fromRedis)
       globalForStore.__turxStoreCache = {
         store: fromRedis,
         fetchedAt: Date.now(),
@@ -375,7 +420,7 @@ async function fetchStoreFromBackend(): Promise<GuildStore> {
     // Auto-migrate or merge existing data from Vercel Blob to Redis when Blob becomes available
     if (hasBlobToken()) {
       try {
-        const migrated = await readBlobStore()
+        const migrated = await readBlobStore(forceRefresh)
         if (migrated.store.users.length > 0 || migrated.store.applications.length > 0 || migrated.store.polls.length > 0) {
           const merged = fromRedis ? mergeGuildStores(fromRedis, migrated.store) : migrated.store
           await redisSetStore(redis, merged)
@@ -402,7 +447,7 @@ async function fetchStoreFromBackend(): Promise<GuildStore> {
   if (!hasBlobToken()) return emptyStore()
 
   try {
-    const { store, etag } = await readBlobStore()
+    const { store, etag } = await readBlobStore(forceRefresh)
     globalForStore.__turxStoreCache = {
       store,
       fetchedAt: Date.now(),
@@ -441,7 +486,7 @@ async function readStore(forceRefresh = false): Promise<GuildStore> {
     return cloneStore(shared)
   }
 
-  const promise = fetchStoreFromBackend().finally(() => {
+  const promise = fetchStoreFromBackend(forceRefresh).finally(() => {
     globalForStore.__turxStoreInFlight = null
   })
   globalForStore.__turxStoreInFlight = promise
@@ -487,13 +532,27 @@ async function saveDailySnapshotIfNeeded(
   store: GuildStore,
 ) {
   const today = new Date().toISOString().slice(0, 10)
-  if (globalForStore.__turxLastDailyBackupDate === today) return
-  globalForStore.__turxLastDailyBackupDate = today
-
   const snapshotKey = `${REDIS_KEY}:backup:${today}`
+  const emailGateKey = `${REDIS_KEY}:backup-emailed:${today}`
   try {
-    // Check in Redis if today's backup already exists so we only run once per day even across cold starts
-    const checkRes = await fetch(`${redis.url}/exists/${encodeURIComponent(snapshotKey)}`, {
+    const jsonText = JSON.stringify(store, null, 2)
+
+    // 1. Always keep today's Redis snapshot up to date for 14 days (1209600 seconds)
+    await fetch(`${redis.url}/set/${encodeURIComponent(snapshotKey)}?EX=1209600`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${redis.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: jsonText,
+      cache: 'no-store',
+    })
+
+    if (globalForStore.__turxLastDailyBackupDate === today) return
+    globalForStore.__turxLastDailyBackupDate = today
+
+    // Check in Redis if today's backup email was already sent so we only email once per day
+    const checkRes = await fetch(`${redis.url}/exists/${encodeURIComponent(emailGateKey)}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${redis.token}` },
       cache: 'no-store',
@@ -505,16 +564,10 @@ async function saveDailySnapshotIfNeeded(
       }
     }
 
-    const jsonText = JSON.stringify(store, null, 2)
-
-    // 1. Keep daily Redis snapshot for 14 days (1209600 seconds)
-    await fetch(`${redis.url}/set/${encodeURIComponent(snapshotKey)}?EX=1209600`, {
+    await fetch(`${redis.url}/set/${encodeURIComponent(emailGateKey)}?EX=172800`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${redis.token}`,
-        'Content-Type': 'application/json',
-      },
-      body: jsonText,
+      headers: { Authorization: `Bearer ${redis.token}` },
+      body: '1',
       cache: 'no-store',
     })
 
@@ -543,7 +596,7 @@ async function writeStore(store: GuildStore) {
     access: 'private',
     addRandomSuffix: false,
     allowOverwrite: true,
-    cacheControlMaxAge: 60,
+    cacheControlMaxAge: 0,
     contentType: 'application/json',
   })
 
@@ -559,8 +612,10 @@ export async function loadGuildStore() {
 }
 
 export async function mutateGuildStore<T>(mutator: (store: GuildStore) => T | Promise<T>) {
-  // Reuse warm cache if available to avoid spending an extra Blob Simple Operation on every write
-  const store = await readStore(false)
+  // Always force a fresh backend read before mutating so a warm instance never overwrites newer writes
+  const warmCache = globalForStore.__turxStoreCache?.store
+  const fresh = await readStore(true)
+  const store = warmCache ? mergeGuildStores(fresh, warmCache) : fresh
   const result = await mutator(store)
   await writeStore(store)
   return result

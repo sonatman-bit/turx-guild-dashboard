@@ -151,16 +151,22 @@ export function RecruitView() {
       }
       setApplications((prev) => [savedData.application || newApp, ...prev.filter((item) => item.id !== newApp.id)])
 
-      fetch('/api/apply', {
+      await fetch('/api/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: newApp.id,
+          accountName: user?.username || '',
+          charFirstName: newApp.charName,
+          charSurname: newApp.charSurname,
           charName: `${newApp.charName} ${newApp.charSurname}`.trim(),
+          race: newApp.race,
           discord: newApp.discord,
           characterClass: newApp.characterClass,
           spec: newApp.spec,
           logs: newApp.logs,
           experience: newApp.experience,
+          date: newApp.date,
         }),
       }).catch(() => undefined)
 

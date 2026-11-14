@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import { blobConfigured, mutateGuildStore, type StoredApplication } from '@/lib/turx-store'
 
 const TURX_GOLD = 0xd4af37
 
@@ -20,6 +21,50 @@ export async function POST(request: Request) {
     const spec = body.spec || body.specialization;
     const logs = body.logs || body.warcraftlogs || body.logsUrl;
     const motivation = body.motivation || body.experience || body.notes;
+
+    // Ensure any application sent to Discord is also persisted in the guild store
+    if (blobConfigured() && characterName && discordName) {
+      try {
+        const rawFirst = typeof body.charFirstName === 'string' ? body.charFirstName.trim() : ''
+        const rawSurname = typeof body.charSurname === 'string' ? body.charSurname.trim() : ''
+        const nameParts = String(characterName).trim().split(/\s+/)
+        const charFirst = rawFirst || nameParts[0] || String(characterName).trim()
+        const charLast = rawSurname || nameParts.slice(1).join(' ')
+        const appId = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : Date.now().toString()
+
+        await mutateGuildStore((store) => {
+          const exists = store.applications.some(
+            (a) =>
+              a.id === appId ||
+              (a.discord.toLowerCase() === String(discordName).trim().toLowerCase() &&
+                `${a.charName} ${a.charSurname}`.trim().toLowerCase() === String(characterName).trim().toLowerCase()),
+          )
+          if (!exists) {
+            const fallbackApp: StoredApplication = {
+              id: appId,
+              accountName: typeof body.accountName === 'string' ? body.accountName.trim() : '',
+              charName: charFirst,
+              charSurname: charLast,
+              discord: String(discordName).trim(),
+              race: typeof body.race === 'string' ? body.race : '',
+              characterClass: typeof characterClass === 'string' && characterClass ? characterClass : 'Warrior',
+              spec: typeof spec === 'string' ? spec : '',
+              logs: typeof logs === 'string' && logs.trim() ? logs.trim() : 'Belirtilmemiş',
+              experience: typeof motivation === 'string' ? motivation : '',
+              previousGuilds: '',
+              status: 'PENDING',
+              date:
+                typeof body.date === 'string' && body.date.trim()
+                  ? body.date.trim()
+                  : new Date().toLocaleString('tr-TR', { dateStyle: 'short', timeStyle: 'short' }),
+            }
+            store.applications.unshift(fallbackApp)
+          }
+        })
+      } catch (storeErr) {
+        console.warn('apply fallback store save warning:', storeErr)
+      }
+    }
 
     const webhookUrl = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL;
 

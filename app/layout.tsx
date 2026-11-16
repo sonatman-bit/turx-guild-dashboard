@@ -12,6 +12,17 @@ export const metadata: Metadata = {
   description:
     'TURX lonca paneli: WoW: Forever Raid takvimi, Roster analitiği, Guild Bank, WeakAura merkezi ve başvuru sistemi. Alliance PvE (EU).',
   generator: 'v0.app',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon-light-32x32.png', sizes: '32x32', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
 }
 
 export const viewport: Viewport = {

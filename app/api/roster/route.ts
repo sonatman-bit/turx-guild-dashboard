@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { isGuildMasterEmail } from '@/lib/turx-identity'
-import { fetchDiscordWidgetMembers, isWowActivity, matchesGmIdentity } from '@/lib/guild-presence'
+import {
+  fetchDiscordWidgetData,
+  isWowActivity,
+  matchesGmIdentity,
+  matchDiscordMember,
+} from '@/lib/guild-presence'
 import { blobConfigured, loadGuildStore, publicAccount } from '@/lib/turx-store'
 import { emptyArmory, foreverArmorySlug, loadArmorySnapshots, type ArmorySnapshot } from '@/lib/wow-armory'
 
@@ -49,10 +54,16 @@ export async function GET(request: Request) {
       }
     }
 
-    const [armoryBySlug, widgetMembers] = await Promise.all([
+    const [armoryBySlug, widgetData] = await Promise.all([
       loadArmorySnapshots(lookup),
-      fetchDiscordWidgetMembers(),
+      fetchDiscordWidgetData(),
     ])
+
+    const widgetMembers = widgetData.members
+    const channelMap = new Map<string, string>()
+    for (const ch of widgetData.channels) {
+      if (ch.id && ch.name) channelMap.set(ch.id, ch.name)
+    }
 
     const members = store.users.map((account) => {
       const characters = Array.isArray(account.characters) ? (account.characters as StoredCharacter[]) : []
@@ -75,33 +86,49 @@ export async function GET(request: Request) {
         selectedAvatar: typeof rawProfile.selectedAvatar === 'string' ? rawProfile.selectedAvatar : undefined,
       }
 
-      // Discord presence calculation
-      const discordTag = (account.links?.discord?.username || rawProfile.discordTag || '').toString().trim().replace(/^@/, '')
-      const discordConnected = Boolean(account.links?.discord?.username || rawProfile.discordConnected || discordTag)
-      const discordMatch = discordTag
-        ? widgetMembers.find((m) => {
-            const u = (m.username || '').toLowerCase()
-            const dt = discordTag.toLowerCase()
-            return (
-              (account.links?.discord?.id && m.id === account.links.discord.id) ||
-              u === dt ||
-              u.startsWith(dt) ||
-              dt.startsWith(u)
-            )
-          })
-        : null
-      const discordOnline =
-        discordConnected &&
-        Boolean(
-          (discordMatch && (discordMatch.status === 'online' || discordMatch.status === 'idle' || discordMatch.status === 'dnd')) ||
-          (isGm && discordMatch?.status !== 'offline')
-        )
+      // Smart match against live Discord widget
+      const discordMatch = matchDiscordMember(
+        {
+          username: account.username,
+          email: account.email,
+          profile: rawProfile,
+          links: account.links,
+          characters,
+        },
+        widgetMembers,
+      )
 
-      // Battle.net presence calculation
+      // Discord presence calculation
+      const profileDiscordTag = (account.links?.discord?.username || rawProfile.discordTag || '')
+        .toString()
+        .trim()
+        .replace(/^@/, '')
+      const resolvedDiscordTag = profileDiscordTag || (discordMatch ? discordMatch.username : '')
+      const discordConnected = Boolean(resolvedDiscordTag)
+      const discordOnline = Boolean(
+        (discordMatch && (discordMatch.status === 'online' || discordMatch.status === 'idle' || discordMatch.status === 'dnd')) ||
+        (isGm && discordMatch?.status !== 'offline')
+      )
+      const discordStatus = discordMatch?.status || (discordOnline ? 'online' : 'offline')
+      const voiceChannel = discordMatch?.channel_id ? (channelMap.get(discordMatch.channel_id) || 'Ses Kanalı') : null
+
+      // Battle.net / In-Game presence calculation
       const bnetTag = (account.links?.bnet?.battletag || rawProfile.bnetId || '').toString().trim()
       const bnetConnected = Boolean(account.links?.bnet?.battletag || rawProfile.bnetConnected || bnetTag)
-      const isPlayingWow = discordMatch && isWowActivity(discordMatch.game?.name || discordMatch.activity?.name)
-      const bnetOnline = bnetConnected && Boolean(isGm || isPlayingWow)
+
+      const isPlayingWow = Boolean(discordMatch && isWowActivity(discordMatch.game?.name || discordMatch.activity?.name))
+      const inVoice = Boolean(discordMatch?.channel_id)
+      const isPlayingAnyGame = Boolean(discordMatch?.game?.name || discordMatch?.activity?.name)
+
+      // In-game is true if playing WoW / Forever, in guild voice/raid channel, or is GM active
+      const inGame = Boolean(isGm || isPlayingWow || inVoice || isPlayingAnyGame)
+      const gameTitle =
+        discordMatch?.game?.name ||
+        discordMatch?.activity?.name ||
+        (inVoice ? (voiceChannel ? `Seste: ${voiceChannel}` : 'WoW Guild Sesi') : (isGm || isPlayingWow ? 'World of Warcraft: Forever' : null))
+
+      // Battle.net online status: true if actively in-game OR if connected and online on Discord
+      const bnetOnline = inGame || (bnetConnected && discordOnline)
 
       return {
         username: pub.username,
@@ -113,11 +140,15 @@ export async function GET(request: Request) {
           tag: bnetTag,
           connected: bnetConnected,
           online: bnetOnline,
+          inGame,
+          gameTitle,
         },
         discord: {
-          tag: discordTag,
+          tag: resolvedDiscordTag,
           connected: discordConnected,
           online: discordOnline,
+          status: discordStatus,
+          channel: voiceChannel,
         },
         characters: characters.map((character) => {
           const firstName = character.firstName?.trim() || ''

@@ -35,8 +35,20 @@ type ServerMember = {
   username: string
   role: GuildRank
   profile?: { fullName?: string; showRealName?: boolean } | null
-  bnet?: { tag: string; connected: boolean; online: boolean }
-  discord?: { tag: string; connected: boolean; online: boolean }
+  bnet?: {
+    tag: string
+    connected: boolean
+    online: boolean
+    inGame?: boolean
+    gameTitle?: string | null
+  }
+  discord?: {
+    tag: string
+    connected: boolean
+    online: boolean
+    status?: string
+    channel?: string | null
+  }
   characters?: ServerCharacter[]
 }
 
@@ -52,8 +64,20 @@ interface RosterMemberRow {
   offSpec: string
   role: ExtendedRole
   rank: GuildRank
-  bnet?: { tag: string; connected: boolean; online: boolean }
-  discord?: { tag: string; connected: boolean; online: boolean }
+  bnet?: {
+    tag: string
+    connected: boolean
+    online: boolean
+    inGame?: boolean
+    gameTitle?: string | null
+  }
+  discord?: {
+    tag: string
+    connected: boolean
+    online: boolean
+    status?: string
+    channel?: string | null
+  }
   type: 'Main' | 'Alt'
   professions: [string, string]
   attunements: {
@@ -479,19 +503,53 @@ export function RosterView() {
                     <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
                   </td>
                   <td className="px-4 py-3">
-                    {m.bnet?.connected ? (
-                      <div className="flex items-center gap-1.5" title={m.bnet.online ? 'Battle.net Çevrimiçi' : 'Battle.net Çevrimdışı'}>
-                        <span
-                          className={cn(
-                            "size-2.5 rounded-full shrink-0 transition-colors",
-                            m.bnet.online
-                              ? "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]"
-                              : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
-                          )}
-                        />
-                        <span className="font-mono text-xs text-silver font-medium truncate max-w-[125px]">
-                          {m.bnet.tag}
-                        </span>
+                    {m.bnet?.connected || m.bnet?.inGame ? (
+                      <div
+                        className="flex flex-col gap-0.5"
+                        title={
+                          m.bnet.inGame
+                            ? `Oyunda: ${m.bnet.gameTitle || 'World of Warcraft: Forever'}`
+                            : m.bnet.online
+                              ? 'Battle.net Çevrimiçi'
+                              : 'Battle.net Çevrimdışı'
+                        }
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "size-2.5 rounded-full shrink-0 transition-colors",
+                              m.bnet.inGame
+                                ? "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.9)] animate-pulse"
+                                : m.bnet.online
+                                  ? "bg-emerald-400 shadow-[0_0_6px_rgb(52,211,153/0.8)]"
+                                  : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
+                            )}
+                          />
+                          <span
+                            className={cn(
+                              "font-mono text-xs truncate max-w-[125px]",
+                              m.bnet.inGame
+                                ? "text-white font-semibold"
+                                : m.bnet.online
+                                  ? "text-silver font-medium"
+                                  : "text-muted-foreground/75"
+                            )}
+                          >
+                            {m.bnet.tag || m.charName.split(' ')[0]}
+                          </span>
+                        </div>
+                        {m.bnet.inGame ? (
+                          <div className="flex items-center gap-1 pl-4">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                              Oyunda
+                            </span>
+                            {m.bnet.gameTitle && !m.bnet.gameTitle.toLowerCase().includes('world of warcraft') ? (
+                              <span className="text-[10px] text-muted-foreground truncate max-w-[80px]" title={m.bnet.gameTitle}>
+                                {m.bnet.gameTitle}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <span className="text-muted-foreground/50 text-xs">—</span>
@@ -499,18 +557,40 @@ export function RosterView() {
                   </td>
                   <td className="px-4 py-3">
                     {m.discord?.connected ? (
-                      <div className="flex items-center gap-1.5" title={m.discord.online ? 'Discord Çevrimiçi' : 'Discord Çevrimdışı'}>
-                        <span
-                          className={cn(
-                            "size-2.5 rounded-full shrink-0 transition-colors",
-                            m.discord.online
-                              ? "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]"
-                              : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
-                          )}
-                        />
-                        <span className="text-xs text-silver font-medium truncate max-w-[125px]">
-                          @{m.discord.tag}
-                        </span>
+                      <div
+                        className="flex flex-col gap-0.5"
+                        title={
+                          m.discord.online
+                            ? (m.discord.status === 'idle'
+                                ? 'Discord Boşta'
+                                : m.discord.status === 'dnd'
+                                  ? 'Discord Rahatsız Etmeyin'
+                                  : 'Discord Çevrimiçi')
+                            : 'Discord Çevrimdışı'
+                        }
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "size-2.5 rounded-full shrink-0 transition-colors",
+                              m.discord.online
+                                ? (m.discord.status === 'idle'
+                                    ? "bg-amber-400 shadow-[0_0_8px_rgb(251,191,36/0.8)]"
+                                    : m.discord.status === 'dnd'
+                                      ? "bg-rose-400 shadow-[0_0_8px_rgb(251,113,133/0.8)]"
+                                      : "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]")
+                                : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
+                            )}
+                          />
+                          <span className="text-xs text-silver font-medium truncate max-w-[125px]">
+                            @{m.discord.tag}
+                          </span>
+                        </div>
+                        {m.discord.channel ? (
+                          <span className="text-[10px] text-cyan-400/90 font-mono flex items-center gap-1 pl-4 truncate max-w-[125px]" title={`Ses Kanalında: ${m.discord.channel}`}>
+                            🎙️ {m.discord.channel}
+                          </span>
+                        ) : null}
                       </div>
                     ) : (
                       <span className="text-muted-foreground/50 text-xs">—</span>

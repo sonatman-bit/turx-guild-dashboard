@@ -1,26 +1,79 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <style>
-    @media (prefers-color-scheme: light) {
-      .background { fill: black; }
-      .foreground { fill: white; }
-    }
-    @media (prefers-color-scheme: dark) {
-      .background { fill: white; }
-      .foreground { fill: black; }
-    }
-  </style>
-  <g clip-path="url(#clip0_7960_43945)">
-    <rect class="background" width="180" height="180" rx="37" />
-    <g style="transform: scale(95%); transform-origin: center">
-      <path class="foreground"
-        d="M101.141 53H136.632C151.023 53 162.689 64.6662 162.689 79.0573V112.904H148.112V79.0573C148.112 78.7105 148.098 78.3662 148.072 78.0251L112.581 112.898C112.701 112.902 112.821 112.904 112.941 112.904H148.112V126.672H112.941C98.5504 126.672 86.5638 114.891 86.5638 100.5V66.7434H101.141V100.5C101.141 101.15 101.191 101.792 101.289 102.422L137.56 66.7816C137.255 66.7563 136.945 66.7434 136.632 66.7434H101.141V53Z" />
-      <path class="foreground"
-        d="M65.2926 124.136L14 66.7372H34.6355L64.7495 100.436V66.7372H80.1365V118.47C80.1365 126.278 70.4953 129.958 65.2926 124.136Z" />
-    </g>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 140" role="img" aria-label="TURX FOREVER Alliance lonca arması">
   <defs>
-    <clipPath id="clip0_7960_43945">
-      <rect width="180" height="180" fill="white" />
-    </clipPath>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff4b8" />
+      <stop offset="45%" stop-color="#d4af37" />
+      <stop offset="100%" stop-color="#855b10" />
+    </linearGradient>
+    <linearGradient id="gold-light" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="40%" stop-color="#fff2a8" />
+      <stop offset="100%" stop-color="#d4af37" />
+    </linearGradient>
+    <linearGradient id="gold-dark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a16207" />
+      <stop offset="60%" stop-color="#78350f" />
+      <stop offset="100%" stop-color="#451a03" />
+    </linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="45%" stop-color="#cbd5e1" />
+      <stop offset="100%" stop-color="#475569" />
+    </linearGradient>
+    <linearGradient id="steel-cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0f9ff" />
+      <stop offset="40%" stop-color="#7dd3fc" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="cyan-ribbon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#00f2fe" />
+      <stop offset="50%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#00f2fe" />
+    </linearGradient>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0f2e52" />
+      <stop offset="50%" stop-color="#091b30" />
+      <stop offset="100%" stop-color="#040a14" />
+    </linearGradient>
   </defs>
+  <path d="M60 4 L114 18 V64 C114 100 90 124 60 138 C30 124 6 100 6 64 V18 Z" fill="url(#field)" stroke="url(#gold)" stroke-width="5" stroke-linejoin="round" />
+  <path d="M60 12 L107 24 V64 C107 95 86 116 60 129 C34 116 13 95 13 64 V24 Z" fill="none" stroke="url(#gold)" stroke-opacity="0.35" stroke-width="1.2" />
+  <path d="M60 12 V129" stroke="url(#gold)" stroke-opacity="0.15" stroke-width="1" />
+  <g>
+    <circle cx="21" cy="21" r="3.2" fill="url(#gold)" stroke="#855b10" stroke-width="0.8" />
+    <line x1="23" y1="23" x2="30" y2="30" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" />
+    <path d="M22 36 L36 22" stroke="url(#gold)" stroke-width="3.5" stroke-linecap="round" />
+    <circle cx="22" cy="36" r="1.5" fill="#fde047" />
+    <circle cx="36" cy="22" r="1.5" fill="#fde047" />
+    <polygon points="29,31 59,61 95,97 59,59" fill="url(#steel)" />
+    <polygon points="31,29 61,59 97,95 59,59" fill="url(#steel-cyan)" />
+    <line x1="33" y1="33" x2="84" y2="84" stroke="#00f2fe" stroke-width="1" opacity="0.85" />
+  </g>
+  <g>
+    <circle cx="99" cy="21" r="3.2" fill="url(#gold)" stroke="#855b10" stroke-width="0.8" />
+    <line x1="97" y1="23" x2="90" y2="30" stroke="url(#gold)" stroke-width="3" stroke-linecap="round" />
+    <path d="M98 36 L84 22" stroke="url(#gold)" stroke-width="3.5" stroke-linecap="round" />
+    <circle cx="98" cy="36" r="1.5" fill="#fde047" />
+    <circle cx="84" cy="22" r="1.5" fill="#fde047" />
+    <polygon points="91,31 61,61 25,97 61,59" fill="url(#steel)" />
+    <polygon points="89,29 59,59 23,95 61,59" fill="url(#steel-cyan)" />
+    <line x1="87" y1="33" x2="36" y2="84" stroke="#00f2fe" stroke-width="1" opacity="0.85" />
+  </g>
+  <g>
+    <path d="M26 36 L32 34 L60 30 L88 34 L94 36 L94 48 L86 46 L69 46 L68 90 L60 98 L52 90 L51 46 L34 46 L26 48 Z" fill="#020617" opacity="0.6" transform="translate(0, 2)" />
+    <path d="M26 36 L32 34 L60 30 L60 98 L52 90 L51 46 L34 46 L26 48 Z" fill="url(#gold-light)" stroke="url(#gold)" stroke-width="1.2" stroke-linejoin="round" />
+    <path d="M60 30 L88 34 L94 36 L94 48 L86 46 L69 46 L68 90 L60 98 Z" fill="url(#gold-dark)" stroke="url(#gold)" stroke-width="1.2" stroke-linejoin="round" />
+    <line x1="60" y1="30" x2="60" y2="98" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+    <path d="M38 40 L54 40" stroke="#855b10" stroke-width="1" opacity="0.5" />
+    <path d="M66 40 L82 40" stroke="#451a03" stroke-width="1" opacity="0.5" />
+    <polygon points="60,36 65,41 60,46 55,41" fill="#00f2fe" stroke="#ffffff" stroke-width="0.8" />
+  </g>
+  <g>
+    <path d="M60 108 C48 95 28 95 28 108 C28 121 48 121 60 108 C72 95 92 95 92 108 C92 121 72 121 60 108 Z" fill="none" stroke="#00f2fe" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+    <path d="M60 108 C48 95 28 95 28 108 C28 121 48 121 60 108 C72 95 92 95 92 108 C92 121 72 121 60 108 Z" fill="none" stroke="url(#steel-cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M60 108 C48 95 28 95 28 108 C28 121 48 121 60 108 C72 95 92 95 92 108 C92 121 72 121 60 108 Z" fill="none" stroke="url(#cyan-ribbon)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+    <path d="M54 114 C57 111 60 108 63 105" fill="none" stroke="#e0f2fe" stroke-width="3.5" stroke-linecap="round" />
+    <circle cx="28" cy="108" r="1.8" fill="#fde047" stroke="#ca8a04" stroke-width="0.8" />
+    <circle cx="92" cy="108" r="1.8" fill="#fde047" stroke="#ca8a04" stroke-width="0.8" />
+  </g>
 </svg>

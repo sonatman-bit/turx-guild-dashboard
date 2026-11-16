@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
-import { blobConfigured, loadGuildStore, resolveUserRole } from '@/lib/turx-store'
+import { blobConfigured, loadGuildStore, mutateGuildStore, resolveUserRole } from '@/lib/turx-store'
+import { normalizeAvailability } from '@/lib/availability'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,34 +61,18 @@ export async function GET(request: Request) {
       const spec = mainChar?.spec || 'DPS'
       const role = mainChar?.role || 'MELEE'
 
-      const rawAvailability = (rawProfile.availability || {}) as Record<
-        string,
-        { status?: string; startTime?: string; endTime?: string }
-      >
-
-      const availability: Record<DayKey, { status: 'available' | 'maybe' | 'busy' | 'none'; startTime: string; endTime: string }> = {
-        pzt: { status: 'none', startTime: '21:00', endTime: '00:00' },
-        sal: { status: 'none', startTime: '21:00', endTime: '00:00' },
-        crs: { status: 'none', startTime: '21:00', endTime: '00:00' },
-        per: { status: 'none', startTime: '21:00', endTime: '00:00' },
-        cum: { status: 'none', startTime: '21:00', endTime: '00:00' },
-        cmt: { status: 'none', startTime: '21:00', endTime: '00:00' },
-        paz: { status: 'none', startTime: '21:00', endTime: '00:00' },
+      const normalizedAv = normalizeAvailability(rawProfile.availability)
+      const availability: Record<DayKey, { status: 'available' | 'maybe' | 'busy'; startTime: string; endTime: string }> = {
+        pzt: normalizedAv.pzt,
+        sal: normalizedAv.sal,
+        crs: normalizedAv.car,
+        per: normalizedAv.per,
+        cum: normalizedAv.cum,
+        cmt: normalizedAv.cmt,
+        paz: normalizedAv.paz,
       }
 
-      for (const day of ORDERED_DAYS) {
-        const item = rawAvailability[day]
-        if (item) {
-          const st = item.status === 'available' || item.status === 'maybe' || item.status === 'busy' ? item.status : 'none'
-          availability[day] = {
-            status: st,
-            startTime: item.startTime || '21:00',
-            endTime: item.endTime || '00:00',
-          }
-        }
-      }
-
-      const hasConfigured = Object.values(availability).some((d) => d.status !== 'none')
+      const hasConfigured = Object.values(availability).some((d) => d.status !== 'busy')
 
       return {
         username: account.username,

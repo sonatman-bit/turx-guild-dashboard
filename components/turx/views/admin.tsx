@@ -58,7 +58,7 @@ interface MemberAttendanceDto {
   spec: string
   role: 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
   hasConfigured: boolean
-  availability: Record<DayKey, { status: 'available' | 'maybe' | 'busy' | 'none'; startTime: string; endTime: string }>
+  availability: Record<DayKey, { status: 'available' | 'maybe' | 'busy'; startTime: string; endTime: string }>
 }
 
 const RANK_STYLES: Record<string, string> = {
@@ -1104,7 +1104,7 @@ export function AdminDashboardView() {
                         </td>
 
                         {days.map((dayKey) => {
-                          const d = m.availability[dayKey] || { status: 'none', startTime: '21:00', endTime: '00:00' }
+                          const d = m.availability[dayKey] || { status: 'busy', startTime: '21:00', endTime: '00:00' }
                           return (
                             <td key={dayKey} className="py-2 px-1.5 text-center">
                               {d.status === 'available' ? (
@@ -1117,13 +1117,9 @@ export function AdminDashboardView() {
                                   <span className="text-[11px] font-bold">Belki</span>
                                   <span className="text-[10px] text-silver font-mono">{d.startTime}-{d.endTime}</span>
                                 </div>
-                              ) : d.status === 'busy' ? (
-                                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg border border-destructive/20 bg-destructive/5 text-destructive/70">
-                                  <span className="text-[10px]">Meşgul</span>
-                                </div>
                               ) : (
-                                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg border border-border/30 bg-muted/5 text-muted-foreground/40">
-                                  <span className="text-xs">—</span>
+                                <div className="flex flex-col items-center justify-center p-1.5 rounded-lg border border-destructive/25 bg-destructive/10 text-destructive/80">
+                                  <span className="text-[10px] font-medium">Meşgul</span>
                                 </div>
                               )}
                             </td>

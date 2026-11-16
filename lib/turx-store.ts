@@ -1,6 +1,7 @@
 import { BlobNotFoundError, get, put } from '@vercel/blob'
 import { Resend } from 'resend'
 import type { AccountLinks, StreamNotice } from '@/lib/account-links'
+import { normalizeAvailability } from '@/lib/availability'
 import { GM_EMAIL, isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
@@ -137,8 +138,17 @@ export function emptyStore(): GuildStore {
 
 function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStore {
   if (!data || typeof data !== 'object') return emptyStore()
+  const rawUsers = Array.isArray(data.users) ? data.users : []
+  const users = rawUsers.map((user) => {
+    const profile = { ...(user.profile || {}) } as Record<string, unknown>
+    profile.availability = normalizeAvailability(profile.availability)
+    return {
+      ...user,
+      profile,
+    }
+  })
   return {
-    users: Array.isArray(data.users) ? data.users : [],
+    users,
     applications: Array.isArray(data.applications) ? data.applications : [],
     polls: Array.isArray(data.polls) ? data.polls : [],
     recruitmentNeeds: Array.isArray(data.recruitmentNeeds) ? data.recruitmentNeeds : [],

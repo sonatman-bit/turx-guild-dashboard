@@ -7,6 +7,7 @@ import {
   publicLinks,
 } from '@/lib/account-links'
 import { sessionFromRequest } from '@/lib/auth-email'
+import { normalizeAvailability } from '@/lib/availability'
 import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
 import { sanitizeStaffInterests } from '@/lib/staff-roles'
 import { blobConfigured, loadGuildStore, mutateGuildStore } from '@/lib/turx-store'
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
     const showRealNameInRoster = stored.showRealNameInRoster !== false
     const profile = {
       ...stored,
+      availability: normalizeAvailability(stored.availability),
       showRealNameInRoster,
       discordConnected: links.discord.connected || Boolean(storedTag),
       discordTag: links.discord.username || storedTag,
@@ -73,6 +75,7 @@ export async function PUT(request: Request) {
       staffInterests?: unknown
     }
     const profile = { ...(body.profile || {}) } as Record<string, unknown>
+    profile.availability = normalizeAvailability(profile.availability)
     const characters = Array.isArray(body.characters) ? body.characters : []
     const staffInterests = sanitizeStaffInterests(body.staffInterests)
 

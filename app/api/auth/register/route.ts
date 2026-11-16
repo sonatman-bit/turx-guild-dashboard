@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { attachSessionCookie, createSessionToken } from '@/lib/auth-email'
+import { defaultWeekAvailability } from '@/lib/availability'
 import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt } from '@/lib/password'
 import { blobConfigured, mutateGuildStore, publicAccount, roleForEmail } from '@/lib/turx-store'
 
@@ -32,6 +33,9 @@ export async function POST(request: Request) {
           role: roleForEmail(email),
           salt,
           passwordHash,
+          profile: {
+            availability: defaultWeekAvailability(),
+          },
         }
         store.users.push(account)
         return publicAccount(account)

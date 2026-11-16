@@ -2,6 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { ACTIVE_POLL, CLASS_COLORS, raceChoicesForClass, racesForClass, type AllianceRace, type WowClass } from '@/lib/guild-data'
+import {
+  DAYS_OF_WEEK,
+  defaultDayAvailability,
+  defaultWeekAvailability,
+  normalizeAvailability,
+  type AvailabilityStatus,
+} from '@/lib/availability'
 import { authHeaders } from '@/lib/client-session'
 import {
   commitOnboardingStatus,
@@ -19,7 +26,6 @@ import { Badge, GhostButton, GoldButton, Modal, Panel, SectionHeader, inputClass
 import { Plus, Trash2, Shield, Calendar, Link2, CheckCircle2, Edit3, Wrench, Clock, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor, Lock, Vote } from 'lucide-react'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
-type AvailabilityStatus = 'none' | 'available' | 'maybe' | 'busy'
 
 interface GuildCharacter {
   id: string
@@ -133,16 +139,6 @@ const AVATAR_CLASSES = [
 const START_TIME_OPTIONS = ['19:00', '19:30', '20:00', '20:30', '21:00']
 const END_TIME_OPTIONS = ['23:00', '23:30', '00:00', '00:30', '01:00']
 
-const DAYS_OF_WEEK = [
-  { key: 'pzt', label: 'PZT' },
-  { key: 'sal', label: 'SAL' },
-  { key: 'car', label: 'ÇAR' },
-  { key: 'per', label: 'PER' },
-  { key: 'cum', label: 'CUM' },
-  { key: 'cmt', label: 'CMT' },
-  { key: 'paz', label: 'PAZ' },
-]
-
 function emptyProfile(email: string): UserProfileData {
   return {
     fullName: '',
@@ -163,9 +159,7 @@ function emptyProfile(email: string): UserProfileData {
     twitchDisplayName: '',
     kickLogin: '',
     youtubeHandle: '',
-    availability: Object.fromEntries(
-      DAYS_OF_WEEK.map((day) => [day.key, { status: 'none' as AvailabilityStatus, startTime: '21:00', endTime: '00:00' }]),
-    ),
+    availability: defaultWeekAvailability(),
   }
 }
 
@@ -418,7 +412,12 @@ export function ProfileView() {
     const applyLocal = () => {
       setProfile(
         localProfile
-          ? { ...emptyProfile(user.email), ...localProfile, selectedAvatar: localProfile.selectedAvatar || 'Druid' }
+          ? {
+              ...emptyProfile(user.email),
+              ...localProfile,
+              selectedAvatar: localProfile.selectedAvatar || 'Druid',
+              availability: normalizeAvailability(localProfile.availability),
+            }
           : emptyProfile(user.email),
       )
       setCharacters(Array.isArray(localCharacters) ? localCharacters : [])
@@ -441,6 +440,7 @@ export function ProfileView() {
             ...emptyProfile(user.email),
             ...data.profile,
             selectedAvatar: data.profile.selectedAvatar || 'Druid',
+            availability: normalizeAvailability(data.profile.availability),
           })
         }
         if (Array.isArray(data.characters)) setCharacters(data.characters)
@@ -608,15 +608,15 @@ export function ProfileView() {
     setProfile(prev => {
       const current = prev.availability[dayKey]?.status || 'busy'
       let nextStatus: AvailabilityStatus = 'available'
-      if (current === 'available') nextStatus = 'maybe'
+      if (current === 'busy') nextStatus = 'available'
+      else if (current === 'available') nextStatus = 'maybe'
       else if (current === 'maybe') nextStatus = 'busy'
-      else if (current === 'busy') nextStatus = 'available'
 
       return {
         ...prev,
         availability: {
           ...prev.availability,
-          [dayKey]: { ...(prev.availability[dayKey] || {}), status: nextStatus }
+          [dayKey]: { ...(prev.availability[dayKey] || defaultDayAvailability()), status: nextStatus }
         }
       }
     })
@@ -628,7 +628,7 @@ export function ProfileView() {
       availability: {
         ...prev.availability,
         [dayKey]: { 
-          ...(prev.availability[dayKey] || { status: 'available', startTime: '21:00', endTime: '00:00' }), 
+          ...(prev.availability[dayKey] || defaultDayAvailability()), 
           [field]: val 
         }
       }
@@ -642,10 +642,15 @@ export function ProfileView() {
     }
     setSavingAvailability(true)
     try {
-      await persistGate(profile, characters)
+      const normalizedProfile = {
+        ...profile,
+        availability: normalizeAvailability(profile.availability),
+      }
+      setProfile(normalizedProfile)
+      await persistGate(normalizedProfile, characters)
       toast({
         title: 'Müsaitlik Güncellendi! 📅',
-        description: 'Haftalık raid müsaitlik bilgileriniz sunucuya kaydedildi ve GM paneline aktarıldı.',
+        description: 'Haftalık raid müsaitlik tercihleriniz (Meşgul/Müsait/Belki) kaydedildi ve GM paneline aktarıldı.',
       })
     } catch {
       toast({ title: 'Kaydedilemedi', description: 'Sunucuya ulaşılamadı.' })
@@ -1081,19 +1086,19 @@ export function ProfileView() {
               <span className="text-xs text-muted-foreground">UTC+3 (Türkiye Saati)</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Günlere tıklayarak durumunuzu belirleyin: <span className="text-success font-semibold">Yeşil (Müsait)</span> → <span className="text-gold font-semibold">Sarı (Belki)</span> → <span className="text-destructive font-semibold">Kırmızı (Meşgul)</span>. Açılır menülerden başlama ve bitiş saatlerini yarım saatlik artışlarla seçin.
+              Haftanın tüm günleri varsayılan olarak <span className="text-destructive font-semibold">Meşgul</span> işaretlidir. Hiçbir gün boş bırakılamaz; gün butonuna tıklayarak durumunuzu güncelleyin: <span className="text-destructive font-semibold">Kırmızı (Meşgul)</span> → <span className="text-success font-semibold">Yeşil (Müsait)</span> → <span className="text-gold font-semibold">Sarı (Belki)</span>. Açılır menülerden başlama ve bitiş saatlerinizi seçebilirsiniz.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
               {DAYS_OF_WEEK.map(({ key, label }) => {
                 const dayData = profile.availability[key] || { status: 'busy', startTime: '21:00', endTime: '00:00' }
                 
-                let statusBg = 'border-destructive/60 bg-destructive/10 text-destructive'
+                let statusBg = 'border-destructive/60 bg-destructive/10 text-destructive shadow-[0_0_8px_rgb(239_68_68/0.15)]'
                 let statusText = 'Meşgul'
                 if (dayData.status === 'available') {
-                  statusBg = 'border-success/60 bg-success/10 text-success shadow-[0_0_12px_rgb(62_224_127/0.15)]'
+                  statusBg = 'border-success/60 bg-success/15 text-success shadow-[0_0_12px_rgb(62_224_127/0.2)]'
                   statusText = 'Müsait'
                 } else if (dayData.status === 'maybe') {
-                  statusBg = 'border-gold/60 bg-gold/10 text-gold shadow-[0_0_12px_rgb(212,175,55/0.15)]'
+                  statusBg = 'border-gold/60 bg-gold/15 text-gold shadow-[0_0_12px_rgb(212_175_55/0.2)]'
                   statusText = 'Belki'
                 }
 

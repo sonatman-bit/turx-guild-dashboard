@@ -1,18 +1,13 @@
 'use client'
 
-import { CalendarClock, CheckCircle2, Megaphone, Radio, Shield, Swords, Trophy } from 'lucide-react'
-import Image from 'next/image'
+import { CalendarClock, CheckCircle2, Megaphone, Radio, Swords, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { authHeaders, getSessionToken } from '@/lib/client-session'
 import { ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
 import type { StreamPlatform, StreamRadarCard } from '@/lib/account-links'
-import { openPositionsLabel, STAFF_ROLES } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
-import { useAuth } from '../auth-provider'
 import type { TabId } from '../navigation'
-import { StaffRoleBadge } from '../staff-role-icons'
-import { useToast } from '../toast'
-import { Badge, GhostButton, GoldButton, Panel, PanelTitle } from '../ui'
+import { Badge, GhostButton, Panel, PanelTitle } from '../ui'
 import { HeroLanding } from '../hero-landing'
 
 function useCountdown(target: string) {
@@ -33,59 +28,6 @@ function useCountdown(target: string) {
 }
 
 const pad = (n: number | undefined) => (n === undefined ? '--' : String(n).padStart(2, '0'))
-
-function StaffHiringHero({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
-  const { user } = useAuth()
-  const toast = useToast()
-
-  const apply = () => {
-    if (!user) {
-      toast({ title: 'Önce giriş yap', description: 'Göreve talip olmak için profilinden işaretlemen yeterli.' })
-      return
-    }
-    onNavigate('profile')
-  }
-
-  return (
-    <section className="glow-border relative overflow-hidden rounded-2xl" aria-labelledby="staff-title">
-      <Image src="/images/hero.png" alt="" fill priority sizes="100vw" className="object-cover opacity-60" />
-      <div className="absolute inset-0 bg-gradient-to-r from-[#08121e] via-[#08121e]/85 to-[#08121e]/30" />
-      <div className="relative flex flex-col gap-6 p-6 md:p-8 xl:flex-row xl:items-center xl:justify-between">
-        <div className="max-w-xl">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className="border-azure/50 bg-azure/15 text-azure">
-              <Shield className="size-3" /> Alliance PvE (EU)
-            </Badge>
-            <Badge className="border-gold/40 bg-gold/10 text-gold">Görevli alımı</Badge>
-          </div>
-          <h2 id="staff-title" className="mt-3 font-display text-3xl font-black text-balance md:text-4xl">
-            TURX, ilerlemesinde <span className="text-neon text-glow-cyan">aktif rol</span> oynayacak görevliler arıyor!
-          </h2>
-          <p className="mt-2 text-sm text-pretty text-silver/90">
-            Raid masası, alım, meslek hattı ve loot düzeni için gönüllü kadro kuruyoruz. Giriş yaptıktan sonra profilinden talip olduğun görevleri işaretle.
-          </p>
-          <GoldButton onClick={apply} className="mt-5">
-            Göreve talip ol
-          </GoldButton>
-        </div>
-        <ul className="grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
-          {STAFF_ROLES.map((role) => (
-            <li
-              key={role.id}
-              className="flex items-center gap-3 rounded-xl border border-neon/20 bg-[#06101c]/80 px-3 py-3"
-            >
-              <StaffRoleBadge id={role.id} />
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">{role.title}</p>
-                <p className="mt-0.5 text-xs font-medium text-gold">{openPositionsLabel(role.slots)}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  )
-}
 
 function Roadmap() {
   const [selected, setSelected] = useState(0)
@@ -356,7 +298,6 @@ export function OverviewView({ onNavigate }: { onNavigate: (t: TabId) => void })
   return (
     <div className="flex flex-col gap-6">
       <HeroLanding onNavigate={onNavigate} />
-      <StaffHiringHero onNavigate={onNavigate} />
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <Roadmap />

@@ -1,10 +1,14 @@
 'use client'
 
 import {
+  Award,
+  CalendarCheck,
   CalendarClock,
+  ClipboardList,
   Coins,
   LayoutDashboard,
   Lock,
+  Map,
   Menu,
   MessageSquareLock,
   ScrollText,
@@ -16,13 +20,33 @@ import {
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
+import type { PublicModuleFlags } from '@/lib/raid-loot-system'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { TurxLogo } from './logo'
 import { AuthNavbarWidget, useAuth } from './auth-provider'
 
-export type TabId = 'overview' | 'roster' | 'applications' | 'strategy' | 'raids' | 'bank' | 'anonymous' | 'profile' | 'admin'
+export type TabId =
+  | 'overview'
+  | 'roster'
+  | 'applications'
+  | 'strategy'
+  | 'raids'
+  | 'raid-signup'
+  | 'loot'
+  | 'attendance'
+  | 'roadmap'
+  | 'bank'
+  | 'anonymous'
+  | 'profile'
+  | 'admin'
 
-export const NAV_ITEMS: { id: TabId; label: string; short: string; icon: React.ComponentType<{ className?: string }> }[] = [
+export const NAV_ITEMS: {
+  id: TabId
+  label: string
+  short: string
+  icon: React.ComponentType<{ className?: string }>
+  moduleFlag?: keyof PublicModuleFlags
+}[] = [
   { id: 'overview', label: 'Genel Bakış', short: 'Dashboard', icon: LayoutDashboard },
   { id: 'roster', label: 'Guild Kadrosu', short: 'Roster & Analitik', icon: Users },
   { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus },
@@ -30,6 +54,10 @@ export const NAV_ITEMS: { id: TabId; label: string; short: string; icon: React.C
   { id: 'raids', label: 'Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
   { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins },
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock },
+  { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, moduleFlag: 'raidSignup' },
+  { id: 'loot', label: 'Loot Dağıtımı', short: 'Öncelik & BoE/BoP', icon: Award, moduleFlag: 'loot' },
+  { id: 'attendance', label: 'Devam Takibi', short: 'Puan & 40-Man Raider', icon: ClipboardList, moduleFlag: 'attendance' },
+  { id: 'roadmap', label: 'Road Map', short: 'Sistem Sunumu & Rehber', icon: Map, moduleFlag: 'roadmap' },
   { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield },
 ]
 
@@ -37,16 +65,22 @@ function NavList({
   active,
   onSelect,
   navigationLocked = false,
+  publicModules,
 }: {
   active: TabId
   onSelect: (id: TabId) => void
   navigationLocked?: boolean
+  publicModules: PublicModuleFlags
 }) {
   const { user } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const showAdmin = mounted && canAccessAdminPanel(user?.role)
-  const items = NAV_ITEMS.filter((item) => item.id !== 'admin' || showAdmin)
+  const items = NAV_ITEMS.filter((item) => {
+    if (item.id === 'admin') return showAdmin
+    if (item.moduleFlag) return showAdmin || Boolean(publicModules[item.moduleFlag])
+    return true
+  })
 
   return (
     <nav aria-label="Ana menü" className="flex flex-col gap-1">
@@ -61,9 +95,10 @@ function NavList({
           </p>
         </div>
       )}
-      {items.map(({ id, label, short, icon: Icon }) => {
+      {items.map(({ id, label, short, icon: Icon, moduleFlag }) => {
         const isActive = active === id
         const itemLocked = navigationLocked && id !== 'profile'
+        const isBetaOnly = Boolean(moduleFlag && !publicModules[moduleFlag])
         return (
           <button
             key={id}
@@ -85,8 +120,15 @@ function NavList({
               <span className="absolute top-1/2 left-0 h-6 w-0.5 -translate-y-1/2 rounded-full bg-neon shadow-[0_0_10px_#00f2fe]" />
             )}
             <Icon className={cn('size-5 shrink-0', isActive ? 'text-neon' : 'text-muted-foreground group-hover:text-silver')} />
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-medium">{label}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-medium">{label}</span>
+                {isBetaOnly && (
+                  <span className="rounded border border-gold/40 bg-gold/15 px-1.5 py-0.2 text-[9px] font-bold tracking-wider text-gold uppercase">
+                    BETA
+                  </span>
+                )}
+              </span>
               <span className="truncate text-[11px] text-muted-foreground">{short}</span>
             </span>
           </button>
@@ -100,13 +142,15 @@ function SidebarBody({
   active,
   onSelect,
   navigationLocked = false,
+  publicModules,
 }: {
   active: TabId
   onSelect: (id: TabId) => void
   navigationLocked?: boolean
+  publicModules: PublicModuleFlags
 }) {
   return (
-    <div className="flex h-full flex-col gap-6 p-4">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-4">
       <div className="flex items-center gap-3 px-1">
         <Image
           src="/images/crests/crest-option-1.jpg"
@@ -121,7 +165,7 @@ function SidebarBody({
           <p className="mt-1 font-display text-[10px] tracking-[0.3em] text-neon">TURX FOREVER</p>
         </div>
       </div>
-      <NavList active={active} onSelect={onSelect} navigationLocked={navigationLocked} />
+      <NavList active={active} onSelect={onSelect} navigationLocked={navigationLocked} publicModules={publicModules} />
       <div className="mt-auto rounded-xl border border-gold/25 bg-gradient-to-br from-gold/10 to-transparent p-4">
         <div className="flex items-center gap-2 text-gold">
           <Shield className="size-4" />
@@ -141,12 +185,14 @@ export function Sidebar({
   mobileOpen,
   onCloseMobile,
   navigationLocked = false,
+  publicModules = { raidSignup: false, loot: false, attendance: false, roadmap: false },
 }: {
   active: TabId
   onSelect: (id: TabId) => void
   mobileOpen: boolean
   onCloseMobile: () => void
   navigationLocked?: boolean
+  publicModules?: PublicModuleFlags
 }) {
   useEffect(() => {
     if (!mobileOpen) return
@@ -158,7 +204,7 @@ export function Sidebar({
   return (
     <>
       <aside className="sticky top-11 hidden h-[calc(100dvh-2.75rem)] w-72 shrink-0 border-r border-sidebar-border bg-sidebar/90 backdrop-blur lg:block">
-        <SidebarBody active={active} onSelect={onSelect} navigationLocked={navigationLocked} />
+        <SidebarBody active={active} onSelect={onSelect} navigationLocked={navigationLocked} publicModules={publicModules} />
       </aside>
 
       <div className={cn('fixed inset-0 z-[60] lg:hidden', mobileOpen ? 'pointer-events-auto' : 'pointer-events-none')}>
@@ -187,6 +233,7 @@ export function Sidebar({
           <SidebarBody
             active={active}
             navigationLocked={navigationLocked}
+            publicModules={publicModules}
             onSelect={(id) => {
               onSelect(id)
               onCloseMobile()

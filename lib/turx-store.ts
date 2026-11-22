@@ -2,6 +2,11 @@ import { BlobNotFoundError, get, put } from '@vercel/blob'
 import { Resend } from 'resend'
 import type { AccountLinks, StreamNotice } from '@/lib/account-links'
 import { normalizeAvailability } from '@/lib/availability'
+import {
+  defaultRaidSystemStore,
+  normalizeRaidSystemStore,
+  type RaidSystemStore,
+} from '@/lib/raid-loot-system'
 import { GM_EMAIL, isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
@@ -128,6 +133,7 @@ export type GuildStore = {
   bankRequests?: StoredBankRequest[]
   bankLedger?: StoredBankTransaction[]
   messages?: StoredGuildMessage[]
+  raidSystem?: RaidSystemStore
 }
 
 const PATH = 'turx-guild-store.json'
@@ -161,6 +167,7 @@ export function emptyStore(): GuildStore {
     bankRequests: [],
     bankLedger: [],
     messages: [],
+    raidSystem: defaultRaidSystemStore(),
   }
 }
 
@@ -185,6 +192,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     bankRequests: Array.isArray(data.bankRequests) ? data.bankRequests : [],
     bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
     messages: Array.isArray(data.messages) ? data.messages : [],
+    raidSystem: normalizeRaidSystemStore(data.raidSystem),
   }
 }
 
@@ -196,9 +204,10 @@ export function resolveUserRole(account: { email: string; role?: GuildRank }): G
   if (isGuildMasterEmail(account.email)) return 'Guild Master'
   const r = account.role as string | undefined
   if (r === 'Görevli' || r === 'Officer') return 'Görevli'
+  if (r === 'Raider') return 'Raider'
   if (r === 'Alt') return 'Alt'
   if (r === 'Sosyal' || r === 'Newbie' || r === 'Social') return 'Sosyal'
-  if (r === 'Turx' || r === 'Member' || r === 'Raider' || r === 'Raid Leader') return 'Turx'
+  if (r === 'Turx' || r === 'Member' || r === 'Raid Leader') return 'Turx'
   return 'Turx'
 }
 
@@ -420,6 +429,7 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
     bankRequests: [...bankReqMap.values()],
     bankLedger: [...bankLedgerMap.values()],
     messages: mergedMessages,
+    raidSystem: target.raidSystem ? normalizeRaidSystemStore(target.raidSystem) : normalizeRaidSystemStore(base.raidSystem),
   }
 }
 

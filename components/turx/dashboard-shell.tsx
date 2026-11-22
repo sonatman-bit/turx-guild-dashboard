@@ -1,22 +1,49 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { authHeaders } from '@/lib/client-session'
+import type { PublicModuleFlags } from '@/lib/raid-loot-system'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { useAuth } from './auth-provider'
 import { GuildPresenceBar } from './guild-presence-bar'
 import { Header, Sidebar, type TabId } from './navigation'
 import { ToastProvider, useToast } from './toast'
 import { AdminDashboardView } from './views/admin'
+import { AttendanceTrackerView } from './views/attendance-tracker'
 import { BankView } from './views/bank'
 import { FeedbackView } from './views/feedback'
+import { LootDistributionView } from './views/loot-distribution'
 import { OverviewView } from './views/overview'
 import { ProfileView } from './views/profile'
+import { RaidSignupView } from './views/raid-signup'
 import { RaidsView } from './views/raids'
 import { RecruitView } from './views/recruit'
+import { RoadmapView } from './views/roadmap'
 import { RosterView } from './views/roster'
 import { StrategyView } from './views/strategy'
 
-const TAB_IDS: TabId[] = ['overview', 'roster', 'applications', 'strategy', 'raids', 'bank', 'anonymous', 'profile', 'admin']
+const TAB_IDS: TabId[] = [
+  'overview',
+  'roster',
+  'applications',
+  'strategy',
+  'raids',
+  'raid-signup',
+  'loot',
+  'attendance',
+  'roadmap',
+  'bank',
+  'anonymous',
+  'profile',
+  'admin',
+]
+
+const MODULE_TAB_MAP: Partial<Record<TabId, keyof PublicModuleFlags>> = {
+  'raid-signup': 'raidSignup',
+  loot: 'loot',
+  attendance: 'attendance',
+  roadmap: 'roadmap',
+}
 
 function DashboardShellInner() {
   const { user, profileComplete } = useAuth()
@@ -26,17 +53,53 @@ function DashboardShellInner() {
   const canOpenAdmin = canAccessAdminPanel(user?.role)
   const [tab, setTab] = useState<TabId>('overview')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [publicModules, setPublicModules] = useState<PublicModuleFlags>({
+    raidSignup: false,
+    loot: false,
+    attendance: false,
+    roadmap: false,
+  })
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  const fetchPublicFlags = useCallback(async () => {
+    try {
+      const res = await fetch('/api/raid-system?meta=1', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        cache: 'no-store',
+      })
+      if (!res.ok) return
+      const json = (await res.json()) as { publicModules?: PublicModuleFlags }
+      if (json.publicModules) setPublicModules(json.publicModules)
+    } catch {
+      // keep safe default (all beta)
+    }
+  }, [])
+
   useEffect(() => {
     if (!mounted) return
-    const requested = new URLSearchParams(window.location.search).get('tab')
-    if (requested && TAB_IDS.includes(requested as TabId) && (requested !== 'admin' || canOpenAdmin)) {
-      setTab(requested as TabId)
+    void fetchPublicFlags()
+  }, [mounted, user?.username, tab, fetchPublicFlags])
+
+  const canAccessTab = useCallback(
+    (id: TabId) => {
+      if (id === 'admin') return canOpenAdmin
+      const modKey = MODULE_TAB_MAP[id]
+      if (modKey) return canOpenAdmin || Boolean(publicModules[modKey])
+      return true
+    },
+    [canOpenAdmin, publicModules],
+  )
+
+  useEffect(() => {
+    if (!mounted) return
+    const requested = new URLSearchParams(window.location.search).get('tab') as TabId | null
+    if (requested && TAB_IDS.includes(requested) && canAccessTab(requested)) {
+      setTab(requested)
       return
     }
     if (!user) {
@@ -44,11 +107,11 @@ function DashboardShellInner() {
       return
     }
     if (!profileComplete) setTab('profile')
-  }, [mounted, user, profileComplete, canOpenAdmin])
+  }, [mounted, user, profileComplete, canAccessTab])
 
   useEffect(() => {
-    if (tab === 'admin' && !canOpenAdmin) setTab('overview')
-  }, [tab, canOpenAdmin])
+    if (!canAccessTab(tab)) setTab('overview')
+  }, [tab, canAccessTab])
 
   const select = (id: TabId) => {
     if (navigationLocked && id !== 'profile') {
@@ -60,10 +123,10 @@ function DashboardShellInner() {
       window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
-    if (id === 'admin' && !canOpenAdmin) {
+    if (!canAccessTab(id)) {
       toast({
         title: 'Yetki yok',
-        description: 'GM Yönetim Paneli yalnızca Guild Master ve Görevli hesaplarına açıktır.',
+        description: 'Bu bölüm şu an yalnızca Guild Master ve Görevli (Officer) deneme yayınına açıktır.',
       })
       return
     }
@@ -81,6 +144,7 @@ function DashboardShellInner() {
           mobileOpen={mobileOpen}
           onCloseMobile={closeMobile}
           navigationLocked={navigationLocked}
+          publicModules={publicModules}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <Header active={tab} onSelect={select} onOpenMobile={() => setMobileOpen(true)} mobileOpen={mobileOpen} />
@@ -88,6 +152,10 @@ function DashboardShellInner() {
           <main key={tab} className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 animate-in fade-in slide-in-from-bottom-2 md:px-6 md:py-8">
             {tab === 'overview' && <OverviewView onNavigate={select} />}
             {tab === 'raids' && <RaidsView />}
+            {tab === 'raid-signup' && canAccessTab('raid-signup') && <RaidSignupView />}
+            {tab === 'loot' && canAccessTab('loot') && <LootDistributionView />}
+            {tab === 'attendance' && canAccessTab('attendance') && <AttendanceTrackerView />}
+            {tab === 'roadmap' && canAccessTab('roadmap') && <RoadmapView />}
             {tab === 'roster' && <RosterView />}
             {tab === 'applications' && <RecruitView />}
             {tab === 'bank' && <BankView />}

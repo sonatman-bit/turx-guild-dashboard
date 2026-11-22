@@ -10,7 +10,7 @@ export type GuildRank =
   | 'Raid Leader'
   | 'Raider'
 
-export const PRIMARY_GUILD_RANKS = ['Guild Master', 'Görevli', 'Turx', 'Alt', 'Sosyal'] as const
+export const PRIMARY_GUILD_RANKS = ['Guild Master', 'Görevli', 'Raider', 'Turx', 'Alt', 'Sosyal'] as const
 export type PrimaryGuildRank = (typeof PRIMARY_GUILD_RANKS)[number]
 
 export const GM_EMAIL = 'sonatman@hotmail.com'
@@ -21,6 +21,10 @@ export function isGuildMasterEmail(email: string | null | undefined) {
   return (email ?? '').trim().toLowerCase() === GM_EMAIL
 }
 
+export function isGuildMasterRole(role: string | null | undefined, email?: string | null) {
+  return role === 'Guild Master' || isGuildMasterEmail(email)
+}
+
 export function canAccessAdminPanel(role: string | null | undefined) {
   return role === 'Guild Master' || role === 'Görevli' || role === 'Officer'
 }
@@ -28,6 +32,7 @@ export function canAccessAdminPanel(role: string | null | undefined) {
 export function normalizeGuildRank(role: string | null | undefined): PrimaryGuildRank {
   if (role === 'Guild Master') return 'Guild Master'
   if (role === 'Görevli' || role === 'Officer') return 'Görevli'
+  if (role === 'Raider') return 'Raider'
   if (role === 'Alt') return 'Alt'
   if (role === 'Sosyal' || role === 'Newbie' || role === 'Social') return 'Sosyal'
   return 'Turx'

@@ -280,3 +280,97 @@ export function rateLimit(key: string, limit = 5, windowMs = 10 * 60 * 1000) {
   current.count += 1
   return true
 }
+
+export function guildBroadcastEmailHtml(options: {
+  username: string
+  title: string
+  content: string
+  category: string
+  icon?: string
+  senderUsername: string
+  senderRole: string
+  hasImage?: boolean
+  hasAttachments?: boolean
+}) {
+  const icon = options.icon || '📢'
+  const categoryLabel = options.category || 'DUYURU'
+  const cleanContent = escapeHtml(options.content).replace(/\n/g, '<br>')
+  const profileUrl = `${configuredAppOrigin() || 'https://turxforever.com'}/?tab=profile`
+
+  return wrapEmail(`
+    <div style="border-bottom:1px solid #d4af3740;padding-bottom:16px;margin-bottom:16px">
+      <span style="display:inline-block;padding:4px 10px;background:#d4af3720;border:1px solid #d4af3760;border-radius:6px;font-size:11px;font-weight:700;color:#d4af37;letter-spacing:1px">
+        ${escapeHtml(categoryLabel)}
+      </span>
+      <h1 style="margin:12px 0 6px;font-size:20px;color:#f4e7c3;line-height:1.4">
+        ${icon} ${escapeHtml(options.title)}
+      </h1>
+      <p style="margin:0;font-size:12px;color:#8aa0b5">
+        Gönderen: <strong style="color:#7fd7ff">${escapeHtml(options.senderUsername)}</strong> (${escapeHtml(options.senderRole)}) • Kime: <span style="color:#d7e2ee">${escapeHtml(options.username)}</span>
+      </p>
+    </div>
+
+    <div style="margin:0 0 20px;padding:16px;border:1px solid #00f2fe30;border-radius:12px;background:#071422;line-height:1.6;color:#d7e2ee;font-size:14px">
+      ${cleanContent}
+    </div>
+
+    ${options.hasImage ? '<p style="margin:0 0 12px;font-size:12px;color:#00f2fe">📷 Mesaja bir görsel iliştirilmiştir. Dashboard üzerinde tam boyut görüntüleyebilirsiniz.</p>' : ''}
+    ${options.hasAttachments ? '<p style="margin:0 0 16px;font-size:12px;color:#00f2fe">📎 Mesajda dosya/bağlantı ekleri bulunmaktadır.</p>' : ''}
+
+    <div style="margin:20px 0 10px;text-align:center">
+      <a href="${profileUrl}" style="display:inline-block;background:linear-gradient(135deg,#d4af37,#b89628);color:#1a1305;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 24px;border-radius:8px;box-shadow:0 0 15px rgba(212,175,55,0.35)">
+        Mesajı Oku & Detayları Gör →
+      </a>
+    </div>
+    <p style="margin:12px 0 0;font-size:11px;color:#64748b;text-align:center">
+      Mesajı okuduğunuzda lonca sistemine otomatik "Okundu" bilgisi işlenir.
+    </p>
+  `)
+}
+
+export async function sendGuildBroadcastNotificationEmails(options: {
+  recipients: Array<{ email: string; username: string }>
+  title: string
+  content: string
+  category: string
+  icon?: string
+  senderUsername: string
+  senderRole: string
+  hasImage?: boolean
+  hasAttachments?: boolean
+}) {
+  const apiKey = process.env.RESEND_API_KEY?.trim()
+  if (!apiKey || options.recipients.length === 0) return { sentCount: 0 }
+  const resend = new Resend(apiKey)
+  const from = fromAddress()
+
+  let sentCount = 0
+  for (const r of options.recipients) {
+    if (!r.email || !isValidEmail(r.email) || isDisposableEmail(r.email)) continue
+    try {
+      const html = guildBroadcastEmailHtml({
+        username: r.username,
+        title: options.title,
+        content: options.content,
+        category: options.category,
+        icon: options.icon,
+        senderUsername: options.senderUsername,
+        senderRole: options.senderRole,
+        hasImage: options.hasImage,
+        hasAttachments: options.hasAttachments,
+      })
+      await resend.emails.send({
+        from,
+        to: r.email,
+        subject: `[TURX Bildirim] ${options.icon || '📢'} ${options.title}`,
+        html,
+        text: htmlToText(html),
+      })
+      sentCount++
+    } catch (err) {
+      console.warn(`Resend failed for ${r.email}:`, err)
+    }
+  }
+  return { sentCount }
+}
+

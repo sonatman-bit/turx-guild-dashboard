@@ -92,6 +92,32 @@ export type StoredBankTransaction = {
   time: string
 }
 
+export type GuildMessageCategory = 'DUYURU' | 'BILDIRIM' | 'RAID' | 'ONEMLI' | 'GUNCELLEME' | 'GENEL'
+export type GuildMessageTargetType = 'ALL' | 'RANK' | 'USER'
+
+export type GuildMessageAttachment = {
+  name: string
+  url: string
+  type: 'image' | 'file'
+}
+
+export type StoredGuildMessage = {
+  id: string
+  title: string
+  content: string
+  category: GuildMessageCategory
+  icon?: string
+  senderUsername: string
+  senderRole: string
+  targetType: GuildMessageTargetType
+  targetRank?: string
+  targetUsername?: string
+  imageUrl?: string
+  attachments?: GuildMessageAttachment[]
+  createdAt: string
+  readBy: Record<string, string> // username.toLowerCase() -> readAt ISO timestamp
+}
+
 export type GuildStore = {
   users: StoredAccount[]
   applications: StoredApplication[]
@@ -101,6 +127,7 @@ export type GuildStore = {
   raidStates?: Record<string, StoredRaidState>
   bankRequests?: StoredBankRequest[]
   bankLedger?: StoredBankTransaction[]
+  messages?: StoredGuildMessage[]
 }
 
 const PATH = 'turx-guild-store.json'
@@ -133,6 +160,7 @@ export function emptyStore(): GuildStore {
     raidStates: {},
     bankRequests: [],
     bankLedger: [],
+    messages: [],
   }
 }
 
@@ -156,6 +184,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     raidStates: typeof data.raidStates === 'object' && data.raidStates !== null ? data.raidStates : {},
     bankRequests: Array.isArray(data.bankRequests) ? data.bankRequests : [],
     bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
+    messages: Array.isArray(data.messages) ? data.messages : [],
   }
 }
 
@@ -359,6 +388,27 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
     if (t?.id) bankLedgerMap.set(t.id, t)
   }
 
+  // Merge broadcast messages
+  const msgMap = new Map<string, StoredGuildMessage>()
+  for (const m of (base.messages || [])) {
+    if (m?.id) msgMap.set(m.id, { ...m, readBy: { ...(m.readBy || {}) } })
+  }
+  for (const m of (target.messages || [])) {
+    if (!m?.id) continue
+    const prev = msgMap.get(m.id)
+    if (!prev) {
+      msgMap.set(m.id, { ...m, readBy: { ...(m.readBy || {}) } })
+    } else {
+      msgMap.set(m.id, {
+        ...prev,
+        ...m,
+        readBy: { ...(prev.readBy || {}), ...(m.readBy || {}) },
+      })
+    }
+  }
+
+  const mergedMessages = Array.from(msgMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
   return {
     users: [...userMap.values()],
     applications: mergedApplications,
@@ -369,6 +419,7 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
     raidStates,
     bankRequests: [...bankReqMap.values()],
     bankLedger: [...bankLedgerMap.values()],
+    messages: mergedMessages,
   }
 }
 
@@ -711,3 +762,84 @@ export function upsertMissingAccount(store: GuildStore, incoming: ImportableAcco
   })
   return 'added'
 }
+
+export function getUserVisibleMessages(
+  store: GuildStore,
+  username: string,
+  userRole?: string,
+): {
+  messages: Array<StoredGuildMessage & { isRead: boolean; readAt: string | null }>
+  unreadCount: number
+} {
+  const normUser = username.trim().toLowerCase()
+  const rawRole = (userRole || 'Turx').trim()
+
+  const allMessages = store.messages || []
+  const visible = allMessages.filter((msg) => {
+    // 1. ALL -> visible to everyone
+    if (msg.targetType === 'ALL') return true
+    // 2. USER -> visible to specific username or sender
+    if (msg.targetType === 'USER') {
+      return (
+        msg.targetUsername?.trim().toLowerCase() === normUser ||
+        msg.senderUsername.trim().toLowerCase() === normUser
+      )
+    }
+    // 3. RANK -> visible if user's role matches targetRank or if sender is viewing
+    if (msg.targetType === 'RANK') {
+      if (msg.senderUsername.trim().toLowerCase() === normUser) return true
+      if (!msg.targetRank) return true
+      const targetRank = msg.targetRank.toLowerCase()
+      const userRank = rawRole.toLowerCase()
+      // Officers and Guild Masters can see everything
+      if (userRank === 'guild master' || userRank === 'görevli' || userRank === 'officer') return true
+      return targetRank === userRank
+    }
+    return true
+  })
+
+  // Sort descending by date
+  visible.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+  let unreadCount = 0
+  const enriched = visible.map((msg) => {
+    const readAt = msg.readBy?.[normUser] || null
+    const isRead = Boolean(readAt)
+    if (!isRead) unreadCount++
+    return {
+      ...msg,
+      isRead,
+      readAt,
+    }
+  })
+
+  return {
+    messages: enriched,
+    unreadCount,
+  }
+}
+
+export function markMessageAsRead(
+  store: GuildStore,
+  messageId: string,
+  username: string,
+): { success: boolean; readAt: string } {
+  const normUser = username.trim().toLowerCase()
+  if (!store.messages) store.messages = []
+  const msg = store.messages.find((m) => m.id === messageId)
+  if (!msg) return { success: false, readAt: '' }
+  if (!msg.readBy) msg.readBy = {}
+  const now = new Date().toISOString()
+  if (!msg.readBy[normUser]) {
+    msg.readBy[normUser] = now
+  }
+  return { success: true, readAt: msg.readBy[normUser] }
+}
+
+export function deleteMessageById(store: GuildStore, messageId: string): boolean {
+  if (!store.messages) return false
+  const initialLen = store.messages.length
+  store.messages = store.messages.filter((m) => m.id !== messageId)
+  return store.messages.length < initialLen
+}
+

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Image from 'next/image'
 import { ACTIVE_POLL, CLASS_COLORS, raceChoicesForClass, racesForClass, type AllianceRace, type WowClass } from '@/lib/guild-data'
 import {
   DAYS_OF_WEEK,
@@ -19,11 +20,40 @@ import {
 } from '@/lib/profile-gate'
 import { openPositionsLabel, STAFF_ROLES, type StaffRoleId } from '@/lib/staff-roles'
 import { cn } from '@/lib/utils'
+import { getAvatarName, getAvatarSrc, WOW_AVATARS, WOW_AVATAR_CATEGORIES, type WowAvatarCategory } from '@/lib/wow-avatars'
 import { StaffRoleBadge } from '../staff-role-icons'
 import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Modal, Panel, SectionHeader, inputClass } from '../ui'
-import { Plus, Trash2, Shield, Calendar, Link2, CheckCircle2, Edit3, Wrench, Clock, Swords, Wand2, Sparkles, Footprints, Flame, Cross, Target, Anchor, Lock, Vote } from 'lucide-react'
+import {
+  Plus,
+  Trash2,
+  Shield,
+  Calendar,
+  Link2,
+  CheckCircle2,
+  Edit3,
+  Wrench,
+  Clock,
+  Swords,
+  Wand2,
+  Sparkles,
+  Footprints,
+  Flame,
+  Cross,
+  Target,
+  Anchor,
+  Lock,
+  Vote,
+  Mail,
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  CheckCheck,
+  FileText,
+  ExternalLink,
+} from 'lucide-react'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 
@@ -340,6 +370,447 @@ function ProfilePollSection() {
   )
 }
 
+type ClientGuildMessage = {
+  id: string
+  title: string
+  content: string
+  category: 'DUYURU' | 'BILDIRIM' | 'RAID' | 'ONEMLI' | 'GUNCELLEME' | 'GENEL'
+  icon?: string
+  senderUsername: string
+  senderRole: string
+  imageUrl?: string
+  attachments?: Array<{ name: string; url: string; type: 'image' | 'file' }>
+  createdAt: string
+  isRead: boolean
+  readAt: string | null
+}
+
+function ProfileMessagesInbox() {
+  const [messages, setMessages] = useState<ClientGuildMessage[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState(false)
+  const [selectedMessage, setSelectedMessage] = useState<ClientGuildMessage | null>(null)
+
+  const fetchMessages = () => {
+    fetch('/api/messages', { credentials: 'same-origin', headers: authHeaders() })
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = (await res.json().catch(() => ({}))) as {
+          messages?: ClientGuildMessage[]
+          unreadCount?: number
+        }
+        if (Array.isArray(data.messages)) {
+          setMessages(data.messages)
+          setUnreadCount(typeof data.unreadCount === 'number' ? data.unreadCount : 0)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchMessages()
+    const handleUpdate = () => fetchMessages()
+    window.addEventListener('turx:messages-updated', handleUpdate)
+    return () => window.removeEventListener('turx:messages-updated', handleUpdate)
+  }, [])
+
+  const markAsRead = async (msgId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    try {
+      const res = await fetch(`/api/messages/${msgId}/read`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      })
+      if (res.ok) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId ? { ...m, isRead: true, readAt: new Date().toISOString() } : m,
+          ),
+        )
+        setUnreadCount((prev) => Math.max(0, prev - 1))
+        window.dispatchEvent(new CustomEvent('turx:messages-updated'))
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const openMessage = (msg: ClientGuildMessage) => {
+    setSelectedMessage(msg)
+    if (!msg.isRead) {
+      void markAsRead(msg.id)
+    }
+  }
+
+  const displayedMessages = expanded ? messages : messages.slice(0, 3)
+
+  const formatShortDate = (isoStr: string) => {
+    try {
+      const d = new Date(isoStr)
+      return d.toLocaleDateString('tr-TR', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return isoStr.slice(0, 10)
+    }
+  }
+
+  const categoryBadgeClass: Record<string, string> = {
+    DUYURU: 'border-gold/50 bg-gold/10 text-gold',
+    BILDIRIM: 'border-azure/50 bg-azure/10 text-azure',
+    RAID: 'border-neon/50 bg-neon/10 text-neon',
+    ONEMLI: 'border-destructive/60 bg-destructive/15 text-destructive font-bold',
+    GUNCELLEME: 'border-purple-500/50 bg-purple-500/10 text-purple-300',
+    GENEL: 'border-border text-muted-foreground',
+  }
+
+  return (
+    <Panel className="flex flex-col gap-4 border-gold/40 bg-gradient-to-r from-card via-[#071321] to-card shadow-lg">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="relative flex size-8 items-center justify-center rounded-lg bg-gold/15 border border-gold/40 text-gold shadow-[0_0_10px_rgba(212,175,55,0.25)]">
+            <Mail className="size-4" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-black text-white shadow-[0_0_6px_rgba(239,68,68,0.8)]">
+                {unreadCount}
+              </span>
+            )}
+          </div>
+          <div>
+            <h3 className="font-display text-base font-bold text-gold flex items-center gap-2">
+              Lonca Bildirim & Mesaj Kutusu
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              Lonca yönetimi ve görevliler tarafından iletilen anlık duyuru ve bildirimler.
+            </p>
+          </div>
+        </div>
+
+        {unreadCount > 0 && (
+          <Badge className="border-gold/50 bg-gold/15 text-gold text-xs font-semibold px-2.5 py-1">
+            {unreadCount} Okunmamış Mesaj
+          </Badge>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="py-4 text-center text-xs text-muted-foreground animate-pulse">
+          Mesajlar yükleniyor...
+        </div>
+      ) : messages.length === 0 ? (
+        <div className="py-5 text-center text-xs text-muted-foreground border border-dashed border-border rounded-xl bg-background/30">
+          Henüz tarafınıza iletilmiş bir lonca bildirimi bulunmamaktadır.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {displayedMessages.map((msg) => {
+            const isGm = msg.senderRole === 'Guild Master'
+            const isOfficer = msg.senderRole === 'Görevli' || msg.senderRole === 'Officer'
+
+            return (
+              <div
+                key={msg.id}
+                onClick={() => openMessage(msg)}
+                className={cn(
+                  'group relative flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl border transition-all cursor-pointer',
+                  !msg.isRead
+                    ? 'border-gold/60 bg-gold/[0.07] hover:border-gold hover:bg-gold/10 shadow-[0_0_10px_rgba(212,175,55,0.12)]'
+                    : 'border-border/80 bg-background/50 hover:border-silver/40 hover:bg-background/80',
+                )}
+              >
+                {/* Sol: Gönderen + Kategori + Başlık */}
+                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                  <span className="text-base shrink-0 select-none">{msg.icon || '📢'}</span>
+
+                  {/* Sender Badge */}
+                  <span
+                    className={cn(
+                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border leading-none',
+                      isGm
+                        ? 'border-gold/50 bg-gold/15 text-gold'
+                        : isOfficer
+                          ? 'border-neon/50 bg-neon/15 text-neon'
+                          : 'border-border bg-muted/40 text-silver',
+                    )}
+                  >
+                    {isGm ? 'GM' : isOfficer ? 'Officer' : 'Yönetim'} {msg.senderUsername}
+                  </span>
+
+                  {/* Kategori Badge */}
+                  <span
+                    className={cn(
+                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold border leading-none hidden md:inline-block',
+                      categoryBadgeClass[msg.category] || categoryBadgeClass.GENEL,
+                    )}
+                  >
+                    {msg.category}
+                  </span>
+
+                  {/* Mesaj Başlığı */}
+                  <span
+                    className={cn(
+                      'truncate text-xs font-semibold',
+                      !msg.isRead ? 'text-foreground font-bold' : 'text-silver',
+                    )}
+                  >
+                    {msg.title}
+                  </span>
+                </div>
+
+                {/* Sağ: Tarih + Okundu Tiki / Butonu */}
+                <div className="flex shrink-0 items-center justify-between sm:justify-end gap-3 text-xs pl-2 border-t sm:border-t-0 pt-1.5 sm:pt-0 border-border/40">
+                  <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                    {formatShortDate(msg.createdAt)}
+                  </span>
+
+                  {/* Okundu Durumu & Tik Alanı */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      if (!msg.isRead) markAsRead(msg.id, e)
+                    }}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition cursor-pointer border',
+                      msg.isRead
+                        ? 'border-success/40 bg-success/10 text-success cursor-default'
+                        : 'border-gold/50 bg-gold/15 text-gold hover:bg-gold/25 shadow-[0_0_8px_rgba(212,175,55,0.2)]',
+                    )}
+                    title={
+                      msg.isRead
+                        ? `Okundu (${formatShortDate(msg.readAt || msg.createdAt)})`
+                        : 'Okundu olarak işaretle'
+                    }
+                  >
+                    {msg.isRead ? (
+                      <>
+                        <CheckCheck className="size-3 text-success" />
+                        <span>Okundu</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="size-2 rounded-full bg-gold animate-ping" />
+                        <span>Okundu İşaretle</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+
+          {/* 3'ten fazla mesaj varsa "Daha Fazla Göster" toggle */}
+          {messages.length > 3 && (
+            <div className="flex justify-center pt-1">
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="flex items-center gap-1.5 text-xs text-gold hover:text-gold/80 font-semibold px-3 py-1.5 rounded-lg border border-gold/30 hover:bg-gold/10 transition cursor-pointer"
+              >
+                {expanded ? (
+                  <>
+                    <ChevronUp className="size-3.5" /> Daha Az Göster
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="size-3.5" /> Daha Fazla Göster ({messages.length - 3} eski mesaj)
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mesaj Detay Modalı */}
+      {selectedMessage && (
+        <Modal
+          open={Boolean(selectedMessage)}
+          onClose={() => setSelectedMessage(null)}
+          title={`${selectedMessage.icon || '📢'} ${selectedMessage.title}`}
+          description={`Gönderen: ${selectedMessage.senderUsername} (${selectedMessage.senderRole}) • ${formatShortDate(selectedMessage.createdAt)}`}
+        >
+          <div className="flex flex-col gap-4 text-sm">
+            <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-border">
+              <Badge className={categoryBadgeClass[selectedMessage.category] || categoryBadgeClass.GENEL}>
+                {selectedMessage.category}
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                Tarih: {new Date(selectedMessage.createdAt).toLocaleString('tr-TR')}
+              </span>
+            </div>
+
+            <div className="rounded-xl border border-border bg-background/70 p-4 leading-relaxed whitespace-pre-line text-silver">
+              {selectedMessage.content}
+            </div>
+
+            {selectedMessage.imageUrl && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-silver">İliştirilmiş Görsel:</span>
+                <div className="relative rounded-xl border border-border overflow-hidden bg-black/40 max-h-80 flex items-center justify-center p-1">
+                  <img
+                    src={selectedMessage.imageUrl}
+                    alt={selectedMessage.title}
+                    className="max-h-80 w-auto object-contain rounded-lg"
+                  />
+                </div>
+              </div>
+            )}
+
+            {selectedMessage.attachments && selectedMessage.attachments.length > 0 && (
+              <div className="flex flex-col gap-2 pt-2 border-t border-border">
+                <span className="text-xs font-semibold text-silver">Dosya & Ek Bağlantılar:</span>
+                <div className="grid gap-2">
+                  {selectedMessage.attachments.map((att, idx) => (
+                    <a
+                      key={idx}
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-background/60 hover:border-gold/50 hover:bg-gold/5 text-xs text-silver transition"
+                    >
+                      <span className="flex items-center gap-2">
+                        <FileText className="size-4 text-gold" />
+                        {att.name}
+                      </span>
+                      <ExternalLink className="size-3.5 text-muted-foreground" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-3 border-t border-border">
+              <GoldButton
+                type="button"
+                onClick={() => setSelectedMessage(null)}
+                className="text-xs py-1.5 px-4"
+              >
+                Kapat
+              </GoldButton>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </Panel>
+  )
+}
+
+function AvatarPickerModal({
+  open,
+  onClose,
+  selectedAvatar,
+  onSelect,
+}: {
+  open: boolean
+  onClose: () => void
+  selectedAvatar: string
+  onSelect: (avatarId: string) => void
+}) {
+  const [activeCategory, setActiveCategory] = useState<WowAvatarCategory>('Sınıflar')
+
+  const filteredAvatars = WOW_AVATARS.filter((a) => a.category === activeCategory)
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Profil Avatar Simgesini Seç (30 WoW İkonu)"
+      description="WoW Forever / Classic dünyasından sınıf armaları, Alliance ırk portreleri ve efsanevi eşyalar arasından profilinizi temsil eden simgeyi seçin."
+    >
+      <div className="flex flex-col gap-4">
+        {/* Kategori Sekmeleri */}
+        <div className="flex flex-wrap gap-1.5 border-b border-border pb-3">
+          {WOW_AVATAR_CATEGORIES.map((cat) => {
+            const count = WOW_AVATARS.filter((a) => a.category === cat).length
+            const active = activeCategory === cat
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer border',
+                  active
+                    ? 'bg-gold/20 border-gold text-gold shadow-[0_0_10px_rgba(212,175,55,0.25)]'
+                    : 'border-border text-muted-foreground hover:text-silver hover:bg-background/60',
+                )}
+              >
+                {cat} ({count})
+              </button>
+            )
+          })}
+        </div>
+
+        {/* İkon Tablosu */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[420px] overflow-y-auto pr-1">
+          {filteredAvatars.map((av) => {
+            const isSelected =
+              selectedAvatar === av.id || av.id === `class-${selectedAvatar.toLowerCase()}`
+            return (
+              <button
+                key={av.id}
+                type="button"
+                onClick={() => {
+                  onSelect(av.id)
+                  onClose()
+                }}
+                className={cn(
+                  'flex items-center gap-3 p-2.5 rounded-xl border text-left transition-all cursor-pointer group',
+                  isSelected
+                    ? 'border-gold bg-gold/15 shadow-[0_0_12px_rgba(212,175,55,0.3)] ring-1 ring-gold'
+                    : 'border-border bg-background/50 hover:border-gold/40 hover:bg-gold/5',
+                )}
+              >
+                <div className="relative size-12 shrink-0 rounded-lg overflow-hidden border border-border group-hover:border-gold/60">
+                  <Image
+                    src={av.src}
+                    alt={av.name}
+                    width={48}
+                    height={48}
+                    className="size-full object-cover"
+                  />
+                  {isSelected && (
+                    <span className="absolute inset-0 bg-gold/25 flex items-center justify-center">
+                      <Check className="size-5 text-gold drop-shadow-md stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span
+                    className={cn(
+                      'text-xs font-bold truncate',
+                      isSelected ? 'text-gold' : 'text-silver group-hover:text-foreground',
+                    )}
+                  >
+                    {av.name}
+                  </span>
+                  {av.description && (
+                    <span className="text-[10px] text-muted-foreground line-clamp-1">
+                      {av.description}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex justify-end pt-3 border-t border-border">
+          <GhostButton type="button" onClick={onClose} className="text-xs">
+            Kapat
+          </GhostButton>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export function ProfileView() {
   const toast = useToast()
   const { user, profileComplete, refreshProfileGate } = useAuth()
@@ -350,6 +821,7 @@ export function ProfileView() {
   const [oauthReady, setOauthReady] = useState({ discord: false, bnet: false, twitch: false })
 
   const [editingCharId, setEditingCharId] = useState<string | null>(null)
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false)
   const [savingAvailability, setSavingAvailability] = useState(false)
   const [linkModal, setLinkModal] = useState<{ open: boolean; provider: 'discord' | 'bnet'; value: string } | null>(null)
   const [linkingBusy, setLinkingBusy] = useState(false)
@@ -767,9 +1239,18 @@ export function ProfileView() {
     toast({ title: 'Karakter Silindi', description: 'Karakter havuzunuzdan kaldırıldı.' })
   }
 
+  const handleSelectAvatar = async (avatarId: string) => {
+    const updated = { ...profile, selectedAvatar: avatarId }
+    setProfile(updated)
+    await persistGate(updated, characters)
+    window.dispatchEvent(new CustomEvent('turx:profile-saved'))
+    toast({
+      title: 'Profil Simgesi Güncellendi',
+      description: `Yeni simgeniz kaydedildi: ${getAvatarName(avatarId)}`,
+    })
+  }
+
   const displayName = profile.nickname.trim() ? `${profile.nickname} (${profile.fullName})` : profile.fullName
-  const activeAvatarClass = AVATAR_CLASSES.find(a => a.key === profile.selectedAvatar) || AVATAR_CLASSES[0]
-  const ActiveAvatarIcon = activeAvatarClass.icon
   const onboardingGaps = getOnboardingGaps(profile, characters)
 
   if (!user) {
@@ -810,10 +1291,21 @@ export function ProfileView() {
         <div className="flex flex-wrap items-center justify-between gap-6">
           <div className="flex items-center gap-5">
             <div 
-              className={cn("relative size-20 rounded-2xl border-2 overflow-hidden shadow-lg flex items-center justify-center font-display font-black", activeAvatarClass.bg)}
-              style={{ borderColor: activeAvatarClass.color, color: activeAvatarClass.color }}
+              onClick={() => setAvatarModalOpen(true)}
+              className="relative size-20 rounded-2xl border-2 border-gold/70 overflow-hidden shadow-lg flex items-center justify-center bg-card/90 cursor-pointer group transition hover:border-gold hover:shadow-[0_0_15px_rgba(212,175,55,0.4)] shrink-0"
+              title="Profil simgesini değiştirmek için tıklayın (30 WoW İkonu)"
             >
-              <ActiveAvatarIcon className="size-10" />
+              <Image
+                src={getAvatarSrc(profile.selectedAvatar)}
+                alt={displayName}
+                width={80}
+                height={80}
+                className="size-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition text-gold">
+                <Edit3 className="size-5" />
+                <span className="text-[9px] font-bold mt-0.5">Değiştir</span>
+              </div>
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-3">
@@ -847,6 +1339,10 @@ export function ProfileView() {
         
         <div className="flex flex-col gap-8 lg:col-span-2">
           
+          {/* 1. Lonca Bildirim & Mesaj Kutusu (Kişisel Kayıt Bilgilerinin Üstünde) */}
+          <ProfileMessagesInbox />
+
+          {/* 2. Kişisel & Kayıt Bilgileri */}
           <Panel className="flex flex-col gap-6">
             <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
               <Edit3 className="size-4" /> Kişisel & Kayıt Bilgileri
@@ -983,31 +1479,42 @@ export function ProfileView() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2 md:col-span-2 pt-2 border-t border-border">
-                <label className="text-xs font-semibold text-silver">Profil Avatarı (WoW Sınıf Simgesi)</label>
-                <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
-                  {AVATAR_CLASSES.map((av) => {
-                    const isSelected = profile.selectedAvatar === av.key
-                    const IconComp = av.icon
-                    return (
-                      <button
-                        key={av.key}
-                        type="button"
-                        onClick={() => setProfile({ ...profile, selectedAvatar: av.key })}
-                        className={cn(
-                          "flex flex-col items-center justify-center p-3 rounded-xl border transition-all gap-1.5",
-                          isSelected 
-                            ? "border-gold bg-gold/15 shadow-md scale-105" 
-                            : "border-border bg-background/50 hover:border-border/80"
-                        )}
-                        style={{ color: av.color }}
-                      >
-                        <IconComp className="size-5" />
-                        <span className="text-[10px] font-bold">{av.label}</span>
-                      </button>
-                    )
-                  })}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-background/50 md:col-span-2 pt-2">
+                <div className="flex items-center gap-3">
+                  <div
+                    onClick={() => setAvatarModalOpen(true)}
+                    className="relative size-12 rounded-xl border-2 border-gold/70 overflow-hidden shadow-md shrink-0 cursor-pointer group"
+                    title="Simgeyi değiştirmek için tıklayın"
+                  >
+                    <Image
+                      src={getAvatarSrc(profile.selectedAvatar)}
+                      alt="Seçili Avatar"
+                      width={48}
+                      height={48}
+                      className="size-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-gold">
+                      <Edit3 className="size-4" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-silver">Profil Avatar Simgesi</span>
+                    <span className="text-[11px] text-gold font-bold">
+                      {getAvatarName(profile.selectedAvatar)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      WoW Forever / Classic koleksiyonundan 30 özel simge
+                    </span>
+                  </div>
                 </div>
+                <GhostButton
+                  type="button"
+                  onClick={() => setAvatarModalOpen(true)}
+                  className="text-xs py-1.5 px-3 border border-gold/40 text-gold hover:bg-gold/15"
+                >
+                  <Sparkles className="size-3.5 mr-1.5 text-gold" />
+                  Simgemi Değiştir (30 İkon)
+                </GhostButton>
               </div>
 
               <div className="md:col-span-2 flex justify-end mt-2">
@@ -1016,314 +1523,7 @@ export function ProfileView() {
             </form>
           </Panel>
 
-          <ProfilePollSection />
-
-          <Panel className="flex flex-col gap-4">
-            <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
-              Lonca Görevleri
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              TURX kadrosunda aktif rol almak istediğin görevleri işaretle. GM panelinde kimlerin talip olduğu görünür.
-            </p>
-            <ul className="grid gap-2 sm:grid-cols-2">
-              {STAFF_ROLES.map((role) => {
-                const selected = staffInterests.includes(role.id)
-                return (
-                  <li key={role.id}>
-                    <label
-                      className={cn(
-                        'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
-                        selected ? 'border-gold/50 bg-gold/10' : 'border-border hover:border-neon/30',
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-2 accent-[#d4af37]"
-                        checked={selected}
-                        onChange={() => {
-                          setStaffInterests((current) =>
-                            current.includes(role.id)
-                              ? current.filter((id) => id !== role.id)
-                              : [...current, role.id],
-                          )
-                        }}
-                      />
-                      <StaffRoleBadge id={role.id} />
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-foreground">{role.title}</span>
-                        <span className="block text-xs text-gold">{openPositionsLabel(role.slots)}</span>
-                        <span className="block text-xs text-muted-foreground">{role.blurb}</span>
-                      </span>
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-            <div className="flex justify-end">
-              <GoldButton
-                type="button"
-                onClick={() => {
-                  void persistGate(profile, characters).then((complete) => {
-                    toast({
-                      title: 'Görev tercihleri kaydedildi',
-                      description: complete
-                        ? 'GM panelinde görünür.'
-                        : 'Tercihlerin kaydedildi. Profil kilidini açmak için kişisel bilgileri de tamamla.',
-                    })
-                  })
-                }}
-              >
-                Görev tercihlerini kaydet
-              </GoldButton>
-            </div>
-          </Panel>
-
-          <Panel className="flex flex-col gap-6">
-            <div className="flex items-center justify-between border-b border-border pb-3">
-              <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2">
-                <Calendar className="size-4" /> Haftalık Müsaitlik & Saat Aralığı
-              </h3>
-              <span className="text-xs text-muted-foreground">UTC+3 (Türkiye Saati)</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Haftanın tüm günleri varsayılan olarak <span className="text-destructive font-semibold">Meşgul</span> işaretlidir. Hiçbir gün boş bırakılamaz; gün butonuna tıklayarak durumunuzu güncelleyin: <span className="text-destructive font-semibold">Kırmızı (Meşgul)</span> → <span className="text-success font-semibold">Yeşil (Müsait)</span> → <span className="text-gold font-semibold">Sarı (Belki)</span>. Açılır menülerden başlama ve bitiş saatlerinizi seçebilirsiniz.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
-              {DAYS_OF_WEEK.map(({ key, label }) => {
-                const dayData = profile.availability[key] || { status: 'busy', startTime: '21:00', endTime: '00:00' }
-                
-                let statusBg = 'border-destructive/60 bg-destructive/10 text-destructive shadow-[0_0_8px_rgb(239_68_68/0.15)]'
-                let statusText = 'Meşgul'
-                if (dayData.status === 'available') {
-                  statusBg = 'border-success/60 bg-success/15 text-success shadow-[0_0_12px_rgb(62_224_127/0.2)]'
-                  statusText = 'Müsait'
-                } else if (dayData.status === 'maybe') {
-                  statusBg = 'border-gold/60 bg-gold/15 text-gold shadow-[0_0_12px_rgb(212_175_55/0.2)]'
-                  statusText = 'Belki'
-                }
-
-                return (
-                  <div key={key} className="flex flex-col gap-2 rounded-xl border border-border bg-background/60 p-3">
-                    <button
-                      type="button"
-                      onClick={() => cycleAvailability(key)}
-                      className={cn(
-                        "flex flex-col items-center justify-center py-2.5 rounded-lg border transition-all cursor-pointer font-display font-bold",
-                        statusBg
-                      )}
-                    >
-                      <span className="text-sm">{label}</span>
-                      <span className="text-[11px] mt-0.5 tracking-wide">{statusText}</span>
-                    </button>
-
-                    <div className="flex flex-col gap-1.5 pt-1">
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <Clock className="size-3" /> Başlangıç
-                      </div>
-                      <select
-                        value={dayData.startTime}
-                        onChange={(e) => updateDayTime(key, 'startTime', e.target.value)}
-                        className="w-full bg-background border border-border rounded-lg px-2 py-1 text-[11px] text-silver font-mono"
-                      >
-                        {START_TIME_OPTIONS.map(time => (
-                          <option key={time} value={time}>{time}</option>
-                        ))}
-                      </select>
-
-                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground pt-1">
-                        <Clock className="size-3" /> Bitiş
-                      </div>
-                      <select
-                        value={dayData.endTime}
-                        onChange={(e) => updateDayTime(key, 'endTime', e.target.value)}
-                        className="w-full bg-background border border-border rounded-lg px-2 py-1 text-[11px] text-silver font-mono"
-                      >
-                        {END_TIME_OPTIONS.map(time => (
-                          <option key={time} value={time}>{time}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/60">
-              <p className="text-xs text-muted-foreground">
-                Müsaitlik durumunuz ve saatleriniz GM/Officer panelindeki Raid Müsaitlik Matrisine anlık olarak aktarılır.
-              </p>
-              <GoldButton
-                type="button"
-                onClick={handleSaveAvailability}
-                disabled={savingAvailability}
-                className="text-xs py-2 px-4"
-              >
-                <Calendar className="size-3.5 mr-1.5" />
-                {savingAvailability ? 'Kaydediliyor...' : 'Müsaitlik Tercihlerini Kaydet'}
-              </GoldButton>
-            </div>
-          </Panel>
-
-          <Panel className="flex flex-col gap-4">
-            <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
-              <Link2 className="size-4" /> Hesap Bağlantıları
-            </h3>
-            <div className="grid gap-3">
-              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="size-10 shrink-0 rounded-xl bg-[#5865f2]/15 border border-[#5865f2]/40 flex items-center justify-center text-[#a5adff] font-bold">DC</div>
-                  <div className="min-w-0">
-                    <div className="font-bold text-sm text-silver">Discord Hesabı</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {profile.discordConnected && profile.discordTag ? `@${profile.discordTag}` : 'Lonca Discord’unu bağla'}
-                    </div>
-                  </div>
-                </div>
-                {profile.discordConnected && profile.discordTag ? (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
-                    <GhostButton
-                      type="button"
-                      className="text-xs py-1.5 px-2.5"
-                      onClick={() => setLinkModal({ open: true, provider: 'discord', value: profile.discordTag })}
-                    >
-                      Düzenle
-                    </GhostButton>
-                    <GhostButton
-                      type="button"
-                      className="text-xs py-1.5 px-2.5 text-destructive hover:bg-destructive/10"
-                      onClick={() => disconnectOauth('discord')}
-                    >
-                      Kaldır
-                    </GhostButton>
-                  </div>
-                ) : (
-                  <GoldButton
-                    type="button"
-                    onClick={() => setLinkModal({ open: true, provider: 'discord', value: profile.discordTag || '' })}
-                    className="text-xs py-1.5 px-3 shrink-0"
-                  >
-                    + Hesap Bağla
-                  </GoldButton>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="size-10 shrink-0 rounded-xl bg-neon/10 border border-neon/30 flex items-center justify-center text-neon font-bold">BN</div>
-                  <div className="min-w-0">
-                    <div className="font-bold text-sm text-silver">Battle.net Hesabı</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {profile.bnetConnected && profile.bnetId ? profile.bnetId : (profile.bnetId || 'BattleTag doğrulamak için bağla')}
-                    </div>
-                  </div>
-                </div>
-                {profile.bnetConnected && profile.bnetId ? (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
-                    <GhostButton
-                      type="button"
-                      className="text-xs py-1.5 px-2.5"
-                      onClick={() => setLinkModal({ open: true, provider: 'bnet', value: profile.bnetId })}
-                    >
-                      Düzenle
-                    </GhostButton>
-                    <GhostButton
-                      type="button"
-                      className="text-xs py-1.5 px-2.5 text-destructive hover:bg-destructive/10"
-                      onClick={() => disconnectOauth('bnet')}
-                    >
-                      Kaldır
-                    </GhostButton>
-                  </div>
-                ) : (
-                  <GoldButton
-                    type="button"
-                    onClick={() => setLinkModal({ open: true, provider: 'bnet', value: profile.bnetId || '' })}
-                    className="text-xs py-1.5 px-3 shrink-0"
-                  >
-                    + Hesap Bağla
-                  </GoldButton>
-                )}
-              </div>
-
-              {[
-                {
-                  key: 'twitch' as const,
-                  mark: 'TW',
-                  markClass: 'bg-[#9146ff]/15 border-[#9146ff]/40 text-[#c4a5ff]',
-                  title: 'Twitch kanalı',
-                  value: profile.twitchLogin,
-                  placeholder: 'waffle veya twitch.tv/waffle',
-                  onChange: (value: string) =>
-                    setProfile({ ...profile, twitchLogin: value, twitchConnected: Boolean(value.trim()) }),
-                  nextProfile: () => ({ ...profile, twitchConnected: Boolean(profile.twitchLogin.trim()) }),
-                },
-                {
-                  key: 'kick' as const,
-                  mark: 'KK',
-                  markClass: 'bg-[#53fc18]/10 border-[#53fc18]/40 text-[#9dff8a]',
-                  title: 'Kick kanalı',
-                  value: profile.kickLogin,
-                  placeholder: 'waffle veya kick.com/waffle',
-                  onChange: (value: string) => setProfile({ ...profile, kickLogin: value }),
-                  nextProfile: () => profile,
-                },
-                {
-                  key: 'youtube' as const,
-                  mark: 'YT',
-                  markClass: 'bg-red-500/10 border-red-500/40 text-red-300',
-                  title: 'YouTube kanalı',
-                  value: profile.youtubeHandle,
-                  placeholder: '@kanal veya youtube.com/@kanal',
-                  onChange: (value: string) => setProfile({ ...profile, youtubeHandle: value }),
-                  nextProfile: () => profile,
-                },
-              ].map((channel) => (
-                <div key={channel.key} className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-background/50">
-                  <div className="flex items-center gap-3">
-                    <div className={cn('size-10 shrink-0 rounded-xl border flex items-center justify-center font-bold', channel.markClass)}>
-                      {channel.mark}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm text-silver">{channel.title}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Kullanıcı veya kanal adını yaz. Yayındayken ana sayfada Online + önizleme, değilse kısa Offline satırı görünür.
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <input
-                      value={channel.value}
-                      onChange={(e) => channel.onChange(e.target.value)}
-                      className={inputClass}
-                      placeholder={channel.placeholder}
-                      autoComplete="off"
-                    />
-                    <GoldButton
-                      type="button"
-                      className="text-xs py-1.5 px-3 shrink-0"
-                      onClick={async () => {
-                        const filled = Boolean(channel.value.trim())
-                        const saved = await persistGate(channel.nextProfile(), characters)
-                        toast({
-                          title: filled ? `${channel.title} kaydedildi` : `${channel.title} temizlendi`,
-                          description: saved
-                            ? 'Kanal Stream Radar’da görünür. Yayın açınca Discord bildirimi gider.'
-                            : 'Kayıt alındı. Profil kilidi için diğer zorunlu alanlar da lazım.',
-                        })
-                      }}
-                    >
-                      Kaydet
-                    </GoldButton>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-        </div>
-
-        <div className="flex flex-col gap-6">
+          {/* 3. Karakter Havuzum (Kişisel Bilgilerin Hemen Altında) */}
           <Panel className="flex flex-col gap-4">
             <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
               <Shield className="size-4" /> Karakter Havuzum ({characters.length})
@@ -1644,6 +1844,315 @@ export function ProfileView() {
               </GoldButton>
             </form>
           </Panel>
+
+          <Panel className="flex flex-col gap-6">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2">
+                <Calendar className="size-4" /> Haftalık Müsaitlik & Saat Aralığı
+              </h3>
+              <span className="text-xs text-muted-foreground">UTC+3 (Türkiye Saati)</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Haftanın tüm günleri varsayılan olarak <span className="text-destructive font-semibold">Meşgul</span> işaretlidir. Hiçbir gün boş bırakılamaz; gün butonuna tıklayarak durumunuzu güncelleyin: <span className="text-destructive font-semibold">Kırmızı (Meşgul)</span> → <span className="text-success font-semibold">Yeşil (Müsait)</span> → <span className="text-gold font-semibold">Sarı (Belki)</span>. Açılır menülerden başlama ve bitiş saatlerinizi seçebilirsiniz.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3">
+              {DAYS_OF_WEEK.map(({ key, label }) => {
+                const dayData = profile.availability[key] || { status: 'busy', startTime: '21:00', endTime: '00:00' }
+                
+                let statusBg = 'border-destructive/60 bg-destructive/10 text-destructive shadow-[0_0_8px_rgb(239_68_68/0.15)]'
+                let statusText = 'Meşgul'
+                if (dayData.status === 'available') {
+                  statusBg = 'border-success/60 bg-success/15 text-success shadow-[0_0_12px_rgb(62_224_127/0.2)]'
+                  statusText = 'Müsait'
+                } else if (dayData.status === 'maybe') {
+                  statusBg = 'border-gold/60 bg-gold/15 text-gold shadow-[0_0_12px_rgb(212_175_55/0.2)]'
+                  statusText = 'Belki'
+                }
+
+                return (
+                  <div key={key} className="flex flex-col gap-2 rounded-xl border border-border bg-background/60 p-3">
+                    <button
+                      type="button"
+                      onClick={() => cycleAvailability(key)}
+                      className={cn(
+                        "flex flex-col items-center justify-center py-2.5 rounded-lg border transition-all cursor-pointer font-display font-bold",
+                        statusBg
+                      )}
+                    >
+                      <span className="text-sm">{label}</span>
+                      <span className="text-[11px] mt-0.5 tracking-wide">{statusText}</span>
+                    </button>
+
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Clock className="size-3" /> Başlangıç
+                      </div>
+                      <select
+                        value={dayData.startTime}
+                        onChange={(e) => updateDayTime(key, 'startTime', e.target.value)}
+                        className="w-full bg-background border border-border rounded-lg px-2 py-1 text-[11px] text-silver font-mono"
+                      >
+                        {START_TIME_OPTIONS.map(time => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
+                      </select>
+
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground pt-1">
+                        <Clock className="size-3" /> Bitiş
+                      </div>
+                      <select
+                        value={dayData.endTime}
+                        onChange={(e) => updateDayTime(key, 'endTime', e.target.value)}
+                        className="w-full bg-background border border-border rounded-lg px-2 py-1 text-[11px] text-silver font-mono"
+                      >
+                        {END_TIME_OPTIONS.map(time => (
+                          <option key={time} value={time}>{time}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-border/60">
+              <p className="text-xs text-muted-foreground">
+                Müsaitlik durumunuz ve saatleriniz GM/Officer panelindeki Raid Müsaitlik Matrisine anlık olarak aktarılır.
+              </p>
+              <GoldButton
+                type="button"
+                onClick={handleSaveAvailability}
+                disabled={savingAvailability}
+                className="text-xs py-2 px-4"
+              >
+                <Calendar className="size-3.5 mr-1.5" />
+                {savingAvailability ? 'Kaydediliyor...' : 'Müsaitlik Tercihlerini Kaydet'}
+              </GoldButton>
+            </div>
+          </Panel>
+
+          <Panel className="flex flex-col gap-4">
+            <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
+              <Link2 className="size-4" /> Hesap Bağlantıları
+            </h3>
+            <div className="grid gap-3">
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="size-10 shrink-0 rounded-xl bg-[#5865f2]/15 border border-[#5865f2]/40 flex items-center justify-center text-[#a5adff] font-bold">DC</div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-silver">Discord Hesabı</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {profile.discordConnected && profile.discordTag ? `@${profile.discordTag}` : 'Lonca Discord’unu bağla'}
+                    </div>
+                  </div>
+                </div>
+                {profile.discordConnected && profile.discordTag ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5"
+                      onClick={() => setLinkModal({ open: true, provider: 'discord', value: profile.discordTag })}
+                    >
+                      Düzenle
+                    </GhostButton>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5 text-destructive hover:bg-destructive/10"
+                      onClick={() => disconnectOauth('discord')}
+                    >
+                      Kaldır
+                    </GhostButton>
+                  </div>
+                ) : (
+                  <GoldButton
+                    type="button"
+                    onClick={() => setLinkModal({ open: true, provider: 'discord', value: profile.discordTag || '' })}
+                    className="text-xs py-1.5 px-3 shrink-0"
+                  >
+                    + Hesap Bağla
+                  </GoldButton>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3 p-4 rounded-xl border border-border bg-background/50">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="size-10 shrink-0 rounded-xl bg-neon/10 border border-neon/30 flex items-center justify-center text-neon font-bold">BN</div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-sm text-silver">Battle.net Hesabı</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {profile.bnetConnected && profile.bnetId ? profile.bnetId : (profile.bnetId || 'BattleTag doğrulamak için bağla')}
+                    </div>
+                  </div>
+                </div>
+                {profile.bnetConnected && profile.bnetId ? (
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Badge className="border-success/40 bg-success/10 text-success">Bağlı</Badge>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5"
+                      onClick={() => setLinkModal({ open: true, provider: 'bnet', value: profile.bnetId })}
+                    >
+                      Düzenle
+                    </GhostButton>
+                    <GhostButton
+                      type="button"
+                      className="text-xs py-1.5 px-2.5 text-destructive hover:bg-destructive/10"
+                      onClick={() => disconnectOauth('bnet')}
+                    >
+                      Kaldır
+                    </GhostButton>
+                  </div>
+                ) : (
+                  <GoldButton
+                    type="button"
+                    onClick={() => setLinkModal({ open: true, provider: 'bnet', value: profile.bnetId || '' })}
+                    className="text-xs py-1.5 px-3 shrink-0"
+                  >
+                    + Hesap Bağla
+                  </GoldButton>
+                )}
+              </div>
+
+              {[
+                {
+                  key: 'twitch' as const,
+                  mark: 'TW',
+                  markClass: 'bg-[#9146ff]/15 border-[#9146ff]/40 text-[#c4a5ff]',
+                  title: 'Twitch kanalı',
+                  value: profile.twitchLogin,
+                  placeholder: 'waffle veya twitch.tv/waffle',
+                  onChange: (value: string) =>
+                    setProfile({ ...profile, twitchLogin: value, twitchConnected: Boolean(value.trim()) }),
+                  nextProfile: () => ({ ...profile, twitchConnected: Boolean(profile.twitchLogin.trim()) }),
+                },
+                {
+                  key: 'kick' as const,
+                  mark: 'KK',
+                  markClass: 'bg-[#53fc18]/10 border-[#53fc18]/40 text-[#9dff8a]',
+                  title: 'Kick kanalı',
+                  value: profile.kickLogin,
+                  placeholder: 'waffle veya kick.com/waffle',
+                  onChange: (value: string) => setProfile({ ...profile, kickLogin: value }),
+                  nextProfile: () => profile,
+                },
+                {
+                  key: 'youtube' as const,
+                  mark: 'YT',
+                  markClass: 'bg-red-500/10 border-red-500/40 text-red-300',
+                  title: 'YouTube kanalı',
+                  value: profile.youtubeHandle,
+                  placeholder: '@kanal veya youtube.com/@kanal',
+                  onChange: (value: string) => setProfile({ ...profile, youtubeHandle: value }),
+                  nextProfile: () => profile,
+                },
+              ].map((channel) => (
+                <div key={channel.key} className="flex flex-col gap-3 p-4 rounded-xl border border-border bg-background/50">
+                  <div className="flex items-center gap-3">
+                    <div className={cn('size-10 shrink-0 rounded-xl border flex items-center justify-center font-bold', channel.markClass)}>
+                      {channel.mark}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-sm text-silver">{channel.title}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Kullanıcı veya kanal adını yaz. Yayındayken ana sayfada Online + önizleme, değilse kısa Offline satırı görünür.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      value={channel.value}
+                      onChange={(e) => channel.onChange(e.target.value)}
+                      className={inputClass}
+                      placeholder={channel.placeholder}
+                      autoComplete="off"
+                    />
+                    <GoldButton
+                      type="button"
+                      className="text-xs py-1.5 px-3 shrink-0"
+                      onClick={async () => {
+                        const filled = Boolean(channel.value.trim())
+                        const saved = await persistGate(channel.nextProfile(), characters)
+                        toast({
+                          title: filled ? `${channel.title} kaydedildi` : `${channel.title} temizlendi`,
+                          description: saved
+                            ? 'Kanal Stream Radar’da görünür. Yayın açınca Discord bildirimi gider.'
+                            : 'Kayıt alındı. Profil kilidi için diğer zorunlu alanlar da lazım.',
+                        })
+                      }}
+                    >
+                      Kaydet
+                    </GoldButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+        </div>
+
+        {/* Sağ Kolon: Anket ve Lonca Görevleri */}
+        <div className="flex flex-col gap-6">
+          <ProfilePollSection />
+
+          <Panel className="flex flex-col gap-4">
+            <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2 border-b border-border pb-3">
+              Lonca Görevleri
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              TURX kadrosunda aktif rol almak istediğin görevleri işaretle. GM panelinde kimlerin talip olduğu görünür.
+            </p>
+            <ul className="grid gap-2">
+              {STAFF_ROLES.map((role) => {
+                const selected = staffInterests.includes(role.id)
+                return (
+                  <li key={role.id}>
+                    <label
+                      className={cn(
+                        'flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition',
+                        selected ? 'border-gold/50 bg-gold/10' : 'border-border hover:border-neon/30',
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-2 accent-[#d4af37]"
+                        checked={selected}
+                        onChange={() => {
+                          setStaffInterests((current) =>
+                            current.includes(role.id)
+                              ? current.filter((id) => id !== role.id)
+                              : [...current, role.id],
+                          )
+                        }}
+                      />
+                      <StaffRoleBadge id={role.id} />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-foreground">{role.title}</span>
+                        <span className="block text-xs text-gold">{openPositionsLabel(role.slots)}</span>
+                        <span className="block text-xs text-muted-foreground">{role.blurb}</span>
+                      </span>
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="flex justify-end">
+              <GoldButton
+                type="button"
+                onClick={() => {
+                  void persistGate(profile, characters).then((complete) => {
+                    toast({
+                      title: 'Görev tercihleri kaydedildi',
+                      description: complete
+                        ? 'GM panelinde görünür.'
+                        : 'Tercihlerin kaydedildi. Profil kilidini açmak için kişisel bilgileri de tamamla.',
+                    })
+                  })
+                }}
+              >
+                Görev tercihlerini kaydet
+              </GoldButton>
+            </div>
+          </Panel>
         </div>
 
       </div>
@@ -1706,6 +2215,14 @@ export function ProfileView() {
             </div>
           </div>
         </Modal>
+      )}
+      {avatarModalOpen && (
+        <AvatarPickerModal
+          open={avatarModalOpen}
+          onClose={() => setAvatarModalOpen(false)}
+          selectedAvatar={profile.selectedAvatar}
+          onSelect={handleSelectAvatar}
+        />
       )}
     </div>
   )

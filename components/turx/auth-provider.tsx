@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
-import { User, Pencil } from 'lucide-react'
+import Image from 'next/image'
+import { User, Pencil, Bell } from 'lucide-react'
 import { authHeaders, getSessionToken, setSessionToken } from '@/lib/client-session'
+import { getAvatarSrc } from '@/lib/wow-avatars'
 import {
   isOnboardingComplete,
   loadOnboardingCharacters,
@@ -332,10 +334,50 @@ export function openTurxAuthModal() {
 export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile') => void }) {
   const { user, login, logout, signup, resetPasswordForEmail } = useAuth()
   const [mounted, setMounted] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [userAvatar, setUserAvatar] = useState<string | null>(null)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0)
+      setUserAvatar(null)
+      return
+    }
+
+    const update = () => {
+      const prof = loadOnboardingProfile(user.username)
+      if (prof?.selectedAvatar) {
+        setUserAvatar(prof.selectedAvatar)
+      }
+      fetch('/api/messages', { credentials: 'same-origin', headers: authHeaders() })
+        .then(async (res) => {
+          if (!res.ok) return
+          const data = (await res.json().catch(() => ({}))) as { unreadCount?: number }
+          if (typeof data.unreadCount === 'number') {
+            setUnreadCount(data.unreadCount)
+          }
+        })
+        .catch(() => undefined)
+    }
+
+    update()
+    const handleUpdate = () => update()
+    window.addEventListener('turx:messages-updated', handleUpdate)
+    window.addEventListener('turx:profile-saved', handleUpdate)
+    window.addEventListener('focus', handleUpdate)
+    const interval = setInterval(update, 60_000)
+
+    return () => {
+      window.removeEventListener('turx:messages-updated', handleUpdate)
+      window.removeEventListener('turx:profile-saved', handleUpdate)
+      window.removeEventListener('focus', handleUpdate)
+      clearInterval(interval)
+    }
+  }, [user?.username])
 
   const [authModalOpen, setAuthModalOpen] = useState(false)
 
@@ -605,9 +647,27 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
     <div className="flex items-center gap-3">
       {user ? (
         <div className="flex items-center gap-3.5 rounded-xl border border-gold/40 bg-gradient-to-r from-[#071422] to-card px-4 py-2.5 shadow-lg">
-          <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold/15 text-gold shadow-[0_0_12px_rgb(212,175,55/0.3)]">
-            <User className="size-5" />
-            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-card bg-success" />
+          <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold/15 text-gold shadow-[0_0_12px_rgb(212,175,55/0.3)] overflow-hidden">
+            {userAvatar ? (
+              <Image
+                src={getAvatarSrc(userAvatar)}
+                alt={user.username}
+                width={40}
+                height={40}
+                className="size-full rounded-full object-cover"
+              />
+            ) : (
+              <User className="size-5" />
+            )}
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-card bg-success z-10" />
+            {unreadCount > 0 && (
+              <span
+                className="absolute -top-1 -right-1 z-20 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
+                title={`${unreadCount} okunmamış mesaj`}
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col text-left leading-tight">
@@ -621,6 +681,18 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
           </div>
 
           <div className="flex items-center gap-1.5 ml-2 pl-3 border-l border-border">
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => onNavigate && onNavigate('profile')}
+                className="relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gold/15 border border-gold/50 text-gold hover:bg-gold/25 transition cursor-pointer shadow-[0_0_10px_rgba(212,175,55,0.25)]"
+                title={`${unreadCount} okunmamış lonca mesajı (Profile Git)`}
+              >
+                <Bell className="size-3.5 text-gold animate-bounce" />
+                <span className="text-xs font-bold">{unreadCount}</span>
+              </button>
+            )}
+
             <GhostButton
               onClick={() => onNavigate && onNavigate('profile')}
               className="p-2 text-silver hover:text-gold hover:bg-gold/10 transition rounded-lg cursor-pointer"

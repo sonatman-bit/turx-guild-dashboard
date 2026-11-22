@@ -22,6 +22,13 @@ import {
   Clock,
   Download,
   Upload,
+  Mail,
+  Send,
+  Eye,
+  CheckCheck,
+  Paperclip,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../auth-provider'
 import { authHeaders } from '@/lib/client-session'
@@ -32,7 +39,7 @@ import type { GuildRank } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { StaffRoleBadge } from '../staff-role-icons'
 import { useToast } from '../toast'
-import { Badge, GhostButton, GoldButton, Panel, PanelTitle, SectionHeader } from '../ui'
+import { Badge, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
 type DayKey = 'pzt' | 'sal' | 'crs' | 'per' | 'cum' | 'cmt' | 'paz'
 
@@ -119,12 +126,53 @@ interface AdminApplication {
   date: string
 }
 
+interface AdminMessageDto {
+  id: string
+  title: string
+  content: string
+  category: string
+  icon?: string
+  senderUsername: string
+  senderRole: string
+  targetType: 'ALL' | 'RANK' | 'USER'
+  targetRank?: string
+  targetUsername?: string
+  imageUrl?: string
+  attachments?: Array<{ name: string; url: string; type: 'image' | 'file' }>
+  createdAt: string
+  totalTargetCount: number
+  readCount: number
+  unreadCount: number
+  readPercentage: number
+  readUsers: Array<{ username: string; email: string; role: string; readAt: string }>
+  unreadUsers: Array<{ username: string; email: string; role: string }>
+}
+
 export function AdminDashboardView() {
   const { user } = useAuth()
   const isGm = user?.role === 'Guild Master'
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance' | 'messages'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
+
+  // 4. Lonca Mesaj & Bildirim Merkezi
+  const [adminMessages, setAdminMessages] = useState<AdminMessageDto[]>([])
+  const [adminMessagesLoading, setAdminMessagesLoading] = useState(false)
+  const [selectedReportMessage, setSelectedReportMessage] = useState<AdminMessageDto | null>(null)
+
+  // Mesaj gönderme formu
+  const [msgTargetType, setMsgTargetType] = useState<'ALL' | 'RANK' | 'USER'>('ALL')
+  const [msgTargetRank, setMsgTargetRank] = useState<string>('Görevli')
+  const [msgTargetUser, setMsgTargetUser] = useState<string>('')
+  const [msgCategory, setMsgCategory] = useState<string>('DUYURU')
+  const [msgIcon, setMsgIcon] = useState<string>('📢')
+  const [msgTitle, setMsgTitle] = useState('')
+  const [msgContent, setMsgContent] = useState('')
+  const [msgImageUrl, setMsgImageUrl] = useState('')
+  const [msgAttachmentName, setMsgAttachmentName] = useState('')
+  const [msgAttachmentUrl, setMsgAttachmentUrl] = useState('')
+  const [msgSendEmail, setMsgSendEmail] = useState(true)
+  const [msgSending, setMsgSending] = useState(false)
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
   const [members, setMembers] = useState<MemberItem[]>([])
@@ -515,6 +563,115 @@ export function AdminDashboardView() {
     }
   }
 
+  const loadAdminMessages = () => {
+    setAdminMessagesLoading(true)
+    fetch('/api/admin/messages', { credentials: 'same-origin', headers: authHeaders() })
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = (await res.json().catch(() => ({}))) as { messages?: AdminMessageDto[] }
+        if (Array.isArray(data.messages)) {
+          setAdminMessages(data.messages)
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setAdminMessagesLoading(false))
+  }
+
+  useEffect(() => {
+    if (activeTab === 'messages') {
+      loadAdminMessages()
+    }
+  }, [activeTab])
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!msgTitle.trim()) {
+      toast({ title: 'Başlık Gerekli', description: 'Lütfen mesaj başlığını yazın.' })
+      return
+    }
+    if (!msgContent.trim()) {
+      toast({ title: 'İçerik Gerekli', description: 'Lütfen mesaj metnini yazın.' })
+      return
+    }
+
+    setMsgSending(true)
+    try {
+      const attachments =
+        msgAttachmentName.trim() && msgAttachmentUrl.trim()
+          ? [{ name: msgAttachmentName.trim(), url: msgAttachmentUrl.trim(), type: 'file' as const }]
+          : []
+
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: msgTitle.trim(),
+          content: msgContent.trim(),
+          category: msgCategory,
+          icon: msgIcon,
+          targetType: msgTargetType,
+          targetRank: msgTargetType === 'RANK' ? msgTargetRank : undefined,
+          targetUsername: msgTargetType === 'USER' ? msgTargetUser : undefined,
+          imageUrl: msgImageUrl.trim() || undefined,
+          attachments,
+          sendEmail: msgSendEmail,
+        }),
+      })
+
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        emailSentCount?: number
+        error?: string
+      }
+      if (!res.ok) {
+        toast({ title: 'Mesaj Gönderilemedi', description: data.error || 'Bir hata oluştu.' })
+        return
+      }
+
+      toast({
+        title: 'Mesaj Başarıyla Yayınlandı! 📢',
+        description: data.emailSentCount
+          ? `${data.emailSentCount} üyeye e-posta bildirimi iletildi.`
+          : 'Mesaj panoda görüntülenebilir.',
+      })
+
+      // Formu sıfırla
+      setMsgTitle('')
+      setMsgContent('')
+      setMsgImageUrl('')
+      setMsgAttachmentName('')
+      setMsgAttachmentUrl('')
+      loadAdminMessages()
+      window.dispatchEvent(new CustomEvent('turx:messages-updated'))
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Mesaj sunucuya kaydedilemedi.' })
+    } finally {
+      setMsgSending(false)
+    }
+  }
+
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!confirm('Bu mesajı silmek istediğinize emin misiniz?')) return
+    try {
+      const res = await fetch(`/api/admin/messages?id=${encodeURIComponent(msgId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      })
+      if (!res.ok) {
+        toast({ title: 'Silinemedi', description: 'Mesaj silinirken hata oluştu.' })
+        return
+      }
+      setAdminMessages((prev) => prev.filter((m) => m.id !== msgId))
+      if (selectedReportMessage?.id === msgId) setSelectedReportMessage(null)
+      toast({ title: 'Mesaj Silindi', description: 'Yayınlanan bildirim kaldırıldı.' })
+      window.dispatchEvent(new CustomEvent('turx:messages-updated'))
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Mesaj silinemedi.' })
+    }
+  }
+
   return (
     <div className="flex flex-col gap-8 pb-10">
       <SectionHeader
@@ -611,6 +768,15 @@ export function AdminDashboardView() {
           )}
         >
           <Calendar className="size-4" /> Raid Müsaitlik Matrisi {attendanceMembers.length > 0 && `(${attendanceMembers.length})`}
+        </button>
+        <button
+          onClick={() => setActiveTab('messages')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
+            activeTab === 'messages' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Mail className="size-4" /> Lonca Mesaj & Bildirim {adminMessages.length > 0 && `(${adminMessages.length})`}
         </button>
       </div>
 
@@ -1145,6 +1311,427 @@ export function AdminDashboardView() {
               <span className="text-silver/80">Saat dilimi: UTC+3 (Türkiye Saati)</span>
             </div>
           </Panel>
+        </div>
+      )}
+
+      {/* SEKME 7: LONCA MESAJ & BILDIRIM MERKEZİ */}
+      {activeTab === 'messages' && (
+        <div className="flex flex-col gap-8">
+          {/* A: Yeni Mesaj / Bildirim Gönder (Rich Composer) */}
+          <Panel className="flex flex-col gap-6 border-gold/40 bg-gradient-to-r from-card via-[#071321] to-card shadow-xl">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <PanelTitle icon={Send}>Yeni Mesaj & Duyuru Yayınla</PanelTitle>
+              <span className="text-xs text-muted-foreground">
+                Zengin içerikli mesaj oluşturup üyelere ve e-postalarına bildirin.
+              </span>
+            </div>
+
+            <form onSubmit={handleSendMessage} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Hedef Kitle */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-silver">Hedef Kitle *</label>
+                <select
+                  value={msgTargetType}
+                  onChange={(e) => setMsgTargetType(e.target.value as 'ALL' | 'RANK' | 'USER')}
+                  className={inputClass}
+                >
+                  <option value="ALL">📢 Tüm Lonca Üyeleri (Herkese)</option>
+                  <option value="RANK">🛡️ Belirli Bir Rütbeye Göre</option>
+                  <option value="USER">👤 Belirli Bir Üyeye (Kişiye Özel)</option>
+                </select>
+              </div>
+
+              {/* Rütbe veya Kişi Seçici */}
+              {msgTargetType === 'RANK' ? (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-silver">Hedef Rütbe *</label>
+                  <select
+                    value={msgTargetRank}
+                    onChange={(e) => setMsgTargetRank(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="Görevli">🛡️ Görevli (Officer)</option>
+                    <option value="Turx">⚔️ Turx (Üye / Raider)</option>
+                    <option value="Alt">🔮 Alt</option>
+                    <option value="Sosyal">🌿 Sosyal</option>
+                    <option value="Guild Master">👑 Guild Master</option>
+                  </select>
+                </div>
+              ) : msgTargetType === 'USER' ? (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-silver">Hedef Üye *</label>
+                  <select
+                    value={msgTargetUser}
+                    onChange={(e) => setMsgTargetUser(e.target.value)}
+                    className={inputClass}
+                    required
+                  >
+                    <option value="">Üye Seçiniz...</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.accountName}>
+                        {m.accountName} ({m.mainCharacter} - {m.rank})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-silver">Kategori *</label>
+                  <select
+                    value={msgCategory}
+                    onChange={(e) => setMsgCategory(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="DUYURU">📢 Genel Duyuru</option>
+                    <option value="RAID">⚔️ Raid Bilgilendirmesi</option>
+                    <option value="ONEMLI">⚠️ Önemli / Acil</option>
+                    <option value="GUNCELLEME">🛠️ Sistem / Kural Güncellemesi</option>
+                    <option value="GENEL">📜 Genel Bilgi</option>
+                  </select>
+                </div>
+              )}
+
+              {msgTargetType !== 'ALL' && (
+                <div className="flex flex-col gap-1.5 md:col-span-2">
+                  <label className="text-xs font-semibold text-silver">Kategori *</label>
+                  <select
+                    value={msgCategory}
+                    onChange={(e) => setMsgCategory(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="DUYURU">📢 Genel Duyuru</option>
+                    <option value="RAID">⚔️ Raid Bilgilendirmesi</option>
+                    <option value="ONEMLI">⚠️ Önemli / Acil</option>
+                    <option value="GUNCELLEME">🛠️ Sistem / Kural Güncellemesi</option>
+                    <option value="GENEL">📜 Genel Bilgi</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Mesaj İkonu / Emoji Seçici */}
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="text-xs font-semibold text-silver">Mesaj İkonu / Simgesi</label>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {['📢', '⚔️', '🛡️', '👑', '⚠️', '📜', '✨', '🔥', '🏆', '📌', '🎯', '🎉', '🕒', '✅'].map((ico) => (
+                    <button
+                      key={ico}
+                      type="button"
+                      onClick={() => setMsgIcon(ico)}
+                      className={cn(
+                        "size-9 rounded-lg border text-base flex items-center justify-center transition cursor-pointer",
+                        msgIcon === ico ? "border-gold bg-gold/20 scale-110 shadow-sm" : "border-border bg-background/50 hover:border-gold/50"
+                      )}
+                    >
+                      {ico}
+                    </button>
+                  ))}
+                  <input
+                    type="text"
+                    value={msgIcon}
+                    onChange={(e) => setMsgIcon(e.target.value)}
+                    placeholder="Örn: 🎮"
+                    className={cn(inputClass, "w-20 text-center")}
+                    maxLength={4}
+                  />
+                </div>
+              </div>
+
+              {/* Mesaj Başlığı */}
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <label className="text-xs font-semibold text-silver">Mesaj Başlığı *</label>
+                <input
+                  type="text"
+                  value={msgTitle}
+                  onChange={(e) => setMsgTitle(e.target.value)}
+                  placeholder="Örn: Bu Akşamki Molten Core Raidi Hazırlıkları ve Attunement Kontrolü"
+                  className={inputClass}
+                  required
+                />
+              </div>
+
+              {/* Mesaj İçeriği */}
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-silver">Mesaj Metni & Detayları *</label>
+                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span>Hızlı Emoji:</span>
+                    {['👍', '🎉', '⚔️', '🔥', '✅', '❌'].map((emo) => (
+                      <button
+                        key={emo}
+                        type="button"
+                        onClick={() => setMsgContent((prev) => prev + ' ' + emo)}
+                        className="px-1.5 py-0.5 rounded border border-border/60 hover:bg-background transition text-xs cursor-pointer"
+                      >
+                        {emo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <textarea
+                  value={msgContent}
+                  onChange={(e) => setMsgContent(e.target.value)}
+                  placeholder="Mesaj metnini buraya yazın. Satır başları, paragraflar ve emojiler desteklenir..."
+                  rows={5}
+                  className={cn(inputClass, "font-sans leading-relaxed resize-y")}
+                  required
+                />
+              </div>
+
+              {/* Görsel URL (Resim Ekle) */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-silver">Görsel / Resim URL (Opsiyonel)</label>
+                <input
+                  type="url"
+                  value={msgImageUrl}
+                  onChange={(e) => setMsgImageUrl(e.target.value)}
+                  placeholder="https://... (Örn: taktik haritası veya duyuru afişi)"
+                  className={inputClass}
+                />
+                {msgImageUrl.trim() && (
+                  <div className="mt-1 flex items-center gap-2 text-xs text-silver">
+                    <img src={msgImageUrl.trim()} alt="Önizleme" className="size-10 object-cover rounded border border-border" />
+                    <span className="text-[11px] text-emerald-400">Görsel önizlemesi hazır</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Dosya / Bağlantı Ekle */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-silver">Dosya / Ek Bağlantı (Opsiyonel)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={msgAttachmentName}
+                    onChange={(e) => setMsgAttachmentName(e.target.value)}
+                    placeholder="Ek Adı (Örn: WeakAura String)"
+                    className={inputClass}
+                  />
+                  <input
+                    type="url"
+                    value={msgAttachmentUrl}
+                    onChange={(e) => setMsgAttachmentUrl(e.target.value)}
+                    placeholder="URL (https://...)"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              {/* E-posta Bildirimi Onayı */}
+              <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-background/50 md:col-span-2">
+                <input
+                  type="checkbox"
+                  id="send_email_notification"
+                  checked={msgSendEmail}
+                  onChange={(e) => setMsgSendEmail(e.target.checked)}
+                  className="accent-[#d4af37] size-4 rounded cursor-pointer"
+                />
+                <label htmlFor="send_email_notification" className="text-xs text-silver cursor-pointer flex flex-col">
+                  <span className="font-semibold text-foreground">Alıcıların E-Posta Adreslerine Anlık Bildirim Gönder (Resend)</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    İşaretlendiğinde, hedef kitledeki her üyenin kayıtlı e-posta adresine TURX bildirim şablonu ile anlık e-posta iletilir.
+                  </span>
+                </label>
+              </div>
+
+              {/* Gönder Düğmesi */}
+              <div className="md:col-span-2 flex justify-end pt-2">
+                <GoldButton type="submit" disabled={msgSending} className="text-xs py-2 px-6">
+                  <Send className="size-3.5 mr-1.5" />
+                  {msgSending ? 'Yayınlanıyor ve Mailler Gönderiliyor...' : 'Mesajı Yayınla & Bildirimi Gönder'}
+                </GoldButton>
+              </div>
+            </form>
+          </Panel>
+
+          {/* B: Yayınlanan Mesajlar ve Okundu Raporu Tablosu */}
+          <Panel className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+              <PanelTitle icon={Mail}>Yayınlanan Mesajlar & Okundu Raporları ({adminMessages.length})</PanelTitle>
+              <GhostButton onClick={loadAdminMessages} disabled={adminMessagesLoading} className="text-xs py-1.5 px-3">
+                <RefreshCw className={cn("size-3.5 mr-1.5", adminMessagesLoading && "animate-spin")} />
+                Yenile
+              </GhostButton>
+            </div>
+
+            {adminMessagesLoading && adminMessages.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground animate-pulse">
+                Mesajlar ve okundu raporları yükleniyor...
+              </div>
+            ) : adminMessages.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground border border-dashed border-border rounded-xl">
+                Henüz yayınlanmış bir lonca mesajı bulunmuyor.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-border text-silver/60">
+                      <th className="py-3 px-3">İkon & Başlık</th>
+                      <th className="py-3 px-3">Kategori</th>
+                      <th className="py-3 px-3">Hedef Kitle</th>
+                      <th className="py-3 px-3">Gönderen</th>
+                      <th className="py-3 px-3">Tarih</th>
+                      <th className="py-3 px-3">Okundu Durumu</th>
+                      <th className="py-3 px-3 text-right">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/50">
+                    {adminMessages.map((msg) => (
+                      <tr key={msg.id} className="hover:bg-card/40 transition">
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base shrink-0">{msg.icon || '📢'}</span>
+                            <span className="font-semibold text-foreground max-w-[240px] truncate" title={msg.title}>
+                              {msg.title}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="rounded px-2 py-0.5 text-[10px] font-bold border border-gold/40 bg-gold/10 text-gold">
+                            {msg.category}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="text-silver font-medium">
+                            {msg.targetType === 'ALL'
+                              ? 'Tüm Lonca'
+                              : msg.targetType === 'RANK'
+                                ? `Rütbe: ${msg.targetRank}`
+                                : `Kişi: ${msg.targetUsername}`}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-muted-foreground">
+                          {msg.senderUsername} ({msg.senderRole})
+                        </td>
+                        <td className="py-3 px-3 text-muted-foreground whitespace-nowrap">
+                          {new Date(msg.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col gap-1 min-w-[120px]">
+                            <div className="flex items-center justify-between text-[11px] font-bold">
+                              <span className="text-emerald-400">{msg.readCount} / {msg.totalTargetCount} Okundu</span>
+                              <span className="text-gold font-mono">%{msg.readPercentage}</span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-background overflow-hidden border border-border/60">
+                              <div
+                                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500"
+                                style={{ width: `${Math.min(100, msg.readPercentage)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <GoldButton
+                              type="button"
+                              onClick={() => setSelectedReportMessage(msg)}
+                              className="text-xs py-1 px-2.5"
+                              title="Kimlerin okuduğunu detaylı incele"
+                            >
+                              <Eye className="size-3 mr-1" />
+                              Okundu Raporu
+                            </GoldButton>
+                            <GhostButton
+                              type="button"
+                              onClick={() => handleDeleteMessage(msg.id)}
+                              className="text-xs p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                              title="Mesajı Sil"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </GhostButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+
+          {/* C: Okundu Raporu İnceleme Modalı */}
+          {selectedReportMessage && (
+            <Modal
+              open={Boolean(selectedReportMessage)}
+              onClose={() => setSelectedReportMessage(null)}
+              title={`Okundu Raporu: ${selectedReportMessage.icon || '📢'} ${selectedReportMessage.title}`}
+              description={`Hedef: ${selectedReportMessage.targetType === 'ALL' ? 'Tüm Lonca' : selectedReportMessage.targetType === 'RANK' ? selectedReportMessage.targetRank : selectedReportMessage.targetUsername} • Toplam: ${selectedReportMessage.totalTargetCount} Üye • Okunma Oranı: %${selectedReportMessage.readPercentage}`}
+            >
+              <div className="flex flex-col gap-5 text-xs">
+                {/* İlerleme Özeti */}
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-border bg-background/50">
+                    <span className="text-muted-foreground text-[10px]">Toplam Hedef</span>
+                    <span className="text-lg font-bold text-silver mt-0.5">{selectedReportMessage.totalTargetCount}</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-400">
+                    <span className="text-[10px] font-semibold">Okuyanlar</span>
+                    <span className="text-lg font-bold mt-0.5">{selectedReportMessage.readCount}</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-400">
+                    <span className="text-[10px] font-semibold">Henüz Okumayan</span>
+                    <span className="text-lg font-bold mt-0.5">{selectedReportMessage.unreadCount}</span>
+                  </div>
+                </div>
+
+                {/* Okuyanlar Listesi */}
+                <div className="flex flex-col gap-2">
+                  <span className="font-bold text-emerald-400 flex items-center gap-1.5 text-xs">
+                    <CheckCheck className="size-3.5" /> Okuyan Üyeler ({selectedReportMessage.readUsers.length})
+                  </span>
+                  {selectedReportMessage.readUsers.length === 0 ? (
+                    <div className="p-3 rounded-lg border border-border bg-background/40 text-muted-foreground text-center">
+                      Henüz hiçbir üye mesajı okumadı.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                      {selectedReportMessage.readUsers.map((u) => (
+                        <div key={u.username} className="flex items-center justify-between p-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-bold text-silver truncate">{u.username}</span>
+                            <span className="rounded bg-muted/40 px-1 py-0.2 text-[9px] text-muted-foreground">{u.role}</span>
+                          </div>
+                          <span className="text-[10px] text-emerald-400 font-mono whitespace-nowrap ml-2">
+                            {new Date(u.readAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Okumayanlar Listesi */}
+                <div className="flex flex-col gap-2">
+                  <span className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+                    <Clock className="size-3.5" /> Henüz Okumayan Üyeler ({selectedReportMessage.unreadUsers.length})
+                  </span>
+                  {selectedReportMessage.unreadUsers.length === 0 ? (
+                    <div className="p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-center font-semibold">
+                      🎉 Hedef kitledeki tüm üyeler mesajı okudu!
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                      {selectedReportMessage.unreadUsers.map((u) => (
+                        <div key={u.username} className="flex items-center justify-between p-2 rounded-lg border border-border bg-background/40">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="font-semibold text-silver truncate">{u.username}</span>
+                            <span className="rounded bg-muted/40 px-1 py-0.2 text-[9px] text-muted-foreground">{u.role}</span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">Bekliyor</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end pt-3 border-t border-border">
+                  <GoldButton type="button" onClick={() => setSelectedReportMessage(null)} className="text-xs py-1.5 px-4">
+                    Kapat
+                  </GoldButton>
+                </div>
+              </div>
+            </Modal>
+          )}
         </div>
       )}
     </div>

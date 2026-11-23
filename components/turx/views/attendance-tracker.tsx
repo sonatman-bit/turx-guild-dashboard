@@ -38,6 +38,7 @@ import {
   Modal,
   Panel,
   PanelTitle,
+  PointsPill,
   SectionHeader,
 } from '../ui'
 
@@ -284,11 +285,14 @@ export function AttendanceTrackerView() {
                             </span>
                           </td>
                           <td className="py-3 pr-3">
-                            <span
-                              className="font-bold"
-                              style={{ color: CLASS_COLORS[row.wowClass] || '#fff' }}
-                            >
-                              {row.characterName}
+                            <span className="inline-flex items-center gap-1.5">
+                              <span
+                                className="font-bold"
+                                style={{ color: CLASS_COLORS[row.wowClass] || '#fff' }}
+                              >
+                                {row.characterName}
+                              </span>
+                              <PointsPill points={row.totalPoints} />
                             </span>
                             <span className="ml-1.5 text-[11px] text-muted-foreground">
                               {row.spec} · Lv{row.level}
@@ -523,17 +527,17 @@ export function AttendanceTrackerView() {
                                   : 'border-border/50 bg-[#071422]/60 opacity-75',
                               )}
                             >
-                              <div className="min-w-0">
-                                <span className="mr-1.5 font-mono text-[10px] text-muted-foreground">#{ci + 1}</span>
-                                <span className="font-semibold" style={{ color: CLASS_COLORS[c.wowClass] }}>
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <span className="font-mono text-[10px] text-muted-foreground">#{ci + 1}</span>
+                                <span className="truncate font-semibold" style={{ color: CLASS_COLORS[c.wowClass] }}>
                                   {c.characterName}
                                 </span>
+                                <PointsPill points={c.totalPoints} />
                                 {isRaider && (
-                                  <Badge className="ml-1.5 border-gold/40 bg-gold/15 text-[10px] text-gold">Raider</Badge>
+                                  <Badge className="border-gold/40 bg-gold/15 text-[10px] text-gold">Raider</Badge>
                                 )}
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-gold">{c.totalPoints}p</span>
                                 {isGm && !isStaff && (
                                   <button
                                     disabled={busy}

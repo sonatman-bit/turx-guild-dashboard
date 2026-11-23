@@ -41,6 +41,7 @@ import {
   Modal,
   Panel,
   PanelTitle,
+  PointsPill,
   SectionHeader,
 } from '../ui'
 
@@ -574,12 +575,15 @@ export function LootDistributionView() {
                               {award ? (
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="min-w-0">
-                                    <p
-                                      className="truncate text-sm font-bold"
-                                      style={{ color: CLASS_COLORS[award.wowClass] || specColor }}
-                                    >
-                                      {award.characterName}
-                                    </p>
+                                    <div className="flex items-center gap-1.5">
+                                      <p
+                                        className="truncate text-sm font-bold"
+                                        style={{ color: CLASS_COLORS[award.wowClass] || specColor }}
+                                      >
+                                        {award.characterName}
+                                      </p>
+                                      <PointsPill points={pointsByUser.get(award.username.toLowerCase()) ?? 0} />
+                                    </div>
                                     <p className="text-[10px] text-muted-foreground">
                                       {new Date(award.awardedAt).toLocaleDateString('tr-TR')}
                                     </p>
@@ -896,10 +900,11 @@ export function LootDistributionView() {
                             : 'border-border/50 bg-[#071422]/50 opacity-65 hover:opacity-100',
                       )}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-bold" style={{ color: CLASS_COLORS[c.wowClass] || '#fff' }}>
                           {c.characterName}
                         </span>
+                        <PointsPill points={c.points} />
                         <span className="text-[11px] text-muted-foreground">({c.spec})</span>
                         {c.matches && (
                           <Badge className="border-neon/30 bg-neon/10 text-[10px] text-neon">Uyumlu Spec</Badge>

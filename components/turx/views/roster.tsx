@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { classIconUrl, type ArmorySnapshot } from '@/lib/wow-armory'
 import { useToast } from '../toast'
 import { useAuth, type GuildRank } from '../auth-provider' // Auth entegrasyonu
-import { Badge, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
+import { Badge, Panel, PanelTitle, PointsPill, SectionHeader, inputClass } from '../ui'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 
@@ -93,12 +93,12 @@ interface RosterMemberRow {
 const RANK_STYLES: Record<string, string> = {
   'Guild Master': 'border-gold/60 bg-gold/15 text-gold',
   'Görevli': 'border-neon/50 bg-neon/10 text-neon',
+  'Raider': 'border-gold/50 bg-gold/15 text-gold',
   'Turx': 'border-azure/50 bg-azure/10 text-azure',
   'Alt': 'border-purple-500/40 bg-purple-500/10 text-purple-300',
   'Sosyal': 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
   'Officer': 'border-neon/50 bg-neon/10 text-neon',
   'Raid Leader': 'border-azure/50 bg-azure/10 text-azure',
-  'Raider': 'border-success/40 bg-success/10 text-success',
   'Member': 'border-border text-muted-foreground',
 }
 
@@ -284,6 +284,7 @@ export function RosterView() {
   const [hideAlts, setHideAlts] = useState(false)
 
   const [defaultMembers, setDefaultMembers] = useState<RosterMemberRow[]>([])
+  const [pointsByUser, setPointsByUser] = useState<Map<string, number> | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -296,10 +297,29 @@ export function RosterView() {
       .catch(() => {
         if (!cancelled) setDefaultMembers([])
       })
+
+    fetch('/api/raid-system', { credentials: 'same-origin', headers: authHeaders(), cache: 'no-store' })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as {
+          locked?: boolean
+          isOfficer?: boolean
+          publicModules?: { attendance?: boolean }
+          attendanceLeaderboard?: { username: string; totalPoints: number }[]
+        }
+        if (!response.ok || cancelled || data.locked) return
+        if (!data.isOfficer && !data.publicModules?.attendance) return
+        const map = new Map<string, number>()
+        for (const row of data.attendanceLeaderboard || []) {
+          map.set(row.username.toLowerCase(), row.totalPoints)
+        }
+        setPointsByUser(map)
+      })
+      .catch(() => undefined)
+
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [user?.username])
 
   const rosterMembers = defaultMembers
 
@@ -471,6 +491,9 @@ export function RosterView() {
                             </a>
                           ) : (
                             m.charName
+                          )}
+                          {pointsByUser && m.type === 'Main' && (
+                            <PointsPill points={pointsByUser.get(m.username.toLowerCase()) ?? 0} />
                           )}
                         </span>
                         {m.realName ? (

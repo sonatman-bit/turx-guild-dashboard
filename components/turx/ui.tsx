@@ -22,11 +22,15 @@ export function Modal({
 }) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!open) return
     const prev = document.activeElement as HTMLElement | null
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseRef.current()
+    }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
     panelRef.current?.querySelector<HTMLElement>('input, select, textarea, button:not([data-close])')?.focus()
@@ -35,7 +39,7 @@ export function Modal({
       document.body.style.overflow = ''
       prev?.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
@@ -144,6 +148,36 @@ export function Badge({ className, children }: { className?: string; children: R
   return (
     <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap', className)}>
       {children}
+    </span>
+  )
+}
+
+export function PointsPill({
+  points,
+  className,
+  title,
+}: {
+  points: number
+  className?: string
+  title?: string
+}) {
+  const tone =
+    points > 0
+      ? 'border-gold/45 bg-gold/12 text-gold shadow-[0_0_10px_rgb(212_175_55/0.12)]'
+      : points < 0
+        ? 'border-rose-500/45 bg-rose-500/12 text-rose-300'
+        : 'border-border/80 bg-[#0b1b2d] text-silver/80'
+
+  return (
+    <span
+      title={title ?? `Aktif Faz Devam Puanı: ${points}p`}
+      className={cn(
+        'inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 font-mono text-[10px] leading-none font-bold tabular-nums',
+        tone,
+        className,
+      )}
+    >
+      {points > 0 ? `+${points}p` : `${points}p`}
     </span>
   )
 }

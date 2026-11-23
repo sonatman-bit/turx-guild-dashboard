@@ -1,11 +1,13 @@
 'use client'
 
 import {
+  AlertTriangle,
   Archive,
   CalendarClock,
   CalendarPlus,
   CheckCircle2,
   Clock,
+  Info,
   Layers,
   Plus,
   Send,
@@ -45,8 +47,106 @@ import {
   Modal,
   Panel,
   PanelTitle,
+  PointsPill,
   SectionHeader,
 } from '../ui'
+
+type SameWeekConflict = {
+  eventId: string
+  dayLabel: string
+  assignmentLabel: string
+  severity: 'assigned' | 'bench' | 'pool'
+}
+
+function formatShortDayTime(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat('tr-TR', {
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
+/** Finds same-raid events within ±6 days where the same player is already signed up / assigned */
+function getSameWeekConflicts(
+  currentEvent: RaidEvent,
+  allEvents: RaidEvent[],
+  username: string,
+): SameWeekConflict[] {
+  const curMs = new Date(currentEvent.scheduledAt).getTime()
+  const uLower = username.toLowerCase()
+  const conflicts: SameWeekConflict[] = []
+
+  for (const other of allEvents) {
+    if (other.id === currentEvent.id) continue
+    if (other.raidId !== currentEvent.raidId) continue
+    const otherMs = new Date(other.scheduledAt).getTime()
+    if (!Number.isFinite(curMs) || !Number.isFinite(otherMs)) continue
+    if (Math.abs(otherMs - curMs) > 6 * 86_400_000) continue
+
+    const match = other.signups.find(
+      (s) => s.username.toLowerCase() === uLower && s.confirmStatus !== 'DECLINED_EXCUSED',
+    )
+    if (!match) continue
+
+    const dayLabel = formatShortDayTime(other.scheduledAt)
+    if (match.assignment === 'BENCH') {
+      conflicts.push({
+        eventId: other.id,
+        dayLabel,
+        assignmentLabel: 'Bench',
+        severity: 'bench',
+      })
+    } else if (match.assignment !== 'POOL') {
+      const rName = other.rosters.find((r) => r.id === match.assignment)?.name || 'Roster'
+      conflicts.push({
+        eventId: other.id,
+        dayLabel,
+        assignmentLabel: rName,
+        severity: 'assigned',
+      })
+    } else {
+      conflicts.push({
+        eventId: other.id,
+        dayLabel,
+        assignmentLabel: 'Havuzda',
+        severity: 'pool',
+      })
+    }
+  }
+
+  return conflicts
+}
+
+/** Isolated 1-second timer so parent views and open modals never re-render every second */
+function CountdownValue({
+  targetIso,
+  accentClass,
+  className,
+}: {
+  targetIso: string
+  accentClass: string
+  className?: string
+}) {
+  const nowMs = useLiveNow(1000)
+  const cd = formatCountdown(targetIso, nowMs)
+  return (
+    <span
+      className={cn(
+        'font-mono font-semibold',
+        cd.expired ? 'text-rose-400' : cd.urgent ? 'text-amber-300' : accentClass,
+        className,
+      )}
+    >
+      {cd.label}
+    </span>
+  )
+}
 
 const OUTCOME_OPTIONS: { value: AttendanceOutcome; label: string; tone: string }[] = [
   { value: 'ATTENDED', label: 'Katıldı (Tam)', tone: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
@@ -75,7 +175,6 @@ export function RaidSignupView() {
   const { user } = useAuth()
   const toast = useToast()
   const { data, loading, busy, error, postAction } = useRaidSystem()
-  const nowMs = useLiveNow(1000)
 
   const [subTab, setSubTab] = useState<'active' | 'archive'>('active')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
@@ -107,6 +206,13 @@ export function RaidSignupView() {
   const rs = data?.raidSystem
   const isOfficer = Boolean(data?.isOfficer)
   const guildMembers = data?.guildMembers || []
+  const pointsByUser = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const row of data?.attendanceLeaderboard || []) {
+      map.set(row.username.toLowerCase(), row.totalPoints)
+    }
+    return map
+  }, [data?.attendanceLeaderboard])
   const myMain = useMemo(
     () => guildMembers.find((m) => m.username.toLowerCase() === (user?.username || '').toLowerCase()) || null,
     [guildMembers, user?.username],
@@ -388,8 +494,6 @@ export function RaidSignupView() {
               {/* Event Cards Selector */}
               <div className="grid gap-4 md:grid-cols-3">
                 {activeEvents.map((ev) => {
-                  const signupCd = formatCountdown(ev.signupDeadline, nowMs)
-                  const confirmCd = formatCountdown(ev.confirmDeadline, nowMs)
                   const isSelected = selectedEvent?.id === ev.id
                   const myEntry = ev.signups.find(
                     (s) => s.username.toLowerCase() === (user?.username || '').toLowerCase(),
@@ -430,15 +534,11 @@ export function RaidSignupView() {
                       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
                         <div className="rounded-lg border border-border/70 bg-[#071422]/80 px-2.5 py-1.5">
                           <span className="block text-muted-foreground">İmza Kapanış</span>
-                          <span className={cn('font-mono font-semibold', signupCd.expired ? 'text-rose-400' : signupCd.urgent ? 'text-amber-300' : 'text-neon')}>
-                            {signupCd.label}
-                          </span>
+                          <CountdownValue targetIso={ev.signupDeadline} accentClass="text-neon" />
                         </div>
                         <div className="rounded-lg border border-border/70 bg-[#071422]/80 px-2.5 py-1.5">
                           <span className="block text-muted-foreground">Konfirme Kapanış</span>
-                          <span className={cn('font-mono font-semibold', confirmCd.expired ? 'text-rose-400' : confirmCd.urgent ? 'text-amber-300' : 'text-gold')}>
-                            {confirmCd.label}
-                          </span>
+                          <CountdownValue targetIso={ev.confirmDeadline} accentClass="text-gold" />
                         </div>
                       </div>
 
@@ -474,9 +574,10 @@ export function RaidSignupView() {
               {selectedEvent && (
                 <EventWorkspace
                   event={selectedEvent}
+                  allEvents={rs.events}
+                  pointsByUser={pointsByUser}
                   isOfficer={isOfficer}
                   busy={busy}
-                  nowMs={nowMs}
                   currentUsername={user?.username || null}
                   rules={rules}
                   onSignup={() => void handleSignup(selectedEvent)}
@@ -593,7 +694,10 @@ export function RaidSignupView() {
                         return (
                           <tr key={s.id} className="hover:bg-white/[0.02]">
                             <td className="py-2 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                              {s.characterName}
+                              <span className="inline-flex items-center gap-1.5">
+                                <span>{s.characterName}</span>
+                                <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
+                              </span>
                               <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
                             </td>
                             <td className="py-2 pr-3 text-silver">{rosterName}</td>
@@ -815,11 +919,14 @@ export function RaidSignupView() {
               value={manualAddUsername}
               onChange={(e) => setManualAddUsername(e.target.value)}
             >
-              {guildMembers.map((m) => (
-                <option key={m.username} value={m.username}>
-                  {m.characterName} — {m.wowClass} ({m.spec}) [{m.guildRank}]
-                </option>
-              ))}
+              {guildMembers.map((m) => {
+                const pts = pointsByUser.get(m.username.toLowerCase()) ?? 0
+                return (
+                  <option key={m.username} value={m.username}>
+                    {m.characterName} [{pts > 0 ? `+${pts}p` : `${pts}p`}] — {m.wowClass} ({m.spec}) [{m.guildRank}]
+                  </option>
+                )
+              })}
             </select>
           </Field>
           {addMemberModalEvent && (
@@ -872,9 +979,10 @@ export function RaidSignupView() {
 
 function EventWorkspace({
   event,
+  allEvents,
+  pointsByUser,
   isOfficer,
   busy,
-  nowMs,
   currentUsername,
   rules,
   onSignup,
@@ -891,9 +999,10 @@ function EventWorkspace({
   onDeleteEvent,
 }: {
   event: RaidEvent
+  allEvents: RaidEvent[]
+  pointsByUser: Map<string, number>
   isOfficer: boolean
   busy: boolean
-  nowMs: number
   currentUsername: string | null
   rules: {
     raid10: number
@@ -921,8 +1030,8 @@ function EventWorkspace({
   onDeleteEvent: () => void
 }) {
   const [viewMode, setViewMode] = useState<'rosters' | 'postraid'>('rosters')
-  const signupCd = formatCountdown(event.signupDeadline, nowMs)
-  const confirmCd = formatCountdown(event.confirmDeadline, nowMs)
+  const signupExpired = new Date(event.signupDeadline).getTime() <= Date.now()
+  const confirmExpired = new Date(event.confirmDeadline).getTime() <= Date.now()
 
   const myEntry = event.signups.find(
     (s) => currentUsername && s.username.toLowerCase() === currentUsername.toLowerCase(),
@@ -964,15 +1073,11 @@ function EventWorkspace({
           <div className="flex flex-wrap items-center gap-3">
             <div className="rounded-xl border border-neon/25 bg-[#071422] px-3.5 py-2 text-center">
               <p className="text-[10px] tracking-wider text-muted-foreground uppercase">İmza Kapanış</p>
-              <p className={cn('font-mono text-sm font-bold', signupCd.expired ? 'text-rose-400' : 'text-neon')}>
-                {signupCd.label}
-              </p>
+              <CountdownValue targetIso={event.signupDeadline} accentClass="text-neon" className="text-sm font-bold" />
             </div>
             <div className="rounded-xl border border-gold/25 bg-[#071422] px-3.5 py-2 text-center">
               <p className="text-[10px] tracking-wider text-muted-foreground uppercase">Konfirme Kapanış</p>
-              <p className={cn('font-mono text-sm font-bold', confirmCd.expired ? 'text-rose-400' : 'text-gold')}>
-                {confirmCd.label}
-              </p>
+              <CountdownValue targetIso={event.confirmDeadline} accentClass="text-gold" className="text-sm font-bold" />
             </div>
           </div>
         </div>
@@ -983,7 +1088,10 @@ function EventWorkspace({
             {myEntry ? (
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground">Durumun:</span>
-                <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
+                <span className="inline-flex items-center gap-1.5">
+                  <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
+                  <PointsPill points={pointsByUser.get(myEntry.username.toLowerCase()) ?? 0} />
+                </span>
                 <Badge className="border-neon/30 bg-neon/10 text-neon">{myAssignmentLabel}</Badge>
                 {myEntry.confirmStatus === 'CONFIRMED' && (
                   <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
@@ -1003,14 +1111,14 @@ function EventWorkspace({
 
           <div className="flex flex-wrap items-center gap-2">
             {!myEntry ? (
-              <GoldButton disabled={busy || (signupCd.expired && !isOfficer)} onClick={onSignup}>
+              <GoldButton disabled={busy || (signupExpired && !isOfficer)} onClick={onSignup}>
                 <UserCheck className="size-4" />
                 Raide İmza At (+{rules.signup}p)
               </GoldButton>
             ) : (
               <>
                 {event.status === 'ROSTERS_PUBLISHED' && myEntry.confirmStatus !== 'CONFIRMED' && (
-                  <GoldButton disabled={busy || (confirmCd.expired && !isOfficer)} onClick={onOpenConfirm}>
+                  <GoldButton disabled={busy || (confirmExpired && !isOfficer)} onClick={onOpenConfirm}>
                     <CheckCircle2 className="size-4" />
                     Katılımı Konfirme Et (+{rules.confirm}p)
                   </GoldButton>
@@ -1104,6 +1212,8 @@ function EventWorkspace({
                       key={s.id}
                       signup={s}
                       event={event}
+                      points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
+                      conflicts={getSameWeekConflicts(event, allEvents, s.username)}
                       isOfficer={isOfficer}
                       busy={busy}
                       onAssign={onAssign}
@@ -1129,6 +1239,8 @@ function EventWorkspace({
                       key={s.id}
                       signup={s}
                       event={event}
+                      points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
+                      conflicts={getSameWeekConflicts(event, allEvents, s.username)}
                       isOfficer={isOfficer}
                       busy={busy}
                       onAssign={onAssign}
@@ -1186,6 +1298,8 @@ function EventWorkspace({
                             key={s.id}
                             signup={s}
                             event={event}
+                            points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
+                            conflicts={getSameWeekConflicts(event, allEvents, s.username)}
                             isOfficer={isOfficer}
                             busy={busy}
                             onAssign={onAssign}
@@ -1259,7 +1373,10 @@ function EventWorkspace({
                   return (
                     <tr key={s.id} className="hover:bg-white/[0.02]">
                       <td className="py-2.5 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                        {s.characterName}
+                        <span className="inline-flex items-center gap-1.5">
+                          <span>{s.characterName}</span>
+                          <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
+                        </span>
                         <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
                       </td>
                       <td className="py-2.5 pr-3 text-silver">{groupName}</td>
@@ -1326,29 +1443,41 @@ function EventWorkspace({
 function SignupRowCard({
   signup,
   event,
+  points,
+  conflicts,
   isOfficer,
   busy,
   onAssign,
 }: {
   signup: RaidEventSignup
   event: RaidEvent
+  points: number
+  conflicts: SameWeekConflict[]
   isOfficer: boolean
   busy: boolean
   onAssign: (signupId: string, assignment: string) => void
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-[#071422]/90 px-3 py-2 text-xs">
-      <div className="min-w-0">
-        <div className="flex items-center gap-1.5">
+    <div
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-[#071422]/90 px-3 py-2 text-xs',
+        conflicts.some((c) => c.severity === 'assigned')
+          ? 'border-amber-400/50 bg-amber-500/[0.04]'
+          : 'border-border/70',
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="truncate font-semibold" style={{ color: CLASS_COLORS[signup.wowClass] || '#fff' }}>
             {signup.characterName}
           </span>
+          <PointsPill points={points} />
           <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">{signup.role}</span>
           {signup.level < 60 && (
             <span className="rounded bg-amber-500/15 px-1 text-[10px] text-amber-300">Lv{signup.level}</span>
           )}
         </div>
-        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <span>{signup.spec}</span>
           {signup.confirmStatus === 'CONFIRMED' && <span className="text-emerald-400">✓ Konfirme</span>}
           {signup.confirmStatus === 'DECLINED_EXCUSED' && (
@@ -1358,6 +1487,35 @@ function SignupRowCard({
             <span className="text-amber-300">⏳ Konfirme Bekliyor</span>
           )}
         </div>
+        {conflicts.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {conflicts.map((c) => (
+              <span
+                key={c.eventId}
+                title={`Aynı hafta (${event.raidName}) — ${c.dayLabel}: ${c.assignmentLabel}`}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold',
+                  c.severity === 'assigned'
+                    ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                    : c.severity === 'bench'
+                      ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-200'
+                      : 'border-sky-400/35 bg-sky-500/10 text-sky-200',
+                )}
+              >
+                {c.severity === 'pool' ? (
+                  <Info className="size-3 shrink-0" />
+                ) : (
+                  <AlertTriangle className="size-3 shrink-0" />
+                )}
+                {c.severity === 'assigned'
+                  ? `${c.dayLabel} (${c.assignmentLabel}) atanmış`
+                  : c.severity === 'bench'
+                    ? `${c.dayLabel} (Bench)`
+                    : `${c.dayLabel} de imzalı`}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {isOfficer && (

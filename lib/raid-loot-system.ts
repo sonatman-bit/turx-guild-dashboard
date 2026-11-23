@@ -144,6 +144,59 @@ export type LootRound = {
   slots: (LootSlotAward | null)[]
 }
 
+export type WowItemQuality = 'legendary' | 'epic' | 'rare' | 'uncommon'
+
+export const WOW_ITEM_QUALITY_COLORS: Record<WowItemQuality, { text: string; border: string; bg: string }> = {
+  legendary: { text: '#ff8000', border: '#ff8000', bg: 'rgba(255,128,0,0.14)' },
+  epic: { text: '#a335ee', border: '#a335ee', bg: 'rgba(163,53,238,0.14)' },
+  rare: { text: '#0070dd', border: '#0070dd', bg: 'rgba(0,112,221,0.14)' },
+  uncommon: { text: '#1eff00', border: '#1eff00', bg: 'rgba(30,255,0,0.12)' },
+}
+
+export type WowItemTooltipData = {
+  quality: WowItemQuality
+  itemLevel: number
+  bindType?: string
+  slotLeft?: string
+  slotRight?: string
+  damageText?: string
+  speedText?: string
+  dpsText?: string
+  armorText?: string
+  blockText?: string
+  stats?: string[]
+  resistances?: string[]
+  requiredLevel?: number
+  effects?: string[]
+  flavor?: string
+  sourceNote?: string
+}
+
+export const WOW_ITEM_ICON_PRESETS: { slug: string; label: string }[] = [
+  { slug: 'inv_jewelry_talisman_01', label: 'Trinket (Talisman)' },
+  { slug: 'inv_misc_gem_pearl_03', label: 'Trinket (Caster/Healer)' },
+  { slug: 'inv_sword_43', label: 'Kılıç (1H Sword)' },
+  { slug: 'inv_hammer_09', label: 'Gürz (1H Mace)' },
+  { slug: 'inv_weapon_shortblade_25', label: 'Hançer (Dagger)' },
+  { slug: 'inv_weapon_crossbow_04', label: 'Arbalet / Yay (Ranged)' },
+  { slug: 'inv_staff_13', label: 'Asa (Staff)' },
+  { slug: 'inv_shield_05', label: 'Kalkan (Shield)' },
+  { slug: 'inv_helmet_36', label: 'Kask (Head)' },
+  { slug: 'inv_chest_chain_15', label: 'Göğüs Zırhı (Mail/Plate)' },
+  { slug: 'inv_chest_cloth_38', label: 'Cübbe (Cloth Caster)' },
+  { slug: 'inv_chest_cloth_31', label: 'Cübbe (Cloth Healer)' },
+  { slug: 'inv_gauntlets_10', label: 'Eldiven (Hands)' },
+  { slug: 'inv_belt_29', label: 'Kemer (Waist)' },
+  { slug: 'inv_misc_cape_01', label: 'Pelerin (Back)' },
+  { slug: 'inv_jewelry_ring_36', label: 'Yüzük (Finger)' },
+  { slug: 'inv_jewelry_necklace_09', label: 'Kolye (Neck)' },
+]
+
+export function wowItemIconUrl(slug?: string): string {
+  const clean = (slug || 'inv_misc_questionmark').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
+  return `https://wow.zamimg.com/images/wow/icons/large/${clean || 'inv_misc_questionmark'}.jpg`
+}
+
 export type LootItem = {
   id: string
   phaseId: string
@@ -151,6 +204,8 @@ export type LootItem = {
   bossName: string
   itemName: string
   itemSlot: string
+  icon?: string
+  tooltip?: WowItemTooltipData
   unique?: boolean
   notes?: string
   wowheadUrl?: string
@@ -467,123 +522,457 @@ export const DEFAULT_PHASES: RaidPhase[] = [
 ]
 
 export const STARTER_LOOT_ITEMS: LootItem[] = [
-  // Onyxia's Lair (classic known drops, editable for WoW Forever adjustments)
+  // ============ BARROW DEEPS (10-MAN) — 5 End-Game Pre-Raid BiS Simülasyon Itemı ============
   {
-    id: 'ony-head',
+    id: 'sim-bd-hoj',
     phaseId: 'phase-1',
-    raidId: 'onyxia',
-    bossName: 'Onyxia',
-    itemName: 'Head of Onyxia (Dragonstalker / Onyxia Tooth Pendant)',
-    itemSlot: 'Quest / Neck-Ring-Trinket',
+    raidId: 'barrow',
+    bossName: 'Boss 2 — Thane Korrgrim',
+    itemName: 'Hand of Justice',
+    itemSlot: 'Trinket',
+    icon: 'inv_jewelry_talisman_01',
     unique: true,
     discovered: true,
-    notes: 'Quest ödülü: Tank ve Melee BiS. WoW Forever değişikliklerine göre güncellenebilir.',
-    priorityOrder: ['Tank Warrior', 'Tank Paladin', 'Rogue', 'Fury Warrior', 'Hunter'],
+    notes: 'Pre-Raid End-Game Melee/Tank BiS Trinket (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 58,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Trinket',
+      requiredLevel: 53,
+      effects: [
+        'Equip: 2% chance on melee hit to gain 1 extra attack.',
+        'Equip: +20 Attack Power.',
+      ],
+      sourceNote: 'End-Game Pre-Raid BiS · Barrow Deeps Simülasyonu',
+    },
+    priorityOrder: ['Tank Warrior', 'Rogue', 'Fury Warrior', 'Feral DPS', 'Retribution Paladin'],
     rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
   },
   {
-    id: 'ony-deathbringer',
+    id: 'sim-bd-briarwood',
     phaseId: 'phase-1',
-    raidId: 'onyxia',
-    bossName: 'Onyxia',
-    itemName: 'Deathbringer',
-    itemSlot: 'One-Hand Axe',
-    unique: false,
+    raidId: 'barrow',
+    bossName: 'Boss 4 — Rootbound Colossus',
+    itemName: 'Briarwood Reed',
+    itemSlot: 'Trinket',
+    icon: 'inv_misc_gem_pearl_03',
+    unique: true,
     discovered: true,
-    notes: '1H Fiziksel DPS silahı',
-    priorityOrder: ['Fury Warrior', 'Tank Warrior', 'Enhancement Shaman'],
-    rounds: [{ roundNumber: 1, slots: [null, null, null] }],
+    notes: 'Pre-Raid Caster & Healer BiS Trinket (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 60,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Trinket',
+      requiredLevel: 55,
+      effects: ['Equip: Increases damage and healing done by magical spells and effects by up to 29.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Barrow Deeps Simülasyonu',
+    },
+    priorityOrder: ['Mage', 'Warlock', 'Holy Priest', 'Shadow Priest', 'Resto Druid'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
   },
   {
-    id: 'ony-viskag',
+    id: 'sim-bd-dalrend',
     phaseId: 'phase-1',
-    raidId: 'onyxia',
-    bossName: 'Onyxia',
-    itemName: "Vis'kag the Bloodletter",
-    itemSlot: 'One-Hand Sword',
-    unique: false,
+    raidId: 'barrow',
+    bossName: 'Boss 6 — Shadowed Keeper',
+    itemName: "Dal'Rend's Sacred Charge",
+    itemSlot: 'Main Hand Sword',
+    icon: 'inv_sword_43',
+    unique: true,
     discovered: true,
+    notes: 'Pre-Raid Melee BiS Main Hand Kılıç (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 63,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Main Hand',
+      slotRight: 'Sword',
+      damageText: '81 - 151 Damage',
+      speedText: 'Speed 2.80',
+      dpsText: '(41.4 damage per second)',
+      stats: ['+4 Strength'],
+      requiredLevel: 58,
+      effects: ['Equip: Improves your chance to get a critical strike by 1%.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Barrow Deeps Simülasyonu',
+    },
     priorityOrder: ['Rogue', 'Fury Warrior', 'Tank Warrior'],
     rounds: [{ roundNumber: 1, slots: [null, null, null] }],
   },
   {
-    id: 'ony-sapphiron-drape',
-    phaseId: 'phase-1',
-    raidId: 'onyxia',
-    bossName: 'Onyxia',
-    itemName: 'Sapphiron Drape',
-    itemSlot: 'Back (Caster)',
-    unique: true,
-    discovered: true,
-    priorityOrder: ['Mage', 'Warlock', 'Shadow Priest', 'Balance Druid', 'Elemental Shaman'],
-    rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
-  },
-  {
-    id: 'ony-ring-binding',
-    phaseId: 'phase-1',
-    raidId: 'onyxia',
-    bossName: 'Onyxia',
-    itemName: 'Ring of Binding',
-    itemSlot: 'Finger (Tank / FR)',
-    unique: true,
-    discovered: true,
-    priorityOrder: ['Tank Warrior', 'Tank Paladin', 'Feral Tank'],
-    rounds: [{ roundNumber: 1, slots: [null, null, null] }],
-  },
-  {
-    id: 'ony-shard-scale',
-    phaseId: 'phase-1',
-    raidId: 'onyxia',
-    bossName: 'Onyxia',
-    itemName: 'Shard of the Scale',
-    itemSlot: 'Trinket (Healer)',
-    unique: true,
-    discovered: true,
-    priorityOrder: ['Holy Priest', 'Holy Paladin', 'Resto Shaman', 'Resto Druid'],
-    rounds: [{ roundNumber: 1, slots: [null, null, null, null] }],
-  },
-  // Barrow Deeps (WoW Forever live-discovery template entries for beta testing)
-  {
-    id: 'bd-sample-trinket',
+    id: 'sim-bd-trueaim',
     phaseId: 'phase-1',
     raidId: 'barrow',
-    bossName: 'Boss 2 — Thane Korrgrim',
-    itemName: 'Barrow Deeps Physical Trinket (Canlı Keşif Şablonu)',
-    itemSlot: 'Trinket',
-    unique: true,
-    discovered: false,
-    notes: 'WoW Forever 9 Aralık açılışında gerçek drop düştüğünde ismini ve bossunu düzenleyebilirsiniz.',
-    priorityOrder: ['Tank Warrior', 'Tank Paladin', 'Rogue', 'Fury Warrior', 'Hunter'],
-    rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
+    bossName: 'Boss 7 — Prison Overseer',
+    itemName: 'Trueaim Gauntlets',
+    itemSlot: 'Hands (Mail)',
+    icon: 'inv_gauntlets_10',
+    unique: false,
+    discovered: true,
+    notes: 'Pre-Raid Hunter & Enhancement BiS Eldiven (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 61,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Hands',
+      slotRight: 'Mail',
+      armorText: '225 Armor',
+      stats: ['+16 Agility', '+12 Stamina'],
+      requiredLevel: 56,
+      effects: ['Equip: Increased Bows +8.', 'Equip: Improves your chance to hit by 1%.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Barrow Deeps Simülasyonu',
+    },
+    priorityOrder: ['Hunter', 'Enhancement Shaman'],
+    rounds: [{ roundNumber: 1, slots: [null, null] }],
   },
   {
-    id: 'bd-sample-caster',
+    id: 'sim-bd-draconian',
     phaseId: 'phase-1',
     raidId: 'barrow',
     bossName: 'Boss 8 — Deep Sanctum Final',
-    itemName: 'Barrow Deeps Caster Weapon (Canlı Keşif Şablonu)',
-    itemSlot: 'Main Hand / Staff',
-    unique: true,
-    discovered: false,
-    notes: '9 Aralık sonrası gerçek drop adı ile güncelleyin.',
-    priorityOrder: ['Mage', 'Warlock', 'Shadow Priest', 'Balance Druid', 'Elemental Shaman'],
-    rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
+    itemName: 'Draconian Deflector',
+    itemSlot: 'Off Hand Shield',
+    icon: 'inv_shield_05',
+    unique: false,
+    discovered: true,
+    notes: 'Pre-Raid Tank BiS Kalkan (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 63,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Off Hand',
+      slotRight: 'Shield',
+      armorText: '2153 Armor',
+      blockText: '38 Block',
+      stats: ['+7 Stamina'],
+      resistances: ['+10 Fire Resistance'],
+      requiredLevel: 58,
+      effects: ['Equip: Increased Defense +10.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Barrow Deeps Simülasyonu',
+    },
+    priorityOrder: ['Tank Warrior', 'Tank Paladin'],
+    rounds: [{ roundNumber: 1, slots: [null, null] }],
   },
-  // Hyjal Summit (WoW Forever live-discovery template entries for beta testing)
+
+  // ============ HYJAL SUMMIT (20-MAN) — 5 End-Game Pre-Raid BiS Simülasyon Itemı ============
   {
-    id: 'hyjal-sample-healer',
+    id: 'sim-hyjal-lionheart',
+    phaseId: 'phase-1',
+    raidId: 'hyjal',
+    bossName: 'Boss 3 — Felwood Ravager',
+    itemName: 'Lionheart Helm',
+    itemSlot: 'Head (Plate)',
+    icon: 'inv_helmet_36',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Plate DPS BiS Kask (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 61,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Head',
+      slotRight: 'Plate',
+      armorText: '565 Armor',
+      stats: ['+18 Strength'],
+      requiredLevel: 56,
+      effects: [
+        'Equip: Improves your chance to get a critical strike by 2%.',
+        'Equip: Improves your chance to hit by 2%.',
+      ],
+      sourceNote: 'End-Game Pre-Raid BiS · Hyjal Summit Simülasyonu',
+    },
+    priorityOrder: ['Fury Warrior', 'Arms Warrior', 'Retribution Paladin'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null] }],
+  },
+  {
+    id: 'sim-hyjal-archmage',
+    phaseId: 'phase-1',
+    raidId: 'hyjal',
+    bossName: 'Boss 6 — Dreadlord Tactician',
+    itemName: 'Robe of the Archmage',
+    itemSlot: 'Chest (Cloth)',
+    icon: 'inv_chest_cloth_38',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Caster DPS BiS Göğüs Zırhı (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 62,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Chest',
+      slotRight: 'Cloth',
+      armorText: '94 Armor',
+      stats: ['+12 Intellect'],
+      requiredLevel: 57,
+      effects: [
+        'Equip: Increases damage and healing done by magical spells and effects by up to 40.',
+        'Equip: Improves your chance to get a critical strike with spells by 1%.',
+        'Use: Restores 375 to 625 mana. (5 Min Cooldown)',
+      ],
+      sourceNote: 'End-Game Pre-Raid BiS · Hyjal Summit Simülasyonu',
+    },
+    priorityOrder: ['Mage', 'Warlock', 'Shadow Priest', 'Balance Druid'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null] }],
+  },
+  {
+    id: 'sim-hyjal-truefaith',
+    phaseId: 'phase-1',
+    raidId: 'hyjal',
+    bossName: 'Boss 9 — Corrupted Ancient',
+    itemName: 'Truefaith Vestments',
+    itemSlot: 'Chest (Cloth)',
+    icon: 'inv_chest_cloth_31',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Healer BiS Göğüs Zırhı (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 62,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Chest',
+      slotRight: 'Cloth',
+      armorText: '96 Armor',
+      stats: ['+14 Stamina'],
+      requiredLevel: 57,
+      effects: [
+        'Equip: Increases healing done by spells and effects by up to 73.',
+        'Equip: Restores 6 mana per 5 sec.',
+        'Equip: Reduces the cooldown of your Fade ability by 2 sec.',
+      ],
+      sourceNote: 'End-Game Pre-Raid BiS · Hyjal Summit Simülasyonu',
+    },
+    priorityOrder: ['Holy Priest', 'Resto Druid', 'Holy Paladin', 'Resto Shaman'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null] }],
+  },
+  {
+    id: 'sim-hyjal-felstriker',
+    phaseId: 'phase-1',
+    raidId: 'hyjal',
+    bossName: 'Boss 11 — Archimonde Vanguard',
+    itemName: 'Felstriker',
+    itemSlot: 'One-Hand Dagger',
+    icon: 'inv_weapon_shortblade_25',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Efsanevi Proc Hançer (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 63,
+      bindType: 'Binds when picked up',
+      slotLeft: 'One-Hand',
+      slotRight: 'Dagger',
+      damageText: '54 - 101 Damage',
+      speedText: 'Speed 1.70',
+      dpsText: '(45.6 damage per second)',
+      requiredLevel: 58,
+      effects: ['Chance on hit: All attacks are guaranteed to land and will be critical strikes for the next 3 sec.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Hyjal Summit Simülasyonu',
+    },
+    priorityOrder: ['Rogue', 'Fury Warrior', 'Tank Warrior'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null] }],
+  },
+  {
+    id: 'sim-hyjal-blackcrow',
     phaseId: 'phase-1',
     raidId: 'hyjal',
     bossName: 'Boss 13 — Summit Final Boss',
-    itemName: 'Nordrassil Healer Trinket (Canlı Keşif Şablonu)',
-    itemSlot: 'Trinket',
-    unique: true,
-    discovered: false,
-    notes: 'WoW Forever 9 Aralık açılışında gerçek drop düştüğünde düzenleyin.',
+    itemName: 'Blackcrow',
+    itemSlot: 'Ranged Crossbow',
+    icon: 'inv_weapon_crossbow_04',
+    unique: false,
+    discovered: true,
+    notes: 'Pre-Raid Hunter & Melee Stat-Stick Crossbow (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 59,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Ranged',
+      slotRight: 'Crossbow',
+      damageText: '77 - 143 Damage',
+      speedText: 'Speed 3.20',
+      dpsText: '(34.4 damage per second)',
+      stats: ['+3 Agility'],
+      requiredLevel: 54,
+      effects: ['Equip: Improves your chance to hit by 1%.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Hyjal Summit Simülasyonu',
+    },
+    priorityOrder: ['Hunter', 'Rogue', 'Fury Warrior'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null] }],
+  },
+
+  // ============ ONYXIA'S LAIR (40-MAN) — 5 End-Game Pre-Raid BiS Simülasyon Itemı ============
+  {
+    id: 'sim-ony-sgc',
+    phaseId: 'phase-1',
+    raidId: 'onyxia',
+    bossName: 'Onyxia',
+    itemName: 'Savage Gladiator Chain',
+    itemSlot: 'Chest (Mail)',
+    icon: 'inv_chest_chain_15',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Fiziksel DPS BiS Göğüs Zırhı (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 57,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Chest',
+      slotRight: 'Mail',
+      armorText: '369 Armor',
+      stats: ['+13 Strength', '+14 Agility', '+13 Stamina'],
+      requiredLevel: 52,
+      effects: ['Equip: Improves your chance to get a critical strike by 2%.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Onyxia Simülasyonu',
+    },
+    priorityOrder: ['Fury Warrior', 'Enhancement Shaman', 'Hunter', 'Retribution Paladin'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null] }],
+  },
+  {
+    id: 'sim-ony-ironfoe',
+    phaseId: 'phase-1',
+    raidId: 'onyxia',
+    bossName: 'Onyxia',
+    itemName: 'Ironfoe',
+    itemSlot: 'Main Hand Mace',
+    icon: 'inv_hammer_09',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Efsanevi 1H Mace (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 60,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Main Hand',
+      slotRight: 'Mace',
+      damageText: '73 - 136 Damage',
+      speedText: 'Speed 2.40',
+      dpsText: '(43.5 damage per second)',
+      requiredLevel: 55,
+      effects: ['Chance on hit: Grants 2 extra attacks on your next swing.'],
+      flavor: '"Speak Dwarvish while wielding the fury of Ironforge."',
+      sourceNote: 'End-Game Pre-Raid BiS · Onyxia Simülasyonu',
+    },
+    priorityOrder: ['Tank Warrior', 'Fury Warrior', 'Rogue', 'Enhancement Shaman'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null] }],
+  },
+  {
+    id: 'sim-ony-banthok',
+    phaseId: 'phase-1',
+    raidId: 'onyxia',
+    bossName: 'Onyxia',
+    itemName: "Ban'thok Sash",
+    itemSlot: 'Waist (Cloth)',
+    icon: 'inv_belt_29',
+    unique: false,
+    discovered: true,
+    notes: 'Pre-Raid Caster Hit BiS Kemer (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 59,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Waist',
+      slotRight: 'Cloth',
+      armorText: '48 Armor',
+      stats: ['+11 Intellect', '+10 Stamina'],
+      requiredLevel: 54,
+      effects: [
+        'Equip: Improves your chance to hit with spells by 1%.',
+        'Equip: Increases damage and healing done by magical spells and effects by up to 12.',
+      ],
+      sourceNote: 'End-Game Pre-Raid BiS · Onyxia Simülasyonu',
+    },
+    priorityOrder: ['Mage', 'Warlock', 'Shadow Priest', 'Balance Druid', 'Elemental Shaman'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
+  },
+  {
+    id: 'sim-ony-hideofthewild',
+    phaseId: 'phase-1',
+    raidId: 'onyxia',
+    bossName: 'Onyxia',
+    itemName: 'Hide of the Wild',
+    itemSlot: 'Back (Cloak)',
+    icon: 'inv_misc_cape_01',
+    unique: false,
+    discovered: true,
+    notes: 'End-Game Healer BiS Pelerin (Simülasyon)',
+    tooltip: {
+      quality: 'epic',
+      itemLevel: 62,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Back',
+      slotRight: 'Cloth',
+      armorText: '48 Armor',
+      stats: ['+10 Intellect', '+8 Stamina'],
+      requiredLevel: 57,
+      effects: ['Equip: Increases healing done by spells and effects by up to 42.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Onyxia Simülasyonu',
+    },
     priorityOrder: ['Holy Priest', 'Holy Paladin', 'Resto Shaman', 'Resto Druid'],
     rounds: [{ roundNumber: 1, slots: [null, null, null, null] }],
   },
+  {
+    id: 'sim-ony-blackhand',
+    phaseId: 'phase-1',
+    raidId: 'onyxia',
+    bossName: 'Onyxia',
+    itemName: "Blackhand's Breadth",
+    itemSlot: 'Trinket',
+    icon: 'inv_jewelry_talisman_04',
+    unique: true,
+    discovered: true,
+    notes: 'Pre-Raid Fiziksel DPS & Tank Crit BiS Trinket (Simülasyon)',
+    tooltip: {
+      quality: 'rare',
+      itemLevel: 63,
+      bindType: 'Binds when picked up',
+      slotLeft: 'Trinket',
+      requiredLevel: 58,
+      effects: ['Equip: Improves your chance to get a critical strike by 2%.'],
+      sourceNote: 'End-Game Pre-Raid BiS · Onyxia Simülasyonu',
+    },
+    priorityOrder: ['Tank Warrior', 'Tank Paladin', 'Rogue', 'Fury Warrior', 'Hunter'],
+    rounds: [{ roundNumber: 1, slots: [null, null, null, null, null] }],
+  },
 ]
+
+const LEGACY_V1_STARTER_IDS = new Set([
+  'ony-head',
+  'ony-deathbringer',
+  'ony-viskag',
+  'ony-sapphiron-drape',
+  'ony-ring-binding',
+  'ony-shard-scale',
+  'bd-sample-trinket',
+  'bd-sample-caster',
+  'hyjal-sample-healer',
+])
+
+export function cloneStarterLootItems(): LootItem[] {
+  return STARTER_LOOT_ITEMS.map((item) => ({
+    ...item,
+    tooltip: item.tooltip
+      ? {
+          ...item.tooltip,
+          stats: item.tooltip.stats ? [...item.tooltip.stats] : undefined,
+          resistances: item.tooltip.resistances ? [...item.tooltip.resistances] : undefined,
+          effects: item.tooltip.effects ? [...item.tooltip.effects] : undefined,
+        }
+      : undefined,
+    priorityOrder: [...item.priorityOrder],
+    rounds: item.rounds.map((r) => ({ ...r, slots: [...r.slots] })),
+  }))
+}
+
+function shouldAutoUpgradeLegacySeed(items?: LootItem[]): boolean {
+  if (!Array.isArray(items) || items.length === 0) return true
+  const allLegacy = items.every((it) => LEGACY_V1_STARTER_IDS.has(it.id))
+  if (!allLegacy) return false
+  const anyAwarded = items.some((it) =>
+    (it.rounds || []).some((r) => (r.slots || []).some((s) => s !== null)),
+  )
+  return !anyAwarded
+}
 
 export function defaultRaidSystemStore(): RaidSystemStore {
   return {
@@ -603,11 +992,7 @@ export function defaultRaidSystemStore(): RaidSystemStore {
     },
     phases: DEFAULT_PHASES.map((p) => ({ ...p, raidIds: [...p.raidIds] })),
     events: [],
-    lootItems: STARTER_LOOT_ITEMS.map((item) => ({
-      ...item,
-      priorityOrder: [...item.priorityOrder],
-      rounds: item.rounds.map((r) => ({ ...r, slots: [...r.slots] })),
-    })),
+    lootItems: cloneStarterLootItems(),
     boeLogs: [],
     bopRecipes: [],
     adjustments: [],
@@ -648,7 +1033,9 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
     settings,
     phases: Array.isArray(raw.phases) && raw.phases.length > 0 ? raw.phases : defaults.phases,
     events: Array.isArray(raw.events) ? raw.events : [],
-    lootItems: Array.isArray(raw.lootItems) && raw.lootItems.length > 0 ? raw.lootItems : defaults.lootItems,
+    lootItems: shouldAutoUpgradeLegacySeed(raw.lootItems)
+      ? defaults.lootItems
+      : raw.lootItems || defaults.lootItems,
     boeLogs: Array.isArray(raw.boeLogs) ? raw.boeLogs : [],
     bopRecipes: Array.isArray(raw.bopRecipes) ? raw.bopRecipes : [],
     adjustments: Array.isArray(raw.adjustments) ? raw.adjustments : [],

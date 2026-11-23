@@ -3,6 +3,7 @@ import { sessionFromRequest } from '@/lib/auth-email'
 import type { WowClass } from '@/lib/guild-data'
 import {
   calculateSignupPoints,
+  cloneStarterLootItems,
   getActiveLootRoundState,
   normalizeRaidSystemStore,
   RAID_CATALOG,
@@ -21,6 +22,7 @@ import {
   type RaidEventSignup,
   type RaiderTargetSlot,
   type RaidRoleType,
+  type WowItemTooltipData,
 } from '@/lib/raid-loot-system'
 import { isGuildMasterEmail } from '@/lib/turx-identity'
 import {
@@ -675,6 +677,8 @@ export async function POST(request: Request) {
             bossName,
             itemName,
             itemSlot: String(body.itemSlot || 'Item').trim(),
+            icon: typeof body.icon === 'string' && body.icon.trim() ? body.icon.trim() : undefined,
+            tooltip: body.tooltip && typeof body.tooltip === 'object' ? (body.tooltip as WowItemTooltipData) : undefined,
             unique: Boolean(body.unique),
             discovered: body.discovered !== false,
             notes: typeof body.notes === 'string' ? body.notes.trim() : '',
@@ -694,6 +698,8 @@ export async function POST(request: Request) {
           if (typeof body.itemName === 'string' && body.itemName.trim()) item.itemName = body.itemName.trim()
           if (typeof body.bossName === 'string' && body.bossName.trim()) item.bossName = body.bossName.trim()
           if (typeof body.itemSlot === 'string') item.itemSlot = body.itemSlot.trim()
+          if (typeof body.icon === 'string' && body.icon.trim()) item.icon = body.icon.trim()
+          if (body.tooltip && typeof body.tooltip === 'object') item.tooltip = body.tooltip as WowItemTooltipData
           if (typeof body.notes === 'string') item.notes = body.notes.trim()
           if (typeof body.wowheadUrl === 'string') item.wowheadUrl = body.wowheadUrl.trim()
           if (typeof body.unique === 'boolean') item.unique = body.unique
@@ -706,6 +712,15 @@ export async function POST(request: Request) {
               slots: nextOrder.map((_, idx) => r.slots[idx] ?? null),
             }))
           }
+          break
+        }
+
+        case 'reset_simulation_loot': {
+          requireOfficer()
+          const phaseId = String(body.phaseId || rs.settings.activePhaseId)
+          const simItems = cloneStarterLootItems().map((it) => ({ ...it, phaseId }))
+          // Keep other phases' loot untouched, replace active phase with 15 simulation items
+          rs.lootItems = [...simItems, ...rs.lootItems.filter((it) => it.phaseId !== phaseId)]
           break
         }
 

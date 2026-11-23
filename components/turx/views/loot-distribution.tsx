@@ -26,8 +26,11 @@ import {
   hasCharacterReceivedItem,
   LOOT_PRIORITY_PRESETS,
   RAID_CATALOG,
+  WOW_ITEM_ICON_PRESETS,
   type LootItem,
   type ProfessionLead,
+  type WowItemQuality,
+  type WowItemTooltipData,
 } from '@/lib/raid-loot-system'
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
@@ -44,6 +47,7 @@ import {
   PointsPill,
   SectionHeader,
 } from '../ui'
+import { WowItemHeaderWithTooltip, WowItemIcon } from '../wow-item-tooltip'
 
 export function LootDistributionView() {
   const toast = useToast()
@@ -74,6 +78,11 @@ export function LootDistributionView() {
   const [formBossName, setFormBossName] = useState(RAID_CATALOG[0].bosses[0])
   const [formItemName, setFormItemName] = useState('')
   const [formItemSlot, setFormItemSlot] = useState('Trinket')
+  const [formIcon, setFormIcon] = useState('inv_jewelry_talisman_01')
+  const [formQuality, setFormQuality] = useState<WowItemQuality>('epic')
+  const [formItemLevel, setFormItemLevel] = useState('60')
+  const [formStatsText, setFormStatsText] = useState('')
+  const [formEffectsText, setFormEffectsText] = useState('')
   const [formUnique, setFormUnique] = useState(true)
   const [formNotes, setFormNotes] = useState('')
   const [formPriorityOrder, setFormPriorityOrder] = useState<string[]>([
@@ -224,6 +233,11 @@ export function LootDistributionView() {
     setFormBossName(cat.bosses[0])
     setFormItemName('')
     setFormItemSlot('Trinket')
+    setFormIcon('inv_jewelry_talisman_01')
+    setFormQuality('epic')
+    setFormItemLevel('60')
+    setFormStatsText('')
+    setFormEffectsText('')
     setFormUnique(true)
     setFormNotes('')
     setFormPriorityOrder([...LOOT_PRIORITY_PRESETS[0].order])
@@ -236,6 +250,11 @@ export function LootDistributionView() {
     setFormBossName(item.bossName)
     setFormItemName(item.itemName)
     setFormItemSlot(item.itemSlot)
+    setFormIcon(item.icon || 'inv_jewelry_talisman_01')
+    setFormQuality(item.tooltip?.quality || 'epic')
+    setFormItemLevel(String(item.tooltip?.itemLevel || 60))
+    setFormStatsText((item.tooltip?.stats || []).join('\n'))
+    setFormEffectsText((item.tooltip?.effects || []).join('\n'))
     setFormUnique(Boolean(item.unique))
     setFormNotes(item.notes || '')
     setFormPriorityOrder([...item.priorityOrder])
@@ -245,6 +264,27 @@ export function LootDistributionView() {
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formItemName.trim() || formPriorityOrder.length === 0) return
+
+    const statsLines = formStatsText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const effectsLines = formEffectsText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    const tooltipPayload: WowItemTooltipData = {
+      ...(editingItem?.tooltip || {}),
+      quality: formQuality,
+      itemLevel: Number(formItemLevel) || 60,
+      bindType: editingItem?.tooltip?.bindType || 'Binds when picked up',
+      slotLeft: editingItem?.tooltip?.slotLeft || formItemSlot,
+      requiredLevel: editingItem?.tooltip?.requiredLevel || 60,
+      stats: statsLines.length > 0 ? statsLines : undefined,
+      effects: effectsLines.length > 0 ? effectsLines : undefined,
+    }
+
     const ok = await runAction(
       editingItem
         ? {
@@ -253,6 +293,8 @@ export function LootDistributionView() {
             bossName: formBossName,
             itemName: formItemName,
             itemSlot: formItemSlot,
+            icon: formIcon,
+            tooltip: tooltipPayload,
             unique: formUnique,
             discovered: true,
             notes: formNotes,
@@ -264,6 +306,8 @@ export function LootDistributionView() {
             bossName: formBossName,
             itemName: formItemName,
             itemSlot: formItemSlot,
+            icon: formIcon,
+            tooltip: tooltipPayload,
             unique: formUnique,
             discovered: true,
             notes: formNotes,
@@ -354,10 +398,31 @@ export function LootDistributionView() {
               </button>
             </div>
             {isOfficer && subTab === 'items' && (
-              <GoldButton onClick={openAddItemModal}>
-                <Plus className="size-4" />
-                Yeni Item Ekle
-              </GoldButton>
+              <>
+                <GhostButton
+                  disabled={busy}
+                  onClick={() => {
+                    if (
+                      typeof window !== 'undefined' &&
+                      !window.confirm('Aktif fazdaki loot listesi 15 adet End-Game Pre-Raid simülasyon itemı ile yenilensin mi?')
+                    ) {
+                      return
+                    }
+                    void runAction(
+                      { action: 'reset_simulation_loot' },
+                      '15 adet End-Game Pre-Raid simülasyon itemı (3 raide 5\'er adet) yüklendi!',
+                    )
+                  }}
+                  className="px-3 py-2 text-xs"
+                >
+                  <RotateCcw className="size-3.5" />
+                  15 Simülasyon Itemı Yükle
+                </GhostButton>
+                <GoldButton onClick={openAddItemModal}>
+                  <Plus className="size-4" />
+                  Yeni Item Ekle
+                </GoldButton>
+              </>
             )}
           </div>
         }
@@ -485,8 +550,8 @@ export function LootDistributionView() {
                   <Panel key={item.id} className="border-border/80 hover:border-gold/30 transition">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-display text-base font-bold text-gold">{item.itemName}</h3>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <WowItemHeaderWithTooltip item={item} />
                           <Badge className="border-neon/30 bg-neon/10 text-neon">
                             {raidMeta?.name || item.raidId} · {item.bossName}
                           </Badge>
@@ -500,7 +565,7 @@ export function LootDistributionView() {
                             </Badge>
                           )}
                         </div>
-                        {item.notes && <p className="mt-1 text-xs text-muted-foreground">{item.notes}</p>}
+                        {item.notes && <p className="mt-1.5 text-xs text-muted-foreground">{item.notes}</p>}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -1021,6 +1086,66 @@ export function LootDistributionView() {
                 placeholder="Trinket, Sword, Ring..."
                 value={formItemSlot}
                 onChange={(e) => setFormItemSlot(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Item İkonu">
+              <div className="flex items-center gap-2">
+                <WowItemIcon icon={formIcon} quality={formQuality} size={34} alt="Önizleme" />
+                <select
+                  className={cn(inputClass, 'flex-1 text-xs')}
+                  value={formIcon}
+                  onChange={(e) => setFormIcon(e.target.value)}
+                >
+                  {WOW_ITEM_ICON_PRESETS.map((ic) => (
+                    <option key={ic.slug} value={ic.slug}>
+                      {ic.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </Field>
+            <Field label="Kalite (Renk)">
+              <select
+                className={cn(inputClass, 'text-xs')}
+                value={formQuality}
+                onChange={(e) => setFormQuality(e.target.value as WowItemQuality)}
+              >
+                <option value="epic">Epic (Mor)</option>
+                <option value="rare">Rare (Mavi)</option>
+                <option value="legendary">Legendary (Turuncu)</option>
+                <option value="uncommon">Uncommon (Yeşil)</option>
+              </select>
+            </Field>
+            <Field label="Item Level">
+              <input
+                type="number"
+                className={cn(inputClass, 'text-xs')}
+                value={formItemLevel}
+                onChange={(e) => setFormItemLevel(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Temel Statlar (Her satıra 1)" hint="Örn: +14 Stamina">
+              <textarea
+                rows={2}
+                className={cn(inputClass, 'text-xs')}
+                placeholder={'+14 Stamina\n+12 Intellect'}
+                value={formStatsText}
+                onChange={(e) => setFormStatsText(e.target.value)}
+              />
+            </Field>
+            <Field label="Equip / Use Özellikleri (Yeşil)" hint="Her satıra 1 özellik">
+              <textarea
+                rows={2}
+                className={cn(inputClass, 'text-xs')}
+                placeholder={'Equip: Improves your chance to get a critical strike by 2%.'}
+                value={formEffectsText}
+                onChange={(e) => setFormEffectsText(e.target.value)}
               />
             </Field>
           </div>

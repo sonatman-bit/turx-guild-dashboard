@@ -45,34 +45,36 @@ export function Modal({
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-end justify-center p-0 sm:items-center sm:p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in" onClick={onClose} aria-hidden />
+      <div className="fixed inset-0 bg-black/70 backdrop-blur-sm animate-in fade-in" onClick={onClose} aria-hidden />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          'glow-border relative max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-[#0b1b2d] p-6 shadow-[0_0_60px_rgb(0_242_254/0.15)] animate-in fade-in zoom-in-95 sm:rounded-2xl',
+          'glow-border relative z-10 m-auto flex max-h-[92dvh] w-full max-w-lg flex-col rounded-t-2xl bg-[#0b1b2d] shadow-[0_0_60px_rgb(0_242_254/0.15)] animate-in fade-in zoom-in-95 sm:rounded-2xl',
           className,
         )}
       >
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <h2 id={titleId} className="font-display text-xl font-bold text-gold">
-              {title}
-            </h2>
-            {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        <div className="overflow-y-auto overflow-x-hidden rounded-[inherit] p-6">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <h2 id={titleId} className="font-display text-xl font-bold text-gold">
+                {title}
+              </h2>
+              {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+            </div>
+            <button
+              data-close
+              onClick={onClose}
+              className="rounded-md p-1 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+              aria-label="Kapat"
+            >
+              <X className="size-5" />
+            </button>
           </div>
-          <button
-            data-close
-            onClick={onClose}
-            className="rounded-md p-1 text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            aria-label="Kapat"
-          >
-            <X className="size-5" />
-          </button>
+          {children}
         </div>
-        {children}
       </div>
     </div>,
     document.body,

@@ -40,6 +40,7 @@ interface AuthContextType {
   signup: (username: string, email: string, password: string) => Promise<void>
   updateUser: (username: string, email: string) => void
   resetPasswordForEmail: (email: string, password: string, token?: string) => Promise<boolean>
+  hydrateFromServerSession: () => Promise<{ user: UserAccount; profileComplete: boolean } | null>
   profileComplete: boolean
   refreshProfileGate: () => Promise<void>
 }
@@ -308,9 +309,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true
   }
 
+  const hydrateFromServerSession = async (): Promise<{ user: UserAccount; profileComplete: boolean } | null> => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        cache: 'no-store',
+      })
+      if (!response.ok) return null
+      const data = (await response.json()) as {
+        user?: UserAccount
+        token?: string
+        profileComplete?: boolean
+        profile?: OnboardingProfile | null
+        characters?: OnboardingCharacter[]
+      }
+      if (!data.user) return null
+      if (data.token) setSessionToken(data.token)
+      if (data.profile || data.characters) {
+        saveOnboardingSnapshot(data.user.username, data.profile || {}, data.characters || [])
+      }
+      setUser(data.user)
+      setProfileComplete(Boolean(data.profileComplete))
+      return { user: data.user, profileComplete: Boolean(data.profileComplete) }
+    } catch {
+      return null
+    }
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, login, logout, signup, updateUser, resetPasswordForEmail, profileComplete, refreshProfileGate }}
+      value={{
+        user,
+        login,
+        logout,
+        signup,
+        updateUser,
+        resetPasswordForEmail,
+        hydrateFromServerSession,
+        profileComplete,
+        refreshProfileGate,
+      }}
     >
       {children}
     </AuthContext.Provider>
@@ -332,13 +371,21 @@ export function openTurxAuthModal() {
 }
 
 export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile') => void }) {
-  const { user, login, logout, signup, resetPasswordForEmail } = useAuth()
+  const { user, login, logout, signup, resetPasswordForEmail, hydrateFromServerSession } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
+  const [googleEnabled, setGoogleEnabled] = useState(false)
 
   useEffect(() => {
     setMounted(true)
+    fetch('/api/auth/google?status=1', { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = (await res.json().catch(() => ({}))) as { enabled?: boolean }
+        setGoogleEnabled(Boolean(data.enabled))
+      })
+      .catch(() => setGoogleEnabled(false))
   }, [])
 
   useEffect(() => {
@@ -398,6 +445,48 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
 
   useEffect(() => {
     if (!mounted) return
+    const params = new URLSearchParams(window.location.search)
+    const googleStatus = params.get('google_auth')
+    if (!googleStatus) return
+
+    const cleanUrl = () => {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('google_auth')
+      url.searchParams.delete('reason')
+      window.history.replaceState({}, '', url.pathname + url.search)
+    }
+
+    if (googleStatus === 'ok') {
+      hydrateFromServerSession().then((hydrated) => {
+        cleanUrl()
+        if (!hydrated) return
+        if (!hydrated.profileComplete) onNavigate?.('profile')
+        toast({
+          title: 'Google ile giriş başarılı',
+          description: hydrated.profileComplete
+            ? `Hoş geldin, ${hydrated.user.username}!`
+            : `Hoş geldin, ${hydrated.user.username}. Devam etmek için profilini ve Main karakterini tamamla.`,
+        })
+      })
+    } else {
+      const reason = params.get('reason')
+      cleanUrl()
+      toast({
+        variant: 'error',
+        title: 'Google ile giriş tamamlanamadı',
+        description:
+          reason === 'cancelled'
+            ? 'Google oturum açma işlemi iptal edildi.'
+            : reason === 'unverified'
+              ? 'Google hesabının e-posta adresi doğrulanmamış.'
+              : 'Google girişi sırasında bir sorun oluştu. E-posta ile devam edebilirsin.',
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted])
+
+  useEffect(() => {
+    if (!mounted) return
     const token = new URLSearchParams(window.location.search).get('reset')
     if (!token) return
     setResetToken(token)
@@ -451,11 +540,11 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
 
     if (isSignup) {
       if (password.length < MIN_PASSWORD_LENGTH) {
-        toast({ title: 'Hata', description: `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.` })
+        toast({ variant: 'error', title: 'Hata', description: `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.` })
         return
       }
       if (password !== passwordConfirm) {
-        toast({ title: 'Hata', description: 'Girdiğiniz şifreler birbiriyle eşleşmiyor!' })
+        toast({ variant: 'error', title: 'Hata', description: 'Girdiğiniz şifreler birbiriyle eşleşmiyor!' })
         return
       }
 
@@ -463,11 +552,11 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
       const emailExists = existingUsers.some((item) => item.email.toLowerCase() === email.toLowerCase())
 
       if (usernameExists) {
-        toast({ title: 'Kayıt Hatası', description: `"${username}" kullanıcı adı zaten alınmış.` })
+        toast({ variant: 'error', title: 'Kayıt Hatası', description: `"${username}" kullanıcı adı zaten alınmış.` })
         return
       }
       if (emailExists) {
-        toast({ title: 'Kayıt Hatası', description: `"${email}" e-posta adresiyle zaten bir hesap kayıtlı.` })
+        toast({ variant: 'error', title: 'Kayıt Hatası', description: `"${email}" e-posta adresiyle zaten bir hesap kayıtlı.` })
         return
       }
 
@@ -483,6 +572,7 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
         })
       } catch (err: unknown) {
         toast({
+          variant: 'error',
           title: 'Kod gönderilemedi',
           description: err instanceof Error ? err.message : 'E-posta gönderilemedi.',
         })
@@ -497,27 +587,30 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
       const result = await login(username, password)
       if (result === 'store_down') {
         toast({
+          variant: 'error',
           title: 'Önizleme deposu bağlı değil',
-          description: 'Waffle hesabı canlı sitede. Yerelde giriş için hesap deposu (Blob) bağlı olmalı.',
+          description: 'Hesap deposu şu an bağlı değil. Canlı siteden giriş yapın.',
         })
         return
       }
       if (result === 'server_error') {
         toast({
+          variant: 'error',
           title: 'Giriş şu an yapılamıyor',
-          description: 'Sunucu hesabı doğrulayamadı. Biraz sonra tekrar dene; tarayıcı kaydı tek başına yeterli değil.',
+          description: 'Sunucu hesabı doğrulayamadı. Biraz sonra tekrar dene.',
         })
         return
       }
       if (result === 'not_found') {
         toast({
+          variant: 'error',
           title: 'Giriş Hatası',
-          description: 'Bu kullanıcı adı sunucuda kayıtlı değil. İlk tarayıcıda bir kez giriş yapınca hesap taşınır.',
+          description: 'Bu kullanıcı adı kayıtlı değil. Lütfen kontrol et veya kayıt ol.',
         })
         return
       }
       if (result === 'bad_password') {
-        toast({ title: 'Giriş Hatası', description: 'Şifre yanlış. Tekrar dene veya şifremi unuttum kullan.' })
+        toast({ variant: 'error', title: 'Giriş Hatası', description: 'Şifre yanlış. Tekrar dene veya şifremi unuttum kullan.' })
         return
       }
       const locked = !isOnboardingComplete(username)
@@ -629,10 +722,15 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
   }
 
   const handleGoogleLogin = () => {
-    toast({
-      title: 'Google girişi henüz açık değil',
-      description: 'Sahte hesap oluşturulmaz. E-posta ile kayıt ol veya giriş yap.',
-    })
+    if (!googleEnabled) {
+      toast({
+        variant: 'info',
+        title: 'Google girişi şu an aktif değil',
+        description: 'Gmail dahil tüm e-posta adreslerinle aşağıdaki formdan güvenle kayıt olabilirsin.',
+      })
+      return
+    }
+    window.location.href = '/api/auth/google'
   }
 
   const handleLogout = () => {
@@ -817,37 +915,41 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
           </form>
         ) : (
           <div className="flex flex-col gap-4">
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border border-border bg-card hover:bg-muted/50 text-foreground font-medium text-sm transition cursor-pointer shadow-sm"
-            >
-              <svg className="size-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              Google (Gmail) ile Devam Et
-            </button>
+            {googleEnabled && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  className="flex items-center justify-center gap-3 w-full py-2.5 px-4 rounded-xl border border-border bg-card hover:bg-muted/50 text-foreground font-medium text-sm transition cursor-pointer shadow-sm"
+                >
+                  <svg className="size-4" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  Google (Gmail) ile Devam Et
+                </button>
 
-            <div className="flex items-center gap-4 text-xs text-muted-foreground uppercase tracking-wider">
-              <div className="h-px bg-border flex-1" />
-              <span>VEYA E-POSTA İLE</span>
-              <div className="h-px bg-border flex-1" />
-            </div>
+                <div className="flex items-center gap-4 text-xs text-muted-foreground uppercase tracking-wider">
+                  <div className="h-px bg-border flex-1" />
+                  <span>VEYA E-POSTA İLE</span>
+                  <div className="h-px bg-border flex-1" />
+                </div>
+              </>
+            )}
 
             <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
               <Field label="Kullanıcı Adı (Siteye Özel)">

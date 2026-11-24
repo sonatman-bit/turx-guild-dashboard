@@ -8,9 +8,9 @@ const inter = Inter({ subsets: ['latin', 'latin-ext'], variable: '--font-inter' 
 const cinzel = Cinzel({ subsets: ['latin', 'latin-ext'], variable: '--font-cinzel', weight: ['500', '700', '900'] })
 
 export const metadata: Metadata = {
-  title: 'TURX — TURX FOREVER | WoW: Forever Alliance PvE (EU) Lonca Paneli',
+  title: 'TURX Forever — World of Warcraft: Forever Alliance PvE (EU) Guild Dashboard',
   description:
-    'TURX lonca paneli: WoW: Forever Raid takvimi, Roster analitiği, Guild Bank, WeakAura merkezi ve başvuru sistemi. Alliance PvE (EU).',
+    'TURX Forever is a World of Warcraft: Forever (EU Alliance PvE) guild management platform for raid signups, roster planning, attendance tracking, and transparent loot distribution. Optional Google Sign-In is used solely for member authentication.',
   generator: 'v0.app',
   icons: {
     icon: [

@@ -166,17 +166,25 @@ function DashboardShellInner() {
             {tab === 'admin' && canOpenAdmin && <AdminDashboardView />}
           </main>
 
-          <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted-foreground">
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
-              <span>TURX · TURX FOREVER · Alliance PvE (EU) — WoW: Forever lonca paneli</span>
-              <span className="opacity-40">·</span>
-              <Link href="/privacy" className="underline-offset-4 transition hover:text-foreground hover:underline">
-                Gizlilik Politikası (Privacy)
-              </Link>
-              <span className="opacity-40">·</span>
-              <Link href="/terms" className="underline-offset-4 transition hover:text-foreground hover:underline">
-                Kullanım Koşulları (Terms)
-              </Link>
+          <footer className="border-t border-border px-6 py-5 text-center text-xs text-muted-foreground">
+            <div className="mx-auto max-w-4xl space-y-2">
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+                <span>TURX · TURX FOREVER · Alliance PvE (EU) — WoW: Forever lonca paneli</span>
+                <span className="opacity-40">·</span>
+                <Link href="/privacy" className="underline-offset-4 transition hover:text-foreground hover:underline">
+                  Gizlilik Politikası (Privacy Policy)
+                </Link>
+                <span className="opacity-40">·</span>
+                <Link href="/terms" className="underline-offset-4 transition hover:text-foreground hover:underline">
+                  Kullanım Koşulları (Terms of Service)
+                </Link>
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+                TURX Forever is a community guild management web application for World of Warcraft: Forever (EU Alliance
+                PvE) players, providing raid scheduling, roster planning, attendance tracking, and transparent loot
+                distribution. Optional Google Sign-In is used solely to authenticate guild members with basic email and
+                profile information.
+              </p>
             </div>
           </footer>
         </div>

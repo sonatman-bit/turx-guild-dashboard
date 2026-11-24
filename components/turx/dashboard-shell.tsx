@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { authHeaders } from '@/lib/client-session'
 import type { PublicModuleFlags } from '@/lib/raid-loot-system'
@@ -166,7 +167,17 @@ function DashboardShellInner() {
           </main>
 
           <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted-foreground">
-            TURX · TURX FOREVER · Alliance PvE (EU) — WoW: Forever lonca paneli
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+              <span>TURX · TURX FOREVER · Alliance PvE (EU) — WoW: Forever lonca paneli</span>
+              <span className="opacity-40">·</span>
+              <Link href="/privacy" className="underline-offset-4 transition hover:text-foreground hover:underline">
+                Gizlilik Politikası (Privacy)
+              </Link>
+              <span className="opacity-40">·</span>
+              <Link href="/terms" className="underline-offset-4 transition hover:text-foreground hover:underline">
+                Kullanım Koşulları (Terms)
+              </Link>
+            </div>
           </footer>
         </div>
       </div>

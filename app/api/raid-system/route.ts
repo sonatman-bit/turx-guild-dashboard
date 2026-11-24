@@ -719,7 +719,7 @@ export async function POST(request: Request) {
           requireOfficer()
           const phaseId = String(body.phaseId || rs.settings.activePhaseId)
           const simItems = cloneStarterLootItems().map((it) => ({ ...it, phaseId }))
-          // Keep other phases' loot untouched, replace active phase with 15 simulation items
+          // Keep other phases' loot untouched, replace active phase with starter preview items
           rs.lootItems = [...simItems, ...rs.lootItems.filter((it) => it.phaseId !== phaseId)]
           break
         }

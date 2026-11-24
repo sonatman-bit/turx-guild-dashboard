@@ -1,5 +1,6 @@
 'use client'
 
+import { ExternalLink } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
@@ -137,15 +138,28 @@ export function WowItemHeaderWithTooltip({
       >
         <WowItemIcon icon={item.icon} quality={quality} size={iconSize} alt={item.itemName} />
         <div className="min-w-0">
-          <h3
-            className="font-display text-base leading-tight font-bold underline-offset-4 group-hover:underline"
-            style={{ color: qStyle.text }}
-          >
-            {item.itemName}
-          </h3>
+          {item.wowheadUrl ? (
+            <a
+              href={item.wowheadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 font-display text-base leading-tight font-bold underline-offset-4 hover:underline"
+              style={{ color: qStyle.text }}
+            >
+              <span>{item.itemName}</span>
+              <ExternalLink className="size-3.5 shrink-0 opacity-60 transition group-hover:opacity-100" />
+            </a>
+          ) : (
+            <h3
+              className="font-display text-base leading-tight font-bold underline-offset-4 group-hover:underline"
+              style={{ color: qStyle.text }}
+            >
+              {item.itemName}
+            </h3>
+          )}
           {tt?.itemLevel ? (
-            <span className="text-[10px] font-medium text-[#ffd100]/85">
-              Item Level {tt.itemLevel} · Özellikler için üzerine gel
+            <span className="block text-[10px] font-medium text-[#ffd100]/85">
+              Item Level {tt.itemLevel}
             </span>
           ) : null}
         </div>

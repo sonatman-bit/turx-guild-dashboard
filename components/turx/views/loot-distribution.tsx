@@ -11,7 +11,9 @@ import {
   Plus,
   RotateCcw,
   Search,
+  Skull,
   Sparkles,
+  Swords,
   Trash2,
   Zap,
 } from 'lucide-react'
@@ -85,6 +87,7 @@ export function LootDistributionView() {
   const [formEffectsText, setFormEffectsText] = useState('')
   const [formUnique, setFormUnique] = useState(true)
   const [formNotes, setFormNotes] = useState('')
+  const [formWowheadUrl, setFormWowheadUrl] = useState('')
   const [formPriorityOrder, setFormPriorityOrder] = useState<string[]>([
     'Tank Warrior',
     'Tank Paladin',
@@ -153,14 +156,97 @@ export function LootDistributionView() {
   }, [rs, selectedRaidId, selectedBoss, searchQuery])
 
   const bossesForFilter = useMemo(() => {
-    const set = new Set<string>()
+    const present = new Set<string>()
     for (const item of rs?.lootItems || []) {
       if (selectedRaidId === 'all' || item.raidId === selectedRaidId) {
-        set.add(item.bossName)
+        present.add(item.bossName)
       }
     }
-    return [...set]
+    const ordered: string[] = []
+    for (const raid of RAID_CATALOG) {
+      if (selectedRaidId !== 'all' && raid.id !== selectedRaidId) continue
+      for (const b of raid.bosses) {
+        if (present.has(b) && !ordered.includes(b)) ordered.push(b)
+      }
+    }
+    for (const b of present) {
+      if (!ordered.includes(b)) ordered.push(b)
+    }
+    return ordered
   }, [rs?.lootItems, selectedRaidId])
+
+  const groupedByRaidAndBoss = useMemo(() => {
+    const raidMap = new Map<
+      string,
+      {
+        raidId: string
+        raidName: string
+        raidSize?: number
+        bossMap: Map<string, LootItem[]>
+      }
+    >()
+
+    // Seed raids in catalog order
+    for (const r of RAID_CATALOG) {
+      raidMap.set(r.id, {
+        raidId: r.id,
+        raidName: r.name,
+        raidSize: r.size,
+        bossMap: new Map<string, LootItem[]>(),
+      })
+    }
+
+    for (const item of phaseItems) {
+      let raidEntry = raidMap.get(item.raidId)
+      if (!raidEntry) {
+        raidEntry = {
+          raidId: item.raidId,
+          raidName: item.raidId,
+          bossMap: new Map<string, LootItem[]>(),
+        }
+        raidMap.set(item.raidId, raidEntry)
+      }
+      const list = raidEntry.bossMap.get(item.bossName) || []
+      list.push(item)
+      raidEntry.bossMap.set(item.bossName, list)
+    }
+
+    const result: {
+      raidId: string
+      raidName: string
+      raidSize?: number
+      bosses: { bossName: string; items: LootItem[] }[]
+    }[] = []
+
+    for (const raidEntry of raidMap.values()) {
+      if (raidEntry.bossMap.size === 0) continue
+      const catalogRaid = RAID_CATALOG.find((r) => r.id === raidEntry.raidId)
+      const bosses: { bossName: string; items: LootItem[] }[] = []
+
+      if (catalogRaid) {
+        for (const bName of catalogRaid.bosses) {
+          const items = raidEntry.bossMap.get(bName)
+          if (items && items.length > 0) {
+            bosses.push({ bossName: bName, items })
+          }
+        }
+      }
+      for (const [bName, items] of raidEntry.bossMap.entries()) {
+        if (!bosses.some((b) => b.bossName === bName)) {
+          bosses.push({ bossName: bName, items })
+        }
+      }
+
+      result.push({
+        raidId: raidEntry.raidId,
+        raidName: raidEntry.raidName,
+        raidSize: raidEntry.raidSize,
+        bosses,
+      })
+    }
+
+    return result
+  }, [phaseItems])
 
   // Compute ranked candidates for the currently opened Award Slot modal
   const awardCandidates = useMemo(() => {
@@ -240,6 +326,7 @@ export function LootDistributionView() {
     setFormEffectsText('')
     setFormUnique(true)
     setFormNotes('')
+    setFormWowheadUrl('')
     setFormPriorityOrder([...LOOT_PRIORITY_PRESETS[0].order])
     setItemModalOpen(true)
   }
@@ -257,6 +344,7 @@ export function LootDistributionView() {
     setFormEffectsText((item.tooltip?.effects || []).join('\n'))
     setFormUnique(Boolean(item.unique))
     setFormNotes(item.notes || '')
+    setFormWowheadUrl(item.wowheadUrl || '')
     setFormPriorityOrder([...item.priorityOrder])
     setItemModalOpen(true)
   }
@@ -298,6 +386,7 @@ export function LootDistributionView() {
             unique: formUnique,
             discovered: true,
             notes: formNotes,
+            wowheadUrl: formWowheadUrl,
             priorityOrder: formPriorityOrder,
           }
         : {
@@ -311,6 +400,7 @@ export function LootDistributionView() {
             unique: formUnique,
             discovered: true,
             notes: formNotes,
+            wowheadUrl: formWowheadUrl,
             priorityOrder: formPriorityOrder,
           },
       editingItem ? 'Item öncelik listesi güncellendi.' : 'Yeni item loot listesine eklendi.',
@@ -385,7 +475,7 @@ export function LootDistributionView() {
                   subTab === 'items' ? 'bg-neon/15 text-neon' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                Raid Item Listesi ({phaseItems.length})
+                Raid Item Listesi
               </button>
               <button
                 onClick={() => setSubTab('boe-bop')}
@@ -404,19 +494,19 @@ export function LootDistributionView() {
                   onClick={() => {
                     if (
                       typeof window !== 'undefined' &&
-                      !window.confirm('Aktif fazdaki loot listesi 15 adet End-Game Pre-Raid simülasyon itemı ile yenilensin mi?')
+                      !window.confirm('Aktif fazdaki loot listesi varsayılan WoW: Forever önizleme listesi ile yenilensin mi?')
                     ) {
                       return
                     }
                     void runAction(
                       { action: 'reset_simulation_loot' },
-                      '15 adet End-Game Pre-Raid simülasyon itemı (3 raide 5\'er adet) yüklendi!',
+                      'WoW: Forever önizleme loot listesi yüklendi!',
                     )
                   }}
                   className="px-3 py-2 text-xs"
                 >
                   <RotateCcw className="size-3.5" />
-                  15 Simülasyon Itemı Yükle
+                  Önizleme Listesini Yükle
                 </GhostButton>
                 <GoldButton onClick={openAddItemModal}>
                   <Plus className="size-4" />
@@ -461,11 +551,11 @@ export function LootDistributionView() {
             </Panel>
           )}
 
-          {/* WoW Forever Discovery Info Banner */}
+          {/* WoW Forever Beta Preview Banner */}
           <div className="flex items-start gap-3 rounded-xl border border-gold/25 bg-gold/5 px-4 py-3 text-xs text-silver">
             <Sparkles className="mt-0.5 size-4 shrink-0 text-gold" />
             <p>
-              <strong className="text-gold">WoW: Forever Canlı Keşif Notu:</strong> Blizzard, Barrow Deeps (8 boss) ve Hyjal Summit (13 boss) item tablolarını 9 Aralık açılışına kadar gizli tutmaktadır. Onyxia başlangıç listesi ve deneme şablonları eklendi; yeni itemlar düştükçe Officerlar hazır şablonlarla saniyeler içinde ekleyebilir.
+              <strong className="text-gold">WoW: Forever Beta Önizleme:</strong> Barrow Deeps ve Hyjal Summit resmi drop tabloları açılışa kadar gizli olduğu için, sistemin nasıl işleyeceğini görmek amacıyla WoW: Forever dungeon Pre-BiS itemları 3 raid ve bosslarına örnek olarak yerleştirilmiştir. Yeni itemlar keşfedildikçe yetkililer anında güncelleyebilir.
             </p>
           </div>
 
@@ -496,7 +586,7 @@ export function LootDistributionView() {
                     selectedRaidId === r.id ? 'bg-neon/15 text-neon' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
-                  {r.name} ({r.size}m)
+                  {r.name}
                 </button>
               ))}
             </div>
@@ -526,204 +616,242 @@ export function LootDistributionView() {
             </div>
           </div>
 
-          {/* Loot Item Cards */}
-          {phaseItems.length === 0 ? (
+          {/* Loot Item Cards Grouped by Raid & Boss */}
+          {groupedByRaidAndBoss.length === 0 ? (
             <Panel className="py-12 text-center text-sm text-muted-foreground">
               Seçili filtreye uygun item bulunamadı.
             </Panel>
           ) : (
-            <div className="space-y-4">
-              {phaseItems.map((item) => {
-                const raidMeta = RAID_CATALOG.find((r) => r.id === item.raidId)
-                const roundState = getActiveLootRoundState(item)
-                const displayRound = roundState.allFilledInLatest
-                  ? { roundNumber: roundState.roundNumber, slots: item.priorityOrder.map(() => null) }
-                  : item.rounds[roundState.roundIndex] || {
-                      roundNumber: 1,
-                      slots: item.priorityOrder.map(() => null),
-                    }
-                const completedRounds = roundState.allFilledInLatest
-                  ? item.rounds
-                  : item.rounds.slice(0, roundState.roundIndex)
-
-                return (
-                  <Panel key={item.id} className="border-border/80 hover:border-gold/30 transition">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-8">
+              {groupedByRaidAndBoss.map((raidGroup) => (
+                <section key={raidGroup.raidId} className="space-y-5">
+                  {/* Raid Section Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold/25 pb-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="inline-flex size-8 items-center justify-center rounded-lg border border-gold/40 bg-gold/10 text-gold">
+                        <Swords className="size-4" />
+                      </span>
                       <div>
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <WowItemHeaderWithTooltip item={item} />
-                          <Badge className="border-neon/30 bg-neon/10 text-neon">
-                            {raidMeta?.name || item.raidId} · {item.bossName}
-                          </Badge>
-                          <Badge className="border-border bg-white/5 text-silver">{item.itemSlot}</Badge>
-                          {item.unique && (
-                            <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-300">Unique</Badge>
-                          )}
-                          {item.discovered === false && (
-                            <Badge className="border-purple-400/30 bg-purple-500/10 text-purple-300">
-                              Canlı Keşif Şablonu
-                            </Badge>
-                          )}
-                        </div>
-                        {item.notes && <p className="mt-1.5 text-xs text-muted-foreground">{item.notes}</p>}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Badge className="border-gold/35 bg-gold/10 text-gold">
-                          Aktif Tur: #{roundState.roundNumber}
-                        </Badge>
-                        {isOfficer && (
-                          <>
-                            <button
-                              onClick={() => openEditItemModal(item)}
-                              className="cursor-pointer rounded-lg border border-border p-1.5 text-muted-foreground hover:border-neon/40 hover:text-neon"
-                              title="Item düzenle"
-                            >
-                              <Edit3 className="size-3.5" />
-                            </button>
-                            <button
-                              disabled={busy}
-                              onClick={() =>
-                                void runAction(
-                                  { action: 'delete_loot_item', itemId: item.id },
-                                  `${item.itemName} listeden kaldırıldı.`,
-                                )
-                              }
-                              className="cursor-pointer rounded-lg border border-rose-500/30 p-1.5 text-rose-400 hover:bg-rose-500/10"
-                              title="Item sil"
-                            >
-                              <Trash2 className="size-3.5" />
-                            </button>
-                          </>
+                        <h2 className="font-display text-lg font-bold tracking-wide text-gold">
+                          {raidGroup.raidName}
+                        </h2>
+                        {raidGroup.raidSize && (
+                          <p className="text-[11px] text-muted-foreground">
+                            {raidGroup.raidSize} Kişilik Raid
+                          </p>
                         )}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Active Round Priority Boxes */}
-                    <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-                      {item.priorityOrder.map((specLabel, idx) => {
-                        const award = displayRound.slots[idx]
-                        const specColor = getSpecColor(specLabel)
-                        const isNextPriority = !award && idx === roundState.primarySlotIndex
-                        const isSkippedWaiting =
-                          !award &&
-                          idx <
-                            Math.max(
-                              -1,
-                              ...displayRound.slots.map((s, si) => (s ? si : -1)),
-                            )
+                  {/* Separate Boss Groups inside this Raid */}
+                  <div className="space-y-6">
+                    {raidGroup.bosses.map((bossGroup) => (
+                      <div key={`${raidGroup.raidId}-${bossGroup.bossName}`} className="space-y-3">
+                        <div className="flex items-center gap-2 px-1">
+                          <Skull className="size-4 shrink-0 text-neon" />
+                          <h3 className="font-display text-sm font-bold tracking-wide text-foreground">
+                            {bossGroup.bossName}
+                          </h3>
+                          <span className="h-px flex-1 bg-gradient-to-r from-neon/30 to-transparent" />
+                        </div>
 
-                        return (
-                          <div
-                            key={`${specLabel}-${idx}`}
-                            className={cn(
-                              'relative flex flex-col justify-between rounded-xl border p-3 transition',
-                              award
-                                ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
-                                : isNextPriority
-                                  ? 'border-gold/70 bg-gold/[0.08] shadow-[0_0_18px_rgb(212_175_55/0.16)]'
-                                  : 'border-border/70 bg-[#071422]/80',
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-[11px] font-bold" style={{ color: specColor }}>
-                                {idx + 1}. {specLabel}
-                              </span>
-                              {isNextPriority && (
-                                <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-gold uppercase">
-                                  {isSkippedWaiting ? 'Bekleyen Öncelik' : 'Sırada'}
-                                </span>
-                              )}
-                            </div>
+                        <div className="space-y-3">
+                          {bossGroup.items.map((item) => {
+                            const roundState = getActiveLootRoundState(item)
+                            const displayRound = roundState.allFilledInLatest
+                              ? { roundNumber: roundState.roundNumber, slots: item.priorityOrder.map(() => null) }
+                              : item.rounds[roundState.roundIndex] || {
+                                  roundNumber: 1,
+                                  slots: item.priorityOrder.map(() => null),
+                                }
+                            const completedRounds = roundState.allFilledInLatest
+                              ? item.rounds
+                              : item.rounds.slice(0, roundState.roundIndex)
 
-                            <div className="mt-2.5">
-                              {award ? (
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5">
-                                      <p
-                                        className="truncate text-sm font-bold"
-                                        style={{ color: CLASS_COLORS[award.wowClass] || specColor }}
-                                      >
-                                        {award.characterName}
-                                      </p>
-                                      <PointsPill points={pointsByUser.get(award.username.toLowerCase()) ?? 0} />
+                            return (
+                              <Panel key={item.id} className="border-border/80 transition hover:border-gold/30">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                      <WowItemHeaderWithTooltip item={item} />
+                                      <Badge className="border-border bg-white/5 text-silver">{item.itemSlot}</Badge>
+                                      {item.unique && (
+                                        <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-300">
+                                          Unique
+                                        </Badge>
+                                      )}
+                                      {item.discovered === false && (
+                                        <Badge className="border-purple-400/30 bg-purple-500/10 text-purple-300">
+                                          Canlı Keşif Şablonu
+                                        </Badge>
+                                      )}
                                     </div>
-                                    <p className="text-[10px] text-muted-foreground">
-                                      {new Date(award.awardedAt).toLocaleDateString('tr-TR')}
-                                    </p>
+                                    {item.notes && <p className="mt-1.5 text-xs text-muted-foreground">{item.notes}</p>}
                                   </div>
-                                  {isOfficer && (
-                                    <button
-                                      disabled={busy}
-                                      onClick={() =>
-                                        void runAction(
-                                          {
-                                            action: 'clear_loot_slot',
-                                            itemId: item.id,
-                                            roundIndex: roundState.roundIndex,
-                                            slotIndex: idx,
-                                          },
-                                          'Kutu boşaltıldı (geri alındı).',
-                                        )
-                                      }
-                                      className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-300"
-                                      title="Atamayı geri al"
-                                    >
-                                      <RotateCcw className="size-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              ) : isOfficer ? (
-                                <button
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setAwardTarget({
-                                      item,
-                                      roundIndex: roundState.roundIndex,
-                                      roundNumber: roundState.roundNumber,
-                                      slotIndex: idx,
-                                      specLabel,
-                                    })
-                                    setAwardSelectedUsername('')
-                                    setAwardCustomName('')
-                                    setAwardNote('')
-                                  }}
-                                  className="w-full cursor-pointer rounded-lg border border-dashed border-neon/40 bg-neon/5 px-2.5 py-1.5 text-xs font-medium text-neon hover:bg-neon/15"
-                                >
-                                  <Award className="mr-1 inline size-3.5" />
-                                  Oyuncuya Ver
-                                </button>
-                              ) : (
-                                <p className="text-xs italic text-muted-foreground/70">Sıra bekleniyor...</p>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
 
-                    {/* Previous Completed Rounds History */}
-                    {completedRounds.length > 0 && (
-                      <div className="mt-3 rounded-lg border border-border/50 bg-[#071422]/60 px-3 py-2 text-[11px] text-muted-foreground">
-                        <span className="font-semibold text-silver">Tamamlanan Turlar: </span>
-                        {completedRounds.map((r) => (
-                          <span key={r.roundNumber} className="mr-3 inline-flex flex-wrap items-center gap-1.5">
-                            <strong className="text-gold">Tur {r.roundNumber}:</strong>
-                            {r.slots.map((s, si) =>
-                              s ? (
-                                <span key={si} style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                                  {si + 1}.{s.characterName}
-                                </span>
-                              ) : null,
-                            )}
-                          </span>
-                        ))}
+                                  <div className="flex items-center gap-2">
+                                    <Badge className="border-gold/35 bg-gold/10 text-gold">
+                                      Aktif Tur: #{roundState.roundNumber}
+                                    </Badge>
+                                    {isOfficer && (
+                                      <>
+                                        <button
+                                          onClick={() => openEditItemModal(item)}
+                                          className="cursor-pointer rounded-lg border border-border p-1.5 text-muted-foreground hover:border-neon/40 hover:text-neon"
+                                          title="Item düzenle"
+                                        >
+                                          <Edit3 className="size-3.5" />
+                                        </button>
+                                        <button
+                                          disabled={busy}
+                                          onClick={() =>
+                                            void runAction(
+                                              { action: 'delete_loot_item', itemId: item.id },
+                                              `${item.itemName} listeden kaldırıldı.`,
+                                            )
+                                          }
+                                          className="cursor-pointer rounded-lg border border-rose-500/30 p-1.5 text-rose-400 hover:bg-rose-500/10"
+                                          title="Item sil"
+                                        >
+                                          <Trash2 className="size-3.5" />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Active Round Priority Boxes */}
+                                <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+                                  {item.priorityOrder.map((specLabel, idx) => {
+                                    const award = displayRound.slots[idx]
+                                    const specColor = getSpecColor(specLabel)
+                                    const isNextPriority = !award && idx === roundState.primarySlotIndex
+                                    const isSkippedWaiting =
+                                      !award &&
+                                      idx <
+                                        Math.max(
+                                          -1,
+                                          ...displayRound.slots.map((s, si) => (s ? si : -1)),
+                                        )
+
+                                    return (
+                                      <div
+                                        key={`${specLabel}-${idx}`}
+                                        className={cn(
+                                          'relative flex flex-col justify-between rounded-xl border p-3 transition',
+                                          award
+                                            ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
+                                            : isNextPriority
+                                              ? 'border-gold/70 bg-gold/[0.08] shadow-[0_0_18px_rgb(212_175_55/0.16)]'
+                                              : 'border-border/70 bg-[#071422]/80',
+                                        )}
+                                      >
+                                        <div className="flex items-center justify-between gap-1">
+                                          <span className="text-[11px] font-bold" style={{ color: specColor }}>
+                                            {idx + 1}. {specLabel}
+                                          </span>
+                                          {isNextPriority && (
+                                            <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-gold uppercase">
+                                              {isSkippedWaiting ? 'Bekleyen Öncelik' : 'Sırada'}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="mt-2.5">
+                                          {award ? (
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className="min-w-0">
+                                                <div className="flex items-center gap-1.5">
+                                                  <p
+                                                    className="truncate text-sm font-bold"
+                                                    style={{ color: CLASS_COLORS[award.wowClass] || specColor }}
+                                                  >
+                                                    {award.characterName}
+                                                  </p>
+                                                  <PointsPill points={pointsByUser.get(award.username.toLowerCase()) ?? 0} />
+                                                </div>
+                                                <p className="text-[10px] text-muted-foreground">
+                                                  {new Date(award.awardedAt).toLocaleDateString('tr-TR')}
+                                                </p>
+                                              </div>
+                                              {isOfficer && (
+                                                <button
+                                                  disabled={busy}
+                                                  onClick={() =>
+                                                    void runAction(
+                                                      {
+                                                        action: 'clear_loot_slot',
+                                                        itemId: item.id,
+                                                        roundIndex: roundState.roundIndex,
+                                                        slotIndex: idx,
+                                                      },
+                                                      'Kutu boşaltıldı (geri alındı).',
+                                                    )
+                                                  }
+                                                  className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-300"
+                                                  title="Atamayı geri al"
+                                                >
+                                                  <RotateCcw className="size-3.5" />
+                                                </button>
+                                              )}
+                                            </div>
+                                          ) : isOfficer ? (
+                                            <button
+                                              disabled={busy}
+                                              onClick={() => {
+                                                setAwardTarget({
+                                                  item,
+                                                  roundIndex: roundState.roundIndex,
+                                                  roundNumber: roundState.roundNumber,
+                                                  slotIndex: idx,
+                                                  specLabel,
+                                                })
+                                                setAwardSelectedUsername('')
+                                                setAwardCustomName('')
+                                                setAwardNote('')
+                                              }}
+                                              className="w-full cursor-pointer rounded-lg border border-dashed border-neon/40 bg-neon/5 px-2.5 py-1.5 text-xs font-medium text-neon hover:bg-neon/15"
+                                            >
+                                              <Award className="mr-1 inline size-3.5" />
+                                              Oyuncuya Ver
+                                            </button>
+                                          ) : (
+                                            <p className="text-xs italic text-muted-foreground/70">Sıra bekleniyor...</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+
+                                {/* Previous Completed Rounds History */}
+                                {completedRounds.length > 0 && (
+                                  <div className="mt-3 rounded-lg border border-border/50 bg-[#071422]/60 px-3 py-2 text-[11px] text-muted-foreground">
+                                    <span className="font-semibold text-silver">Tamamlanan Turlar: </span>
+                                    {completedRounds.map((r) => (
+                                      <span key={r.roundNumber} className="mr-3 inline-flex flex-wrap items-center gap-1.5">
+                                        <strong className="text-gold">Tur {r.roundNumber}:</strong>
+                                        {r.slots.map((s, si) =>
+                                          s ? (
+                                            <span key={si} style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
+                                              {si + 1}.{s.characterName}
+                                            </span>
+                                          ) : null,
+                                        )}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </Panel>
+                            )
+                          })}
+                        </div>
                       </div>
-                    )}
-                  </Panel>
-                )
-              })}
+                    ))}
+                  </div>
+                </section>
+              ))}
             </div>
           )}
         </>
@@ -1226,14 +1354,25 @@ export function LootDistributionView() {
             </label>
           </div>
 
-          <Field label="Not (Opsiyonel)">
-            <input
-              type="text"
-              className={inputClass}
-              value={formNotes}
-              onChange={(e) => setFormNotes(e.target.value)}
-            />
-          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Wowhead Linki (Opsiyonel)">
+              <input
+                type="url"
+                className={inputClass}
+                placeholder="https://www.wowhead.com/forever/item=..."
+                value={formWowheadUrl}
+                onChange={(e) => setFormWowheadUrl(e.target.value)}
+              />
+            </Field>
+            <Field label="Not (Opsiyonel)">
+              <input
+                type="text"
+                className={inputClass}
+                value={formNotes}
+                onChange={(e) => setFormNotes(e.target.value)}
+              />
+            </Field>
+          </div>
 
           <div className="flex justify-end gap-2 pt-2">
             <GhostButton type="button" onClick={() => setItemModalOpen(false)}>

@@ -1220,8 +1220,8 @@ export function LootDistributionView() {
 
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="Item İkonu">
-              <div className="flex items-center gap-2">
-                <WowItemIcon icon={formIcon} quality={formQuality} size={34} alt="Önizleme" />
+              <div className="flex items-center gap-2.5">
+                <WowItemIcon icon={formIcon} quality={formQuality} size={48} alt="Önizleme" />
                 <select
                   className={cn(inputClass, 'flex-1 text-xs')}
                   value={formIcon}

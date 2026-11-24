@@ -174,32 +174,39 @@ export type WowItemTooltipData = {
 
 export const WOW_ITEM_ICON_PRESETS: { slug: string; label: string }[] = [
   { slug: 'inv_jewelry_talisman_01', label: 'Trinket (Talisman)' },
-  { slug: 'inv_misc_gem_pearl_03', label: 'Trinket (Caster/Healer)' },
-  { slug: 'inv_jewelry_talisman_08', label: 'Trinket (Mana/Spirit)' },
+  { slug: 'inv_misc_root_02', label: 'Trinket (Caster/Healer)' },
+  { slug: 'inv_battery_02', label: 'Trinket (Mana/Spirit)' },
   { slug: 'inv_sword_43', label: 'Kılıç (1H Sword)' },
   { slug: 'inv_sword_29', label: 'Çift El Kılıç (2H Sword)' },
-  { slug: 'inv_hammer_09', label: 'Gürz (1H Mace)' },
+  { slug: 'inv_hammer_23', label: 'Gürz (1H Mace)' },
   { slug: 'inv_weapon_shortblade_25', label: 'Hançer (Dagger)' },
   { slug: 'inv_weapon_crossbow_04', label: 'Arbalet / Yay (Ranged)' },
   { slug: 'inv_staff_13', label: 'Asa (Staff)' },
-  { slug: 'inv_shield_05', label: 'Kalkan (Shield)' },
-  { slug: 'inv_shield_10', label: 'Kalkan (Ağır/Tank)' },
+  { slug: 'inv_shield_17', label: 'Kalkan (Ağır/Tank)' },
+  { slug: 'inv_shield_20', label: 'Kalkan (Draconian)' },
   { slug: 'inv_helmet_46', label: 'Kask (Head)' },
-  { slug: 'inv_shoulder_01', label: 'Omuzluk (Shoulder)' },
+  { slug: 'inv_shoulder_02', label: 'Omuzluk (Shoulder)' },
   { slug: 'inv_chest_chain_15', label: 'Göğüs Zırhı (Mail/Plate)' },
-  { slug: 'inv_chest_cloth_31', label: 'Cübbe (Cloth)' },
+  { slug: 'inv_chest_cloth_08', label: 'Cübbe (Cloth)' },
   { slug: 'inv_bracer_17', label: 'Bileklik (Wrist)' },
-  { slug: 'inv_gauntlets_10', label: 'Eldiven (Hands)' },
+  { slug: 'inv_gauntlets_30', label: 'Eldiven (Hands)' },
   { slug: 'inv_belt_29', label: 'Kemer (Waist)' },
   { slug: 'inv_pants_08', label: 'Pantolon (Legs)' },
   { slug: 'inv_misc_cape_20', label: 'Pelerin (Back)' },
-  { slug: 'inv_jewelry_ring_18', label: 'Yüzük (Finger)' },
+  { slug: 'inv_jewelry_ring_03', label: 'Yüzük (Finger)' },
   { slug: 'inv_jewelry_necklace_01', label: 'Kolye (Neck)' },
 ]
 
+export function cleanWowIconSlug(slug?: string): string {
+  return (slug || 'inv_misc_questionmark').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'inv_misc_questionmark'
+}
+
 export function wowItemIconUrl(slug?: string): string {
-  const clean = (slug || 'inv_misc_questionmark').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
-  return `https://wow.zamimg.com/images/wow/icons/large/${clean || 'inv_misc_questionmark'}.jpg`
+  return `/api/wow-icon/${cleanWowIconSlug(slug)}`
+}
+
+export function wowItemBlizzardFallbackUrl(slug?: string): string {
+  return `https://render.worldofwarcraft.com/us/icons/56/${cleanWowIconSlug(slug)}.jpg`
 }
 
 export type LootItem = {
@@ -535,7 +542,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Deepscar Matriarch',
     itemName: "Dreadguard's Protector",
     itemSlot: 'Off Hand Shield',
-    icon: 'inv_shield_10',
+    icon: 'inv_shield_17',
     wowheadUrl: 'https://www.wowhead.com/forever/item=18756/dreadguards-protector',
     unique: false,
     discovered: true,
@@ -560,7 +567,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Deepscar Matriarch',
     itemName: 'Truestrike Shoulders',
     itemSlot: 'Shoulder (Leather)',
-    icon: 'inv_shoulder_01',
+    icon: 'inv_shoulder_02',
     wowheadUrl: 'https://www.wowhead.com/forever/item=12927/truestrike-shoulders',
     unique: false,
     discovered: true,
@@ -587,7 +594,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Elder Tangleclaw',
     itemName: 'Whipvine Cord',
     itemSlot: 'Waist (Cloth)',
-    icon: 'inv_belt_24',
+    icon: 'inv_belt_33',
     wowheadUrl: 'https://www.wowhead.com/forever/item=18327/whipvine-cord',
     unique: false,
     discovered: true,
@@ -640,7 +647,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Well of Sorrow',
     itemName: 'Briarwood Reed',
     itemSlot: 'Trinket',
-    icon: 'inv_misc_gem_pearl_03',
+    icon: 'inv_misc_root_02',
     wowheadUrl: 'https://www.wowhead.com/forever/item=12930/briarwood-reed',
     unique: true,
     discovered: true,
@@ -662,7 +669,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Amethrax',
     itemName: 'Draconian Deflector',
     itemSlot: 'Off Hand Shield',
-    icon: 'inv_shield_05',
+    icon: 'inv_shield_20',
     wowheadUrl: 'https://www.wowhead.com/forever/item=12602/draconian-deflector',
     unique: false,
     discovered: true,
@@ -689,7 +696,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: "Del'lynar Songwood",
     itemName: 'Trueaim Gauntlets',
     itemSlot: 'Hands (Mail)',
-    icon: 'inv_gauntlets_10',
+    icon: 'inv_gauntlets_30',
     wowheadUrl: 'https://www.wowhead.com/forever/item=13255/trueaim-gauntlets',
     unique: false,
     discovered: true,
@@ -766,7 +773,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Sonya Darkhallow',
     itemName: 'Robes of the Exalted',
     itemSlot: 'Chest (Cloth)',
-    icon: 'inv_chest_cloth_31',
+    icon: 'inv_chest_cloth_08',
     wowheadUrl: 'https://www.wowhead.com/forever/item=13346/robes-of-the-exalted',
     unique: false,
     discovered: true,
@@ -793,7 +800,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Bandalar',
     itemName: 'Amplifying Cloak',
     itemSlot: 'Back (Cloak)',
-    icon: 'inv_misc_cape_18',
+    icon: 'inv_misc_cape_20',
     wowheadUrl: 'https://www.wowhead.com/forever/item=18350/amplifying-cloak',
     unique: false,
     discovered: true,
@@ -926,7 +933,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Gharalis the Abyssal',
     itemName: 'Tarnished Elven Ring',
     itemSlot: 'Finger',
-    icon: 'inv_jewelry_ring_13',
+    icon: 'inv_jewelry_ring_03',
     wowheadUrl: 'https://www.wowhead.com/forever/item=18500/tarnished-elven-ring',
     unique: false,
     discovered: true,
@@ -949,7 +956,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Kathris the Haunted',
     itemName: "Dark Advisor's Pendant",
     itemSlot: 'Neck',
-    icon: 'inv_jewelry_necklace_06',
+    icon: 'inv_jewelry_necklace_02',
     wowheadUrl: 'https://www.wowhead.com/forever/item=18691/dark-advisors-pendant',
     unique: false,
     discovered: true,
@@ -972,7 +979,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Anara Chillwind',
     itemName: 'Mindtap Talisman',
     itemSlot: 'Trinket',
-    icon: 'inv_jewelry_talisman_08',
+    icon: 'inv_battery_02',
     wowheadUrl: 'https://www.wowhead.com/forever/item=18371/mindtap-talisman',
     unique: false,
     discovered: true,
@@ -1077,7 +1084,7 @@ export const STARTER_LOOT_ITEMS: LootItem[] = [
     bossName: 'Onyxia',
     itemName: 'Ironfoe',
     itemSlot: 'Main Hand Mace',
-    icon: 'inv_hammer_09',
+    icon: 'inv_hammer_23',
     wowheadUrl: 'https://www.wowhead.com/forever/item=11684/ironfoe',
     unique: false,
     discovered: true,
@@ -1387,6 +1394,35 @@ export function defaultRaidSystemStore(): RaidSystemStore {
   }
 }
 
+const STARTER_ICON_BY_ID = new Map<string, string>(
+  STARTER_LOOT_ITEMS.filter((it) => it.icon).map((it) => [it.id, it.icon!]),
+)
+
+const PREVIOUS_PREBIS_ICON_SLUGS = new Set([
+  'inv_shield_10',
+  'inv_shoulder_01',
+  'inv_belt_24',
+  'inv_misc_gem_pearl_03',
+  'inv_shield_05',
+  'inv_gauntlets_10',
+  'inv_chest_cloth_31',
+  'inv_misc_cape_18',
+  'inv_jewelry_ring_13',
+  'inv_jewelry_necklace_06',
+  'inv_jewelry_talisman_08',
+  'inv_hammer_09',
+])
+
+function syncStarterIcons(items: LootItem[]): LootItem[] {
+  return items.map((item) => {
+    const canonical = STARTER_ICON_BY_ID.get(item.id)
+    if (canonical && (!item.icon || PREVIOUS_PREBIS_ICON_SLUGS.has(item.icon))) {
+      return { ...item, icon: canonical }
+    }
+    return item
+  })
+}
+
 export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null): RaidSystemStore {
   const defaults = defaultRaidSystemStore()
   if (!raw || typeof raw !== 'object') return defaults
@@ -1422,7 +1458,7 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
     events: Array.isArray(raw.events) ? raw.events : [],
     lootItems: shouldAutoUpgradeLegacySeed(raw.lootItems)
       ? defaults.lootItems
-      : raw.lootItems || defaults.lootItems,
+      : syncStarterIcons(raw.lootItems || defaults.lootItems),
     boeLogs: Array.isArray(raw.boeLogs) ? raw.boeLogs : [],
     bopRecipes: Array.isArray(raw.bopRecipes) ? raw.bopRecipes : [],
     adjustments: Array.isArray(raw.adjustments) ? raw.adjustments : [],

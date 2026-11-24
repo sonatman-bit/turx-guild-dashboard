@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   WOW_ITEM_QUALITY_COLORS,
+  wowItemBlizzardFallbackUrl,
   wowItemIconUrl,
   type LootItem,
   type WowItemQuality,
@@ -18,7 +19,7 @@ function inferQuality(item: LootItem): WowItemQuality {
 export function WowItemIcon({
   icon,
   quality = 'epic',
-  size = 38,
+  size = 57,
   alt,
   className,
 }: {
@@ -28,8 +29,19 @@ export function WowItemIcon({
   alt: string
   className?: string
 }) {
-  const [failed, setFailed] = useState(false)
+  const [fallbackStep, setFallbackStep] = useState<0 | 1 | 2>(0)
   const qStyle = WOW_ITEM_QUALITY_COLORS[quality]
+
+  useEffect(() => {
+    setFallbackStep(0)
+  }, [icon])
+
+  const src =
+    fallbackStep === 0
+      ? wowItemIconUrl(icon)
+      : fallbackStep === 1
+        ? wowItemBlizzardFallbackUrl(icon)
+        : ''
 
   return (
     <span
@@ -37,31 +49,32 @@ export function WowItemIcon({
         width: size,
         height: size,
         borderColor: qStyle.border,
-        boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.75), 0 0 12px ${qStyle.bg}`,
+        boxShadow: `inset 0 0 0 1px rgba(0,0,0,0.75), 0 0 14px ${qStyle.bg}`,
       }}
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border-2 bg-[#07101c]',
+        'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 bg-[#07101c]',
         className,
       )}
     >
-      {!failed ? (
+      {fallbackStep < 2 ? (
         <img
-          src={wowItemIconUrl(icon)}
+          src={src}
           alt={alt}
           width={size}
           height={size}
           loading="lazy"
-          onError={() => setFailed(true)}
+          referrerPolicy="no-referrer"
+          onError={() => setFallbackStep((prev) => (prev === 0 ? 1 : 2))}
           className="h-full w-full object-cover"
         />
       ) : (
-        <span className="font-display text-xs font-bold" style={{ color: qStyle.text }}>
+        <span className="font-display text-sm font-bold" style={{ color: qStyle.text }}>
           ?
         </span>
       )}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[4px] bg-gradient-to-b from-white/15 via-transparent to-black/30"
+        className="pointer-events-none absolute inset-0 rounded-[6px] bg-gradient-to-b from-white/15 via-transparent to-black/30"
       />
     </span>
   )
@@ -73,7 +86,7 @@ export function WowItemIcon({
  */
 export function WowItemHeaderWithTooltip({
   item,
-  iconSize = 38,
+  iconSize = 57,
 }: {
   item: LootItem
   iconSize?: number
@@ -173,9 +186,9 @@ export function WowItemHeaderWithTooltip({
             style={{ top: pos.top, left: pos.left }}
             className="pointer-events-none fixed z-[120] w-[325px] max-w-[92vw] rounded-lg border border-[#8d9cb0]/80 bg-[#080d18]/97 p-3.5 text-[12px] leading-snug shadow-[0_14px_45px_rgba(0,0,0,0.85),inset_0_0_0_1px_rgba(255,255,255,0.08)] backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
           >
-            {/* Header with mini icon + Quality colored title */}
-            <div className="flex items-start gap-2.5">
-              <WowItemIcon icon={item.icon} quality={quality} size={34} alt={item.itemName} />
+            {/* Header with icon + Quality colored title */}
+            <div className="flex items-start gap-3">
+              <WowItemIcon icon={item.icon} quality={quality} size={50} alt={item.itemName} />
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] leading-tight font-bold" style={{ color: qStyle.text }}>
                   {item.itemName}

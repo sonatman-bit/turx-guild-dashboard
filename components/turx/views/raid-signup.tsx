@@ -50,6 +50,7 @@ import {
   PointsPill,
   SectionHeader,
 } from '../ui'
+import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
 
 type SameWeekConflict = {
   eventId: string
@@ -177,6 +178,7 @@ export function RaidSignupView() {
   const { data, loading, busy, error, postAction } = useRaidSystem()
 
   const [subTab, setSubTab] = useState<'active' | 'archive'>('active')
+  const [showCycle, setShowCycle] = useState(false)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [confirmModalEvent, setConfirmModalEvent] = useState<RaidEvent | null>(null)
@@ -429,6 +431,17 @@ export function RaidSignupView() {
                 Arşiv ({archivedEvents.length})
               </button>
             </div>
+            <GhostButton
+              type="button"
+              onClick={() => setShowCycle((v) => !v)}
+              className={cn(
+                'px-3 py-1.5 text-xs',
+                showCycle && 'border-neon/60 bg-neon/15 text-neon shadow-[0_0_16px_rgb(0_242_254/0.2)]',
+              )}
+            >
+              <CalendarClock className="size-3.5" />
+              {showCycle ? 'Döngüyü Gizle' : 'Haftalık Döngü'}
+            </GhostButton>
             {isOfficer && (
               <GoldButton onClick={() => setCreateOpen(true)}>
                 <CalendarPlus className="size-4" />
@@ -439,12 +452,28 @@ export function RaidSignupView() {
         }
       />
 
+      {showCycle && (
+        <Panel className="border-neon/35 bg-gradient-to-br from-[#0c1f34] via-[#091829] to-[#071220] animate-in fade-in slide-in-from-top-2">
+          <PanelTitle
+            icon={CalendarClock}
+            action={
+              <Badge className="border-neon/35 bg-neon/10 font-mono text-[11px] text-neon">
+                T-7 → T-3 → T-1 → T-0
+              </Badge>
+            }
+          >
+            Bir Haftalık Raid Döngüsü
+          </PanelTitle>
+          <WeeklyRaidTimeline rules={rules} />
+        </Panel>
+      )}
+
       {/* Quick rules reminder bar */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="panel flex items-center gap-3 p-3.5">
           <Timer className="size-5 shrink-0 text-neon" />
           <div className="text-xs">
-            <p className="font-semibold text-foreground">T-7 Gün İmza / T-3 Gün Roster</p>
+            <p className="font-semibold text-foreground">≥7 Gün Açılış · T-3 Roster · -24s Kilit</p>
             <p className="text-muted-foreground">İmza +{rules.signup}p · Konfirmasyon +{rules.confirm}p</p>
           </div>
         </div>

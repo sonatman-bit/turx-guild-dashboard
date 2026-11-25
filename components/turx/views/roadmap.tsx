@@ -18,7 +18,6 @@ import {
   ScrollText,
   ShieldCheck,
   Sparkles,
-  Timer,
   Users,
   Video,
 } from 'lucide-react'
@@ -30,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Panel, PanelTitle, SectionHeader } from '../ui'
+import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
 
 const SLIDE_TITLES = [
   '1. Vizyon & Zaman Çizelgesi',
@@ -278,59 +278,19 @@ export function RoadmapView() {
       </div>
     </Panel>,
 
-    // SLIDE 1: WEEKLY RAID CYCLE
-    <Panel key="s1" className="border-neon/30">
-      <PanelTitle icon={CalendarClock}>2. Bir Haftalık Raid Döngüsü (4 Adım)</PanelTitle>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          {
-            step: 'T - 7 Gün',
-            title: 'Tek Havuzda İmza',
-            badge: `+${rules.signup} Puan`,
-            desc: 'Raidler gün ve saat belirtilerek 1 hafta önceden açılır. Geri sayım sayacı bitmeden tek tıkla imza atarsınız.',
-            color: 'border-neon/40 text-neon',
-          },
-          {
-            step: 'T - 3 Gün',
-            title: 'Çoklu Roster Yayını',
-            badge: 'Grup 1, 2, ... + Bench',
-            desc: 'Officerlar gelen imza sayısına göre kaç grup çıkıyorsa (örn. 3x10-man) o kadar roster ve Bench yayınlar.',
-            color: 'border-sky-400/40 text-sky-300',
-          },
-          {
-            step: 'T - 1 Gün',
-            title: 'Konfirmasyon & Hazırlık',
-            badge: `+${rules.confirm} Puan (Bench Dahil)`,
-            desc: 'Geri sayım bitmeden katılımınızı teyit edin. Gelemeyecekseniz bu süre içinde Mazeretli İptal verirseniz ceza 0p!',
-            color: 'border-gold/40 text-gold',
-          },
-          {
-            step: 'Raid Günü 20:45',
-            title: '15 Dk Önce Alanda Hazır',
-            badge: 'Full Hazırlık',
-            desc: '15 dk önce raid alanında, Full Consumables, %100 Repair ve Full Class Spells Trained olarak hazır bulunun.',
-            color: 'border-emerald-400/40 text-emerald-300',
-          },
-        ].map((item) => (
-          <div key={item.step} className="flex flex-col justify-between rounded-xl border border-border/80 bg-[#071422] p-4">
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <span className={cn('font-mono text-xs font-bold', item.color.split(' ')[1])}>{item.step}</span>
-                <Badge className={cn('bg-white/5 text-[10px]', item.color)}>{item.badge}</Badge>
-              </div>
-              <h4 className="mt-2 font-display text-base font-bold text-foreground">{item.title}</h4>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{item.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-gold/25 bg-gold/5 px-4 py-3 text-xs text-silver">
-        <Timer className="size-4 shrink-0 text-gold" />
-        <span>
-          <strong>Raid Tamamlandıktan Sonra:</strong> Officerlar katılım durumunu (Bench dahil) işleyip raidi arşive kaldırır, puanlar anında <em>Devam Takibi</em> listesine eklenir ve bir sonraki haftanın raidleri hemen açılır.
-        </span>
-      </div>
+    // SLIDE 1: WEEKLY RAID CYCLE (VISUAL TIMELINE)
+    <Panel key="s1" className="border-neon/35 bg-gradient-to-br from-[#0c1f34] via-[#091829] to-[#071220]">
+      <PanelTitle
+        icon={CalendarClock}
+        action={
+          <Badge className="border-neon/35 bg-neon/10 font-mono text-[11px] text-neon">
+            T-7 → T-3 → T-1 → T-0
+          </Badge>
+        }
+      >
+        2. Bir Haftalık Raid Döngüsü
+      </PanelTitle>
+      <WeeklyRaidTimeline rules={rules} />
     </Panel>,
 
     // SLIDE 2: INTERACTIVE POINT SIMULATOR

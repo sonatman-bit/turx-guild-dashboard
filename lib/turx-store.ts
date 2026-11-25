@@ -678,8 +678,8 @@ async function writeStore(store: GuildStore) {
   }
 }
 
-export async function loadGuildStore() {
-  return readStore(false)
+export async function loadGuildStore(forceRefresh = false) {
+  return readStore(forceRefresh)
 }
 
 export async function mutateGuildStore<T>(mutator: (store: GuildStore) => T | Promise<T>) {

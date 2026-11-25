@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     if (!session) {
       return NextResponse.json({ authenticated: false }, { status: 401 })
     }
-    const store = await loadGuildStore()
+    const store = await loadGuildStore(true)
     const found = store.users.find((u) => u.username.toLowerCase() === session.username.toLowerCase())
     if (!found) {
       return NextResponse.json({ authenticated: false }, { status: 404 })

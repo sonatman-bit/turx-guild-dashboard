@@ -16,8 +16,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Kullanıcı adı ve şifre gerekli.' }, { status: 400 })
     }
 
-    const store = await loadGuildStore()
-    const found = findStoredUser(store, username)
+    let store = await loadGuildStore()
+    let found = findStoredUser(store, username)
+    if (!found) {
+      store = await loadGuildStore(true)
+      found = findStoredUser(store, username)
+    }
     if (!found) {
       return NextResponse.json({ error: 'not_found' }, { status: 404 })
     }

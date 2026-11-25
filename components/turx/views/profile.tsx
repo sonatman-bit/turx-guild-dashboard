@@ -813,7 +813,7 @@ function AvatarPickerModal({
 
 export function ProfileView() {
   const toast = useToast()
-  const { user, profileComplete, refreshProfileGate } = useAuth()
+  const { user, profileComplete, refreshProfileGate, hydratingSession } = useAuth()
   const [ready, setReady] = useState(false)
   const [profile, setProfile] = useState<UserProfileData>(() => emptyProfile(''))
   const [characters, setCharacters] = useState<GuildCharacter[]>([])
@@ -1252,6 +1252,18 @@ export function ProfileView() {
 
   const displayName = profile.nickname.trim() ? `${profile.nickname} (${profile.fullName})` : profile.fullName
   const onboardingGaps = getOnboardingGaps(profile, characters)
+
+  if (!user && hydratingSession) {
+    return (
+      <div className="flex flex-col gap-4">
+        <SectionHeader
+          eyebrow="Hesap"
+          title="Oturum doğrulanıyor…"
+          description="Hesap ve profil bilgilerin yükleniyor, lütfen bekle."
+        />
+      </div>
+    )
+  }
 
   if (!user) {
     return (

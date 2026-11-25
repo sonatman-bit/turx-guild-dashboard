@@ -1,9 +1,20 @@
 export const SESSION_COOKIE = 'turx_session'
 const SESSION_MAX_AGE_SEC = 30 * 24 * 60 * 60
 
+function readSessionCookie(): string | null {
+  if (typeof document === 'undefined') return null
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]*)`))
+  if (!match?.[1]) return null
+  try {
+    return decodeURIComponent(match[1])
+  } catch {
+    return match[1]
+  }
+}
+
 export function getSessionToken() {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem(SESSION_COOKIE)
+  return localStorage.getItem(SESSION_COOKIE) || readSessionCookie()
 }
 
 function writeSessionCookie(token: string | null) {

@@ -23,8 +23,12 @@ export async function GET(request: Request) {
     if (!blobConfigured()) return json({ error: 'Hesap deposu henüz bağlı değil.' }, 503)
     const session = sessionFromRequest(request)
     if (!session) return json({ error: 'Oturum gerekli.' }, 401)
-    const store = await loadGuildStore()
-    const found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
+    let store = await loadGuildStore()
+    let found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
+    if (!found) {
+      store = await loadGuildStore(true)
+      found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
+    }
     if (!found) return json({ error: 'Hesap bulunamadı.' }, 404)
     const links = publicLinks(found.links)
     const stored = (found.profile || {}) as Record<string, unknown>

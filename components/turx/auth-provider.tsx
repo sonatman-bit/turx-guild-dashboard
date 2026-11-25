@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
+import { useState, useEffect, useRef, createContext, useContext, ReactNode } from 'react'
 import Image from 'next/image'
 import { User, Pencil, Bell } from 'lucide-react'
 import { authHeaders, getSessionToken, setSessionToken } from '@/lib/client-session'
@@ -41,6 +41,7 @@ interface AuthContextType {
   updateUser: (username: string, email: string) => void
   resetPasswordForEmail: (email: string, password: string, token?: string) => Promise<boolean>
   hydrateFromServerSession: () => Promise<{ user: UserAccount; profileComplete: boolean } | null>
+  hydratingSession: boolean
   profileComplete: boolean
   refreshProfileGate: () => Promise<void>
 }
@@ -136,20 +137,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stored = readStoredUser()
     return stored ? isOnboardingComplete(stored.username) : true
   })
+  const [hydratingSession, setHydratingSession] = useState(false)
+  const hydrateInFlightRef = useRef<Promise<{ user: UserAccount; profileComplete: boolean } | null> | null>(null)
+
+  const hydrateFromServerSession = async (): Promise<{ user: UserAccount; profileComplete: boolean } | null> => {
+    if (hydrateInFlightRef.current) return hydrateInFlightRef.current
+    const run = (async () => {
+      setHydratingSession(true)
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'same-origin',
+          headers: authHeaders(),
+          cache: 'no-store',
+        })
+        if (!response.ok) {
+          if (response.status === 401 || response.status === 404) {
+            setSessionToken(null)
+          }
+          return null
+        }
+        const data = (await response.json()) as {
+          user?: UserAccount
+          token?: string
+          profileComplete?: boolean
+          profile?: OnboardingProfile | null
+          characters?: OnboardingCharacter[]
+        }
+        if (!data.user) return null
+        if (data.token) setSessionToken(data.token)
+        if (data.profile || data.characters) {
+          saveOnboardingSnapshot(data.user.username, data.profile || {}, data.characters || [])
+        }
+        setUser(data.user)
+        setProfileComplete(Boolean(data.profileComplete))
+        return { user: data.user, profileComplete: Boolean(data.profileComplete) }
+      } catch {
+        return null
+      } finally {
+        setHydratingSession(false)
+        hydrateInFlightRef.current = null
+      }
+    })()
+    hydrateInFlightRef.current = run
+    return run
+  }
 
   useEffect(() => {
     const token = getSessionToken()
     if (token) setSessionToken(token)
+    const googleAuthOk = new URLSearchParams(window.location.search).get('google_auth') === 'ok'
+    if (!user && (token || googleAuthOk)) {
+      void hydrateFromServerSession()
+    }
     void pushLocalAccountsToServer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (user) {
       localStorage.setItem('turx_auth_user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('turx_auth_user')
-      setSessionToken(null)
-      setProfileComplete(true)
     }
   }, [user])
 
@@ -240,6 +286,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('turx_auth_user')
+    }
     setSessionToken(null)
     setUser(null)
     setProfileComplete(true)
@@ -309,34 +358,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return true
   }
 
-  const hydrateFromServerSession = async (): Promise<{ user: UserAccount; profileComplete: boolean } | null> => {
-    try {
-      const response = await fetch('/api/auth/me', {
-        credentials: 'same-origin',
-        headers: authHeaders(),
-        cache: 'no-store',
-      })
-      if (!response.ok) return null
-      const data = (await response.json()) as {
-        user?: UserAccount
-        token?: string
-        profileComplete?: boolean
-        profile?: OnboardingProfile | null
-        characters?: OnboardingCharacter[]
-      }
-      if (!data.user) return null
-      if (data.token) setSessionToken(data.token)
-      if (data.profile || data.characters) {
-        saveOnboardingSnapshot(data.user.username, data.profile || {}, data.characters || [])
-      }
-      setUser(data.user)
-      setProfileComplete(Boolean(data.profileComplete))
-      return { user: data.user, profileComplete: Boolean(data.profileComplete) }
-    } catch {
-      return null
-    }
-  }
-
   return (
     <AuthContext.Provider
       value={{
@@ -347,6 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateUser,
         resetPasswordForEmail,
         hydrateFromServerSession,
+        hydratingSession,
         profileComplete,
         refreshProfileGate,
       }}
@@ -442,12 +464,14 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
   const [busy, setBusy] = useState(false)
 
   const toast = useToast()
+  const googleHandledRef = useRef(false)
 
   useEffect(() => {
-    if (!mounted) return
+    if (!mounted || googleHandledRef.current) return
     const params = new URLSearchParams(window.location.search)
     const googleStatus = params.get('google_auth')
     if (!googleStatus) return
+    googleHandledRef.current = true
 
     const cleanUrl = () => {
       const url = new URL(window.location.href)
@@ -459,7 +483,14 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
     if (googleStatus === 'ok') {
       hydrateFromServerSession().then((hydrated) => {
         cleanUrl()
-        if (!hydrated) return
+        if (!hydrated) {
+          toast({
+            variant: 'error',
+            title: 'Google oturumu başlatılamadı',
+            description: 'Oturum doğrulanamadı. Lütfen sayfayı yenileyip tekrar dene veya e-posta ile giriş yap.',
+          })
+          return
+        }
         if (!hydrated.profileComplete) onNavigate?.('profile')
         toast({
           title: 'Google ile giriş başarılı',

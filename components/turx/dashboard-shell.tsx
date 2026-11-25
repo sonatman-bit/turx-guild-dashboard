@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { authHeaders } from '@/lib/client-session'
 import type { PublicModuleFlags } from '@/lib/raid-loot-system'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
@@ -61,6 +61,8 @@ function DashboardShellInner() {
     roadmap: false,
   })
   const closeMobile = useCallback(() => setMobileOpen(false), [])
+  const initialTabAppliedRef = useRef(false)
+  const hadUserRef = useRef(false)
 
   useEffect(() => {
     setMounted(true)
@@ -75,7 +77,17 @@ function DashboardShellInner() {
       })
       if (!res.ok) return
       const json = (await res.json()) as { publicModules?: PublicModuleFlags }
-      if (json.publicModules) setPublicModules(json.publicModules)
+      if (json.publicModules) {
+        const next = json.publicModules
+        setPublicModules((prev) =>
+          prev.raidSignup === next.raidSignup &&
+          prev.loot === next.loot &&
+          prev.attendance === next.attendance &&
+          prev.roadmap === next.roadmap
+            ? prev
+            : next,
+        )
+      }
     } catch {
       // keep safe default (all beta)
     }
@@ -98,13 +110,27 @@ function DashboardShellInner() {
 
   useEffect(() => {
     if (!mounted) return
-    const requested = new URLSearchParams(window.location.search).get('tab') as TabId | null
-    if (requested && TAB_IDS.includes(requested) && canAccessTab(requested)) {
-      setTab(requested)
-      return
+    if (user) hadUserRef.current = true
+    if (!initialTabAppliedRef.current) {
+      const requested = new URLSearchParams(window.location.search).get('tab') as TabId | null
+      if (requested && TAB_IDS.includes(requested)) {
+        if (canAccessTab(requested)) {
+          initialTabAppliedRef.current = true
+          setTab(requested)
+          const url = new URL(window.location.href)
+          url.searchParams.delete('tab')
+          window.history.replaceState({}, '', url.pathname + url.search)
+          return
+        }
+        return
+      }
+      initialTabAppliedRef.current = true
     }
     if (!user) {
-      setTab('overview')
+      if (hadUserRef.current) {
+        hadUserRef.current = false
+        setTab('overview')
+      }
       return
     }
     if (!profileComplete) setTab('profile')
@@ -115,6 +141,7 @@ function DashboardShellInner() {
   }, [tab, canAccessTab])
 
   const select = (id: TabId) => {
+    initialTabAppliedRef.current = true
     if (navigationLocked && id !== 'profile') {
       toast({
         title: 'Profil kilidi aktif',
@@ -130,6 +157,13 @@ function DashboardShellInner() {
         description: 'Bu bölüm şu an yalnızca Guild Master ve Görevli (Officer) deneme yayınına açıktır.',
       })
       return
+    }
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      if (url.searchParams.has('tab')) {
+        url.searchParams.delete('tab')
+        window.history.replaceState({}, '', url.pathname + url.search)
+      }
     }
     setTab(id)
     window.scrollTo({ top: 0, behavior: 'smooth' })

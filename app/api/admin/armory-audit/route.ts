@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
-import { Resend } from 'resend'
+import {
+  runAndPersistArmoryAudit,
+  runAuditBatch,
+  sendAccountRemovalEmail,
+  type ArmoryAuditUserRow,
+} from '@/lib/armory-audit-service'
 import { sessionFromRequest } from '@/lib/auth-email'
-import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { canAccessAdminPanel, isGuildMasterEmail } from '@/lib/turx-identity'
 import {
   blobConfigured,
@@ -10,39 +14,17 @@ import {
   resolveUserRole,
   type StoredAccount,
 } from '@/lib/turx-store'
-import { verifyCharacterInTurxGuild, type ArmoryVerificationStatus } from '@/lib/wow-armory'
 
 export const dynamic = 'force-dynamic'
 
 type StoredChar = {
-  id?: string
   firstName?: string
   lastName?: string
-  wowClass?: string
   isMain?: boolean
   armoryVerified?: boolean
   armoryGuild?: string | null
   armoryCheckedAt?: string
   armoryLevel?: number | null
-}
-
-export type ArmoryAuditUserRow = {
-  username: string
-  email: string
-  role: string
-  isProtectedGm: boolean
-  mainCharName: string
-  armoryUrl: string | null
-  status: ArmoryVerificationStatus | 'no_character'
-  guildName: string | null
-  level: number | null
-  inTurxGuild: boolean
-  matchedCharName: string | null
-  message: string
-}
-
-function isWowClass(value: unknown): value is WowClass {
-  return typeof value === 'string' && value in CLASS_COLORS
 }
 
 function isAuthorizedBySecret(request: Request): boolean {
@@ -59,208 +41,14 @@ function isAuthorizedBySecret(request: Request): boolean {
   return false
 }
 
-function escapeHtml(text: string) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-}
-
-function reasonTextForAuditRow(row: ArmoryAuditUserRow): string {
-  if (row.status === 'no_character') {
-    return 'Hesabınızda kayıtlı aktif bir Main karakter bulunamadığı için TURX WoW Armory doğrulaması tamamlanamadı.'
-  }
-  if (row.status === 'wrong_guild') {
-    return `Kayıtlı Main karakteriniz "${row.mainCharName}" WoW Forever Armory (EU) üzerinde "${row.guildName || 'farklı bir guild'}" guildinde göründüğü için TURX kadrosu ile eşleşmedi.`
-  }
-  if (row.status === 'no_guild') {
-    return `Kayıtlı Main karakteriniz "${row.mainCharName}" WoW Forever Armory (EU) üzerinde şu an herhangi bir guild üyesi olarak görünmediği için TURX kadrosu ile eşleşmedi.`
-  }
-  return `Kayıtlı Main karakteriniz "${row.mainCharName}" WoW Forever Armory (EU) üzerinde bulunamadı (karakter isim/soyisim yazım hatası olabilir veya karakter henüz Level 10+ olup oyundan çıkış yapmamış olabilir).`
-}
-
-async function sendAccountRemovalEmail(
-  row: ArmoryAuditUserRow,
-): Promise<{ email: string; ok: boolean; error?: string }> {
-  const toEmail = (row.email || '').trim().toLowerCase()
-  if (!toEmail || !toEmail.includes('@')) {
-    return { email: toEmail, ok: false, error: 'Geçerli e-posta yok' }
-  }
-
-  const apiKey = process.env.RESEND_API_KEY?.trim()
-  if (!apiKey) {
-    return { email: toEmail, ok: false, error: 'RESEND_API_KEY tanımlı değil' }
-  }
-
-  const fromRaw = (process.env.RESEND_FROM || 'TURX Forever <noreply@turxforever.com>')
-    .trim()
-    .replace(/^['"]|['"]$/g, '')
-  const appUrl = (process.env.APP_URL || 'https://turxforever.com').trim().replace(/\/+$/, '')
-
-  const reason = reasonTextForAuditRow(row)
-  const safeUser = escapeHtml(row.username)
-  const safeReason = escapeHtml(reason)
-
-  const html = `
-  <div style="background:#08121e;color:#d7e2ee;font-family:Arial,Helvetica,sans-serif;padding:28px 16px;">
-    <div style="max-width:580px;margin:0 auto;border:1px solid #d4af3755;border-radius:16px;padding:28px;background:#0b1b2d;">
-      <div style="border-bottom:1px solid #1e334a;padding-bottom:16px;margin-bottom:20px;">
-        <p style="margin:0;font-size:11px;letter-spacing:2.5px;color:#00f2fe;font-weight:bold;text-transform:uppercase;">TURX FOREVER · ALLIANCE PvE (EU)</p>
-        <h2 style="margin:8px 0 0;color:#d4af37;font-size:21px;">TURX Web Sitesi Hesabınız Yeniden Kayıt İçin Temizlendi</h2>
-      </div>
-
-      <p style="margin:0 0 14px;line-height:1.65;font-size:14px;">
-        Merhaba <strong>${safeUser}</strong>,
-      </p>
-
-      <p style="margin:0 0 14px;line-height:1.65;font-size:14px;">
-        <strong>TURX</strong> lonca web sitesinde (<a href="${appUrl}" style="color:#00f2fe;text-decoration:none;">${appUrl}</a>) üye güvenliğini ve kadro doğruluğunu sağlamak amacıyla <strong>WoW Forever Armory (EU)</strong> üzerinden otomatik guild doğrulama sistemine geçtik.
-      </p>
-
-      <div style="background:#1c1118;border:1px solid #ef444480;border-radius:12px;padding:14px 16px;margin:18px 0;">
-        <p style="margin:0 0 6px;font-size:12px;font-weight:bold;color:#fca5a5;text-transform:uppercase;">Hesabınız Neden Silindi?</p>
-        <p style="margin:0;font-size:13px;line-height:1.6;color:#fecaca;">${safeReason}</p>
-      </div>
-
-      <p style="margin:0 0 14px;line-height:1.65;font-size:14px;">
-        Bu nedenle eski site kaydınız sıfırlanmıştır. <strong>TURX</strong> guild üyesiyseniz aşağıdaki adımları izleyerek birkaç dakika içinde sitemize yeniden ve doğru şekilde kayıt olabilirsiniz:
-      </p>
-
-      <div style="background:#071422;border:1px solid #233b56;border-radius:12px;padding:16px 18px;margin:18px 0;">
-        <p style="margin:0 0 10px;font-size:13px;font-weight:bold;color:#d4af37;">Doğru Kayıt &amp; Profil Onaylama Adımları (5 Adım)</p>
-        <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.75;color:#cbd5e1;">
-          <li><strong>Oyun İçi Kontrol:</strong> Aktif oynadığınız <strong>Main karakterinizin</strong> oyun içinde <strong>TURX</strong> guildinde olduğundan, en az <strong>Level 10</strong> olduğundan ve Armory bilgisinin güncellenmesi için oyundan en az bir kez çıkış (<em>Logout</em>) yaptığınızdan emin olun.</li>
-          <li><strong>Yeniden Kayıt Olun:</strong> <a href="${appUrl}" style="color:#00f2fe;font-weight:bold;">${appUrl}</a> adresinden <strong>Kayıt Ol</strong> (veya Google ile Giriş) seçeneği ile yeni hesabınızı oluşturun.</li>
-          <li><strong>Adım 1 — Main Karakter &amp; WoW Armory Doğrulaması:</strong> Açılan 5 adımlı profil doğrulama ekranında ilk olarak aktif Main karakterinizin <strong>İsim</strong> ve <strong>Soyisim</strong> bilgisini oyundaki yazımıyla birebir aynı girin ve <em>&quot;WoW Armory ile Doğrula, Kaydet ve Devam Et&quot;</em> butonuna basın.</li>
-          <li><strong>Adım 2 &amp; Adım 3 — Bilgiler ve Haftalık Müsaitlik:</strong> Zorunlu iletişim alanlarını doldurun (kendi tercihinize göre düzenleyebilirsiniz) ve haftalık raid müsaitliğinizi işaretleyin. Raidlere şimdilik katılmayı düşünmüyorsanız <em>&quot;RAIDLERE KATILMAYI ŞİMDİLİK DÜŞÜNMÜYORUM&quot;</em> seçeneğini işaretleyip geçebilirsiniz.</li>
-          <li><strong>Adım 5 — Onayla ve Erişimi Aç:</strong> Son adımda <em>&quot;Profili Onayla ve Siteye Erişimi Aç&quot;</em> butonuna bastığınızda Guild Kadrosu, Raid Kayıt, Loot Dağıtımı ve tüm üye alanları hesabınıza anında açılacaktır.</li>
-        </ol>
-      </div>
-
-      <div style="text-align:center;margin:24px 0 16px;">
-        <a href="${appUrl}" style="display:inline-block;background:linear-gradient(180deg,#e8c65a,#b8922a);color:#1a1305;font-weight:bold;font-size:14px;padding:12px 24px;border-radius:10px;text-decoration:none;">
-          TURX Sitesine Git ve Yeniden Kaydol
-        </a>
-      </div>
-
-      <p style="margin:16px 0 0;font-size:12px;line-height:1.6;color:#8aa0b5;border-top:1px solid #1e334a;padding-top:14px;">
-        Eğer oyun içinde henüz TURX guildinde değilseniz, önce Discord sunucumuzdan veya sitemizdeki <strong>Guild Başvuru</strong> sayfasından başvuru yapıp oyun içi davetinizi alabilir, ardından kaydınızı tamamlayabilirsiniz.<br/>
-        Sorun yaşarsanız Discord üzerinden yönetim ekibine ulaşabilirsiniz. — <strong>TURX Forever Yönetimi</strong>
-      </p>
-    </div>
-  </div>`
-
-  try {
-    const resend = new Resend(apiKey)
-    const { error } = await resend.emails.send({
-      from: fromRaw || 'TURX Forever <noreply@turxforever.com>',
-      to: toEmail,
-      subject: '[TURX Forever] Site Kaydınız WoW Armory (TURX) Doğrulaması Nedeniyle Sıfırlandı',
-      html,
-    })
-    if (error) {
-      return { email: toEmail, ok: false, error: error.message }
-    }
-    return { email: toEmail, ok: true }
-  } catch (err) {
-    return {
-      email: toEmail,
-      ok: false,
-      error: err instanceof Error ? err.message : 'E-posta gönderilemedi',
-    }
-  }
-}
-
-/**
- * Strictly checks each account's MAIN character against WoW Forever Armory (EU) TURX guild.
- */
-async function auditAccountOnArmory(account: StoredAccount): Promise<ArmoryAuditUserRow> {
-  const role = resolveUserRole(account)
-  const isProtectedGm = isGuildMasterEmail(account.email) || role === 'Guild Master'
-  const chars = Array.isArray(account.characters) ? (account.characters as StoredChar[]) : []
-  const validChars = chars.filter((c) => Boolean(c.firstName?.trim()) && Boolean(c.lastName?.trim()))
-  const mainChar = validChars.find((c) => c.isMain) || validChars[0]
-
-  if (!mainChar) {
-    return {
-      username: account.username,
-      email: account.email,
-      role,
-      isProtectedGm,
-      mainCharName: '—',
-      armoryUrl: null,
-      status: 'no_character',
-      guildName: null,
-      level: null,
-      inTurxGuild: false,
-      matchedCharName: null,
-      message: 'Hesapta kayıtlı Main karakter bulunmuyor.',
-    }
-  }
-
-  const mainFirst = mainChar.firstName!.trim()
-  const mainLast = mainChar.lastName!.trim()
-  const mainName = `${mainFirst} ${mainLast}`
-  const mainClass: WowClass = isWowClass(mainChar.wowClass) ? mainChar.wowClass : 'Warrior'
-
-  const mainResult = await verifyCharacterInTurxGuild(mainFirst, mainLast, mainClass)
-  if (mainResult.ok) {
-    return {
-      username: account.username,
-      email: account.email,
-      role,
-      isProtectedGm,
-      mainCharName: mainName,
-      armoryUrl: mainResult.url,
-      status: mainResult.status,
-      guildName: mainResult.guildName,
-      level: mainResult.level,
-      inTurxGuild: true,
-      matchedCharName: mainName,
-      message: mainResult.message,
-    }
-  }
-
-  return {
-    username: account.username,
-    email: account.email,
-    role,
-    isProtectedGm,
-    mainCharName: mainName,
-    armoryUrl: mainResult.url,
-    status: mainResult.status,
-    guildName: mainResult.guildName,
-    level: mainResult.level,
-    inTurxGuild: false,
-    matchedCharName: null,
-    message: mainResult.message,
-  }
-}
-
-async function runAuditBatch(users: StoredAccount[]): Promise<ArmoryAuditUserRow[]> {
-  const results: ArmoryAuditUserRow[] = new Array(users.length)
-  let cursor = 0
-  const concurrency = Math.min(5, Math.max(1, users.length))
-
-  async function worker() {
-    while (cursor < users.length) {
-      const idx = cursor
-      cursor += 1
-      results[idx] = await auditAccountOnArmory(users[idx])
-    }
-  }
-
-  await Promise.all(Array.from({ length: concurrency }, () => worker()))
-  return results
-}
-
 export async function GET(request: Request) {
   try {
     if (!blobConfigured()) {
       return NextResponse.json({ error: 'Veritabanı bağlı değil.' }, { status: 503 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const cachedOnly = searchParams.get('cached') === '1'
     const secretOk = isAuthorizedBySecret(request)
     const store = await loadGuildStore(true)
 
@@ -275,19 +63,30 @@ export async function GET(request: Request) {
       }
     }
 
-    const rows = await runAuditBatch(store.users)
-    const summary = {
-      total: rows.length,
-      verifiedTurx: rows.filter((r) => r.inTurxGuild).length,
-      nonTurxRemovable: rows.filter(
-        (r) => !r.inTurxGuild && !r.isProtectedGm && r.status !== 'armory_unavailable',
-      ).length,
-      armoryUnavailable: rows.filter((r) => r.status === 'armory_unavailable').length,
-      protectedGm: rows.filter((r) => r.isProtectedGm).length,
+    if (cachedOnly) {
+      const existingSet = new Set(store.users.map((u) => u.username.toLowerCase()))
+      const audit = store.armoryAudit
+      const activeFlagged = (audit?.flaggedUsers || []).filter((f) =>
+        existingSet.has(f.username.toLowerCase()),
+      )
+      return NextResponse.json(
+        {
+          ok: true,
+          armoryAudit: audit ? { ...audit, flaggedUsers: activeFlagged } : null,
+        },
+        { headers: { 'Cache-Control': 'no-store' } },
+      )
     }
 
+    const { auditState, rows, summary } = await runAndPersistArmoryAudit('manual')
     return NextResponse.json(
-      { ok: true, checkedAt: new Date().toISOString(), summary, users: rows },
+      {
+        ok: true,
+        checkedAt: auditState.lastCheckedAt,
+        summary,
+        users: rows,
+        armoryAudit: auditState,
+      },
       { headers: { 'Cache-Control': 'no-store' } },
     )
   } catch (err) {
@@ -312,6 +111,7 @@ export async function POST(request: Request) {
       action?: 'prune_non_turx' | 'kick_user'
       username?: string
       sendEmails?: boolean
+      sendEmail?: boolean
     }
 
     const action = body.action || 'prune_non_turx'
@@ -322,6 +122,14 @@ export async function POST(request: Request) {
       if (!targetUsername) {
         return NextResponse.json({ error: 'Kullanıcı adı zorunludur.' }, { status: 400 })
       }
+
+      let removedEmailPayload: {
+        username: string
+        email: string
+        mainCharName: string
+        status: string
+        guildName?: string | null
+      } | null = null
 
       await mutateGuildStore((store) => {
         if (!secretOk) {
@@ -349,14 +157,45 @@ export async function POST(request: Request) {
           throw new Error('CANNOT_KICK_GM')
         }
 
+        const flaggedEntry = store.armoryAudit?.flaggedUsers.find(
+          (f) => f.username.toLowerCase() === target.username.toLowerCase(),
+        )
+        const chars = Array.isArray(target.characters) ? (target.characters as StoredChar[]) : []
+        const mainChar = chars.find((c) => c.isMain) || chars[0]
+        const mainCharName = mainChar
+          ? `${mainChar.firstName || ''} ${mainChar.lastName || ''}`.trim() || '—'
+          : '—'
+
+        removedEmailPayload = {
+          username: target.username,
+          email: target.email,
+          mainCharName: flaggedEntry?.mainCharName || mainCharName,
+          status: flaggedEntry?.status || 'no_guild',
+          guildName: flaggedEntry?.guildName || null,
+        }
+
         store.users = store.users.filter((u) => u.username.toLowerCase() !== target.username.toLowerCase())
         store.deletedUsers = {
           ...(store.deletedUsers || {}),
           [target.username.toLowerCase()]: new Date().toISOString(),
         }
+        if (store.armoryAudit) {
+          store.armoryAudit = {
+            ...store.armoryAudit,
+            flaggedUsers: store.armoryAudit.flaggedUsers.filter(
+              (f) => f.username.toLowerCase() !== target.username.toLowerCase(),
+            ),
+          }
+        }
       })
 
-      return NextResponse.json({ ok: true, removedUsername: targetUsername })
+      let emailSent = false
+      if (body.sendEmail && removedEmailPayload) {
+        const mailRes = await sendAccountRemovalEmail(removedEmailPayload)
+        emailSent = mailRes.ok
+      }
+
+      return NextResponse.json({ ok: true, removedUsername: targetUsername, emailSent })
     }
 
     // action === 'prune_non_turx'
@@ -424,15 +263,21 @@ export async function POST(request: Request) {
 
       store.users = nextUsers
       store.deletedUsers = deleted
+      store.armoryAudit = {
+        lastCheckedAt: nowIso,
+        source: 'manual',
+        totalScanned: nextUsers.length,
+        verifiedTurxCount: verifiedMap.size,
+        armoryUnavailableCount: skippedUnavailable.length,
+        flaggedUsers: [],
+      }
     })
 
-    // Send explanatory emails with step-by-step re-registration instructions to every deleted user
     const emailResults: Array<{ username: string; email: string; ok: boolean; error?: string }> = []
     if (shouldSendEmails && removedUsers.length > 0) {
       for (const removed of removedUsers) {
         const res = await sendAccountRemovalEmail(removed)
         emailResults.push({ username: removed.username, ...res })
-        // Small throttle to stay comfortably within Resend rate limits
         await new Promise((resolve) => setTimeout(resolve, 250))
       }
     }

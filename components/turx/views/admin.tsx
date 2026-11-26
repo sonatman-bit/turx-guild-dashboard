@@ -209,13 +209,39 @@ export function AdminDashboardView() {
   const [msgSendEmail, setMsgSendEmail] = useState(true)
   const [msgSending, setMsgSending] = useState(false)
 
+interface PersistedFlaggedUser {
+  username: string
+  email: string
+  role: string
+  mainCharName: string
+  armoryUrl: string | null
+  status: string
+  guildName: string | null
+  level: number | null
+  message: string
+  firstFlaggedAt: string
+  lastCheckedAt: string
+  consecutiveMisses: number
+}
+
+interface PersistedArmoryAudit {
+  lastCheckedAt: string
+  source: 'cron' | 'manual'
+  totalScanned: number
+  verifiedTurxCount: number
+  armoryUnavailableCount: number
+  flaggedUsers: PersistedFlaggedUser[]
+}
+
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
   const [members, setMembers] = useState<MemberItem[]>([])
   const [editingMemberUsername, setEditingMemberUsername] = useState<string | null>(null)
+  const [persistedAudit, setPersistedAudit] = useState<PersistedArmoryAudit | null>(null)
   const [armoryAudit, setArmoryAudit] = useState<ArmoryAuditReport | null>(null)
   const [armoryAuditLoading, setArmoryAuditLoading] = useState(false)
   const [armoryPruneBusy, setArmoryPruneBusy] = useState(false)
   const [armorySendEmails, setArmorySendEmails] = useState(true)
+  const [removingUsername, setRemovingUsername] = useState<string | null>(null)
 
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
   const [applications, setApplications] = useState<AdminApplication[]>([])
@@ -316,7 +342,32 @@ export function AdminDashboardView() {
       })
       .catch(() => undefined)
 
+    fetch('/api/admin/armory-audit?cached=1', { credentials: 'same-origin', headers: authHeaders(), cache: 'no-store' })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { armoryAudit?: PersistedArmoryAudit | null }
+        if (response.ok && data.armoryAudit) {
+          setPersistedAudit(data.armoryAudit)
+        }
+      })
+      .catch(() => undefined)
+
+    const pendingSub = typeof window !== 'undefined' ? sessionStorage.getItem('turx_admin_pending_subtab') : null
+    if (pendingSub === 'members' || pendingSub === 'applications') {
+      setActiveTab(pendingSub)
+      sessionStorage.removeItem('turx_admin_pending_subtab')
+    }
+    const onSubTab = (ev: Event) => {
+      const next = (ev as CustomEvent<string>).detail
+      if (next === 'members' || next === 'applications') {
+        setActiveTab(next)
+      }
+    }
+    window.addEventListener('turx:admin-subtab', onSubTab)
+
     loadAttendance()
+    return () => {
+      window.removeEventListener('turx:admin-subtab', onSubTab)
+    }
   }, [])
 
   useEffect(() => {
@@ -414,7 +465,12 @@ export function AdminDashboardView() {
       })
   }
 
-  const handleKickMember = async (memberId: string, memberAccount: string, currentRank: GuildRank) => {
+  const handleKickMember = async (
+    memberId: string,
+    memberAccount: string,
+    currentRank: GuildRank,
+    sendEmail = false,
+  ) => {
     if (currentRank === 'Guild Master') {
       toast({
         variant: 'error',
@@ -424,21 +480,25 @@ export function AdminDashboardView() {
       return
     }
 
-    if (!confirm(`"${memberAccount}" kullanıcısını kullanıcı listesinden kalıcı olarak silmek istediğinize emin misiniz?`)) {
+    const confirmText = sendEmail
+      ? `"${memberAccount}" hesabını kalıcı olarak silip yeniden kayıt rehberi e-postası göndermek istediğinize emin misiniz?`
+      : `"${memberAccount}" kullanıcısını kullanıcı listesinden kalıcı olarak silmek istediğinize emin misiniz?`
+    if (!confirm(confirmText)) {
       return
     }
 
+    setRemovingUsername(memberAccount)
     const previous = members
-    setMembers((prev) => prev.filter((m) => m.id !== memberId))
+    setMembers((prev) => prev.filter((m) => m.accountName.toLowerCase() !== memberAccount.toLowerCase()))
 
     try {
       const res = await fetch('/api/admin/armory-audit', {
         method: 'POST',
         credentials: 'same-origin',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ action: 'kick_user', username: memberAccount }),
+        body: JSON.stringify({ action: 'kick_user', username: memberAccount, sendEmail }),
       })
-      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      const data = (await res.json().catch(() => ({}))) as { error?: string; emailSent?: boolean }
       if (!res.ok) {
         setMembers(previous)
         toast({
@@ -448,6 +508,16 @@ export function AdminDashboardView() {
         })
         return
       }
+      setPersistedAudit((prev) =>
+        prev
+          ? {
+              ...prev,
+              flaggedUsers: prev.flaggedUsers.filter(
+                (u) => u.username.toLowerCase() !== memberAccount.toLowerCase(),
+              ),
+            }
+          : null,
+      )
       setArmoryAudit((prev) =>
         prev
           ? {
@@ -456,13 +526,18 @@ export function AdminDashboardView() {
             }
           : null,
       )
+      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
       toast({
         title: 'Hesap Loncadan Çıkarıldı',
-        description: `${memberAccount} hesabı kullanıcı listesinden kalıcı olarak silindi.`,
+        description: data.emailSent
+          ? `${memberAccount} kalıcı olarak silindi ve yeniden kayıt rehberi e-postası gönderildi.`
+          : `${memberAccount} hesabı kullanıcı listesinden kalıcı olarak silindi.`,
       })
     } catch {
       setMembers(previous)
       toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    } finally {
+      setRemovingUsername(null)
     }
   }
 
@@ -474,7 +549,10 @@ export function AdminDashboardView() {
         headers: authHeaders(),
         cache: 'no-store',
       })
-      const data = (await res.json().catch(() => ({}))) as Partial<ArmoryAuditReport> & { error?: string }
+      const data = (await res.json().catch(() => ({}))) as Partial<ArmoryAuditReport> & {
+        armoryAudit?: PersistedArmoryAudit
+        error?: string
+      }
       if (!res.ok || !data.users || !data.summary) {
         toast({
           variant: 'error',
@@ -488,6 +566,10 @@ export function AdminDashboardView() {
         summary: data.summary,
         users: data.users,
       })
+      if (data.armoryAudit) {
+        setPersistedAudit(data.armoryAudit)
+      }
+      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
       toast({
         title: 'WoW Armory Taraması Tamamlandı',
         description: `${data.summary.verifiedTurx} TURX onaylı · ${data.summary.nonTurxRemovable} TURX dışı kullanıcı bulundu.`,
@@ -500,7 +582,7 @@ export function AdminDashboardView() {
   }
 
   const handlePruneNonTurx = async () => {
-    const removableCount = armoryAudit?.summary.nonTurxRemovable
+    const removableCount = armoryAudit?.summary.nonTurxRemovable ?? persistedAudit?.flaggedUsers.length
     const msg =
       typeof removableCount === 'number'
         ? `WoW Forever Armory (EU) kontrolünde TURX guild listesinde görünmeyen ${removableCount} kullanıcı kalıcı olarak silinecek ve çıkarılacak. Onaylıyor musunuz?`
@@ -537,6 +619,15 @@ export function AdminDashboardView() {
 
       const removedSet = new Set((data.removedUsers || []).map((u) => u.username.toLowerCase()))
       setMembers((prev) => prev.filter((m) => !removedSet.has(m.accountName.toLowerCase())))
+      setPersistedAudit((prev) =>
+        prev
+          ? {
+              ...prev,
+              lastCheckedAt: data.checkedAt || new Date().toISOString(),
+              flaggedUsers: [],
+            }
+          : null,
+      )
       if (Array.isArray(data.auditRows)) {
         const rows = data.auditRows
         setArmoryAudit({
@@ -551,6 +642,7 @@ export function AdminDashboardView() {
           users: rows,
         })
       }
+      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
       toast({
         title: 'WoW Armory Temizliği Tamamlandı! 🛡️',
         description: `${data.removedCount ?? 0} TURX dışı kullanıcı silindi${data.emailsSentCount ? ` · ${data.emailsSentCount} bilgilendirme e-postası gönderildi` : ''}. ${data.keptCount ?? 0} onaylı üye kaldı.`,
@@ -573,6 +665,7 @@ export function AdminDashboardView() {
       return
     }
     setApplications((prev) => prev.map((a) => (a.id === appId ? { ...a, status } : a)))
+    window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
     toast({
       title: status === 'APPROVED' ? 'Başvuru Onaylandı' : 'Başvuru Reddedildi',
       description: `Başvuru durumu güncellendi.`,
@@ -955,18 +1048,48 @@ export function AdminDashboardView() {
       {/* SEKME 1: ÜYE & RÜTBE YÖNETİMİ (Hesap ve Ana Karakter Odaklı) */}
       {activeTab === 'members' && (
         <div className="flex flex-col gap-6">
-          {/* WoW Forever Armory (TURX) Üye Kontrol & Temizlik Paneli */}
-          <Panel className="flex flex-col gap-4 border-neon/35 bg-gradient-to-br from-[#0b1f34] via-card to-card">
+          {/* GÜNLÜK WOW ARMORY TARAMASI: SİLİNMESİ GEREKEN KULLANICILAR UYARISI (EN ÜSTTE) */}
+          <Panel
+            className={cn(
+              'flex flex-col gap-4',
+              (persistedAudit?.flaggedUsers.length ?? 0) > 0
+                ? 'border-2 border-red-500/70 bg-gradient-to-br from-red-950/40 via-[#15121d] to-card shadow-[0_0_25px_rgba(239,68,68,0.18)]'
+                : 'border-neon/35 bg-gradient-to-br from-[#0b1f34] via-card to-card',
+            )}
+          >
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-3">
               <div className="flex items-center gap-3">
                 <WowArmoryLogo />
                 <div>
-                  <h3 className="font-display text-base font-bold text-gold">
-                    WoW Forever Armory — TURX Guild Kontrolü & Temizlik
+                  <h3 className="font-display text-base font-bold text-gold flex flex-wrap items-center gap-2">
+                    {(persistedAudit?.flaggedUsers.length ?? 0) > 0 ? (
+                      <>
+                        <span className="text-red-300">
+                          ⚠️ Silinmesi Gereken Kullanıcılar ({persistedAudit!.flaggedUsers.length})
+                        </span>
+                        <Badge className="border-red-500/60 bg-red-500/20 text-red-200 text-[10px] animate-pulse">
+                          Manuel Onay Bekliyor
+                        </Badge>
+                      </>
+                    ) : (
+                      <span>WoW Forever Armory — Günlük TURX Guild Kontrolü</span>
+                    )}
                   </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Tüm aktif kullanıcıların karakterlerini WoW Forever Armory (EU) üzerinden denetler ve TURX guild
-                    listesinde görünmeyen kullanıcıları listeden kalıcı olarak siler.
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Sistem her gün 05:00 (TR) saatinde tüm üyelerin Main karakterini otomatik tarar; kimseyi kendi
+                    kendine silmez, TURX dışına çıkanları burada en üstte listeler.
+                    {persistedAudit?.lastCheckedAt && (
+                      <span className="ml-1.5 text-silver font-medium">
+                        Son tarama:{' '}
+                        {new Date(persistedAudit.lastCheckedAt).toLocaleString('tr-TR', {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}{' '}
+                        ({persistedAudit.source === 'cron' ? 'Otomatik' : 'Manuel'})
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -991,25 +1114,129 @@ export function AdminDashboardView() {
                   ) : (
                     <RefreshCw className="size-3.5" />
                   )}
-                  {armoryAuditLoading ? 'Armory Taranıyor...' : "Tüm Üyeleri Armory'den Tara"}
+                  {armoryAuditLoading ? 'Armory Taranıyor...' : "Şimdi Armory'den Tara"}
                 </GhostButton>
-                <GoldButton
-                  type="button"
-                  onClick={() => void handlePruneNonTurx()}
-                  disabled={armoryAuditLoading || armoryPruneBusy}
-                  className="text-xs py-1.5 px-3 cursor-pointer"
-                >
-                  {armoryPruneBusy ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="size-3.5" />
-                  )}
-                  {armoryPruneBusy
-                    ? 'Temizleniyor...'
-                    : `TURX Dışındakileri Sil ve Çıkar${armoryAudit ? ` (${armoryAudit.summary.nonTurxRemovable})` : ''}`}
-                </GoldButton>
+                {((persistedAudit?.flaggedUsers.length ?? 0) > 0 || (armoryAudit?.summary.nonTurxRemovable ?? 0) > 0) && (
+                  <GoldButton
+                    type="button"
+                    onClick={() => void handlePruneNonTurx()}
+                    disabled={armoryAuditLoading || armoryPruneBusy}
+                    className="text-xs py-1.5 px-3 cursor-pointer"
+                  >
+                    {armoryPruneBusy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
+                    {armoryPruneBusy
+                      ? 'Temizleniyor...'
+                      : `Tümünü Sil ve Çıkar (${armoryAudit?.summary.nonTurxRemovable ?? persistedAudit?.flaggedUsers.length ?? 0})`}
+                  </GoldButton>
+                )}
               </div>
             </div>
+
+            {/* Silinmesi Gerekenler Listesi (Günlük veya Manuel Taramadan) */}
+            {persistedAudit && persistedAudit.flaggedUsers.length > 0 ? (
+              <div className="overflow-x-auto rounded-xl border border-red-500/40 bg-background/60">
+                <table className="w-full text-left text-xs">
+                  <thead className="border-b border-red-500/30 bg-red-500/10 text-[11px] uppercase text-red-200">
+                    <tr>
+                      <th className="px-3 py-2.5">Hesap</th>
+                      <th className="px-3 py-2.5">Main Karakter</th>
+                      <th className="px-3 py-2.5">Armory Durumu</th>
+                      <th className="px-3 py-2.5">Tespit</th>
+                      <th className="px-3 py-2.5 text-right">Manuel İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {persistedAudit.flaggedUsers.map((flagged) => (
+                      <tr key={flagged.username} className="bg-red-500/[0.04] hover:bg-red-500/[0.09] transition">
+                        <td className="px-3 py-2.5 font-bold text-foreground">
+                          {isGm ? (
+                            <button
+                              type="button"
+                              onClick={() => setEditingMemberUsername(flagged.username)}
+                              className="inline-flex items-center gap-1 hover:text-gold hover:underline cursor-pointer"
+                              title="Profili GM olarak incele/düzenle"
+                            >
+                              {flagged.username}
+                              <Edit3 className="size-3 text-gold/80" />
+                            </button>
+                          ) : (
+                            flagged.username
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {flagged.armoryUrl ? (
+                            <a
+                              href={flagged.armoryUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-neon hover:underline inline-flex items-center gap-1"
+                            >
+                              {flagged.mainCharName}
+                              <ExternalLink className="size-3" />
+                            </a>
+                          ) : (
+                            <span className="text-muted-foreground">{flagged.mainCharName}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <Badge className="border-red-500/60 bg-red-500/15 text-red-300 text-[10px]">
+                            <ShieldAlert className="size-3 mr-1" />
+                            {flagged.status === 'wrong_guild'
+                              ? `Farklı Guild (<${flagged.guildName}>)`
+                              : flagged.status === 'no_guild'
+                                ? 'Guildsiz'
+                                : flagged.status === 'no_character'
+                                  ? 'Karakter Yok'
+                                  : "Armory'de Yok"}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5 font-mono text-[11px] text-amber-300">
+                          {flagged.consecutiveMisses}. tarama
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            <GoldButton
+                              type="button"
+                              disabled={removingUsername === flagged.username}
+                              onClick={() =>
+                                void handleKickMember(flagged.username, flagged.username, flagged.role as GuildRank, true)
+                              }
+                              className="text-[11px] py-1 px-2.5 cursor-pointer"
+                              title="Hesabı sil ve yeniden kayıt rehberi e-postası gönder"
+                            >
+                              <Mail className="size-3" /> Sil &amp; Mail At
+                            </GoldButton>
+                            <GhostButton
+                              type="button"
+                              disabled={removingUsername === flagged.username}
+                              onClick={() =>
+                                void handleKickMember(flagged.username, flagged.username, flagged.role as GuildRank, false)
+                              }
+                              className="text-[11px] py-1 px-2 text-destructive border-destructive/40 hover:bg-destructive/10 cursor-pointer"
+                              title="E-posta göndermeden yalnızca hesabı sil"
+                            >
+                              <Trash2 className="size-3" /> Sil
+                            </GhostButton>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : persistedAudit ? (
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-200">
+                <ShieldCheck className="size-4 shrink-0 text-emerald-400" />
+                <span>
+                  Son taramada silinmesi gereken kullanıcı tespit edilmedi ({persistedAudit.verifiedTurxCount} /{' '}
+                  {persistedAudit.totalScanned} üye TURX guildinde doğrulandı).
+                </span>
+              </div>
+            ) : null}
 
             {armoryAudit && (
               <div className="flex flex-col gap-3">

@@ -123,6 +123,30 @@ export type StoredGuildMessage = {
   readBy: Record<string, string> // username.toLowerCase() -> readAt ISO timestamp
 }
 
+export type StoredArmoryFlaggedUser = {
+  username: string
+  email: string
+  role: string
+  mainCharName: string
+  armoryUrl: string | null
+  status: 'wrong_guild' | 'no_guild' | 'not_found' | 'no_character'
+  guildName: string | null
+  level: number | null
+  message: string
+  firstFlaggedAt: string
+  lastCheckedAt: string
+  consecutiveMisses: number
+}
+
+export type StoredArmoryAuditState = {
+  lastCheckedAt: string
+  source: 'cron' | 'manual'
+  totalScanned: number
+  verifiedTurxCount: number
+  armoryUnavailableCount: number
+  flaggedUsers: StoredArmoryFlaggedUser[]
+}
+
 export type GuildStore = {
   users: StoredAccount[]
   deletedUsers?: Record<string, string>
@@ -135,6 +159,7 @@ export type GuildStore = {
   bankLedger?: StoredBankTransaction[]
   messages?: StoredGuildMessage[]
   raidSystem?: RaidSystemStore
+  armoryAudit?: StoredArmoryAuditState | null
 }
 
 const PATH = 'turx-guild-store.json'
@@ -170,6 +195,7 @@ export function emptyStore(): GuildStore {
     bankLedger: [],
     messages: [],
     raidSystem: defaultRaidSystemStore(),
+    armoryAudit: null,
   }
 }
 
@@ -186,6 +212,17 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
       profile,
     }
   })
+  const armoryAudit =
+    data.armoryAudit && typeof data.armoryAudit === 'object'
+      ? {
+          lastCheckedAt: String(data.armoryAudit.lastCheckedAt || ''),
+          source: (data.armoryAudit.source === 'cron' ? 'cron' : 'manual') as 'cron' | 'manual',
+          totalScanned: Number(data.armoryAudit.totalScanned) || 0,
+          verifiedTurxCount: Number(data.armoryAudit.verifiedTurxCount) || 0,
+          armoryUnavailableCount: Number(data.armoryAudit.armoryUnavailableCount) || 0,
+          flaggedUsers: Array.isArray(data.armoryAudit.flaggedUsers) ? data.armoryAudit.flaggedUsers : [],
+        }
+      : null
   return {
     users,
     deletedUsers,
@@ -198,6 +235,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
     messages: Array.isArray(data.messages) ? data.messages : [],
     raidSystem: normalizeRaidSystemStore(data.raidSystem),
+    armoryAudit,
   }
 }
 
@@ -447,6 +485,12 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
     bankLedger: [...bankLedgerMap.values()],
     messages: mergedMessages,
     raidSystem: target.raidSystem ? normalizeRaidSystemStore(target.raidSystem) : normalizeRaidSystemStore(base.raidSystem),
+    armoryAudit:
+      target.armoryAudit && base.armoryAudit
+        ? target.armoryAudit.lastCheckedAt >= base.armoryAudit.lastCheckedAt
+          ? target.armoryAudit
+          : base.armoryAudit
+        : target.armoryAudit || base.armoryAudit || null,
   }
 }
 

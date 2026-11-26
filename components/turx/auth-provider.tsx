@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, createContext, useContext, ReactNode } from 'react'
 import Image from 'next/image'
-import { User, Pencil, Bell } from 'lucide-react'
+import { User, Pencil, Bell, ShieldAlert, ShieldCheck, ArrowRight, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react'
 import { authHeaders, getSessionToken, setSessionToken } from '@/lib/client-session'
 import { getAvatarSrc } from '@/lib/wow-avatars'
 import {
@@ -14,7 +14,8 @@ import {
   type OnboardingProfile,
 } from '@/lib/profile-gate'
 import { hashPassword, MIN_PASSWORD_LENGTH, randomSalt, verifyPassword } from '@/lib/password'
-import { isGuildMasterEmail, wipeLegacyTurxData, type GuildRank } from '@/lib/turx-identity'
+import { canAccessAdminPanel, isGuildMasterEmail, wipeLegacyTurxData, type GuildRank } from '@/lib/turx-identity'
+import { cn } from '@/lib/utils'
 import { GoldButton, GhostButton, Modal, Field, inputClass } from './ui'
 import { useToast } from './toast'
 
@@ -392,12 +393,46 @@ export function openTurxAuthModal() {
   }
 }
 
-export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile') => void }) {
+type AdminActionItemDto = {
+  id: string
+  category: 'armory' | 'applications' | 'bank' | 'raids'
+  severity: 'high' | 'medium' | 'info'
+  title: string
+  description: string
+  count: number
+  targetTab: 'admin' | 'bank' | 'raid-signup'
+  targetSubTab?: 'members' | 'applications'
+  previewItems: string[]
+}
+
+type AdminActionCenterDto = {
+  totalCount: number
+  highPriorityCount: number
+  lastArmoryCheckAt: string | null
+  armorySource?: 'cron' | 'manual' | null
+  items: AdminActionItemDto[]
+}
+
+export function AuthNavbarWidget({
+  onNavigate,
+}: {
+  onNavigate?: (tab: 'profile' | 'admin' | 'bank' | 'raid-signup') => void
+}) {
   const { user, login, logout, signup, resetPasswordForEmail, hydrateFromServerSession } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [userAvatar, setUserAvatar] = useState<string | null>(null)
   const [googleEnabled, setGoogleEnabled] = useState(false)
+  const [adminCenter, setAdminCenter] = useState<AdminActionCenterDto>({
+    totalCount: 0,
+    highPriorityCount: 0,
+    lastArmoryCheckAt: null,
+    armorySource: null,
+    items: [],
+  })
+  const [adminCenterOpen, setAdminCenterOpen] = useState(false)
+  const [armoryRefreshing, setArmoryRefreshing] = useState(false)
+  const isStaff = canAccessAdminPanel(user?.role)
 
   useEffect(() => {
     setMounted(true)
@@ -447,6 +482,40 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
       clearInterval(interval)
     }
   }, [user?.username])
+
+  useEffect(() => {
+    if (!user || !isStaff) {
+      setAdminCenter({ totalCount: 0, highPriorityCount: 0, lastArmoryCheckAt: null, armorySource: null, items: [] })
+      return
+    }
+
+    const fetchAdminTasks = () => {
+      fetch('/api/admin/action-center', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        cache: 'no-store',
+      })
+        .then(async (res) => {
+          if (!res.ok) return
+          const data = (await res.json().catch(() => null)) as AdminActionCenterDto | null
+          if (data && Array.isArray(data.items)) {
+            setAdminCenter(data)
+          }
+        })
+        .catch(() => undefined)
+    }
+
+    fetchAdminTasks()
+    window.addEventListener('turx:admin-tasks-updated', fetchAdminTasks)
+    window.addEventListener('focus', fetchAdminTasks)
+    const timer = setInterval(fetchAdminTasks, 60_000)
+
+    return () => {
+      window.removeEventListener('turx:admin-tasks-updated', fetchAdminTasks)
+      window.removeEventListener('focus', fetchAdminTasks)
+      clearInterval(timer)
+    }
+  }, [user?.username, isStaff])
 
   const [authModalOpen, setAuthModalOpen] = useState(false)
 
@@ -842,6 +911,49 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
           </div>
 
           <div className="flex items-center gap-1.5 ml-2 pl-3 border-l border-border">
+            {isStaff && (
+              <button
+                type="button"
+                onClick={() => setAdminCenterOpen(true)}
+                className={cn(
+                  'relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition cursor-pointer',
+                  adminCenter.totalCount > 0
+                    ? adminCenter.highPriorityCount > 0
+                      ? 'border-red-500/80 bg-red-500/20 text-red-200 hover:bg-red-500/30 shadow-[0_0_14px_rgba(239,68,68,0.45)] animate-pulse'
+                      : 'border-gold/70 bg-gold/20 text-gold hover:bg-gold/30 shadow-[0_0_12px_rgba(212,175,55,0.4)] animate-pulse'
+                    : 'border-border/80 bg-background/50 text-muted-foreground hover:border-gold/40 hover:text-gold',
+                )}
+                title={
+                  adminCenter.totalCount > 0
+                    ? `${adminCenter.totalCount} bekleyen yönetim işi / hatırlatma (Tıklayıp listeyi gör)`
+                    : 'Yönetim Bildirimleri & Yapılacak İşler (Bekleyen iş yok)'
+                }
+              >
+                {adminCenter.totalCount > 0 ? (
+                  <>
+                    <span className="relative flex size-2.5 shrink-0">
+                      <span
+                        className={cn(
+                          'absolute inline-flex size-full animate-ping rounded-full opacity-80',
+                          adminCenter.highPriorityCount > 0 ? 'bg-red-400' : 'bg-gold',
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          'relative inline-flex size-2.5 rounded-full',
+                          adminCenter.highPriorityCount > 0 ? 'bg-red-500' : 'bg-gold',
+                        )}
+                      />
+                    </span>
+                    <ShieldAlert className="size-3.5 shrink-0" />
+                    <span className="text-xs font-black tabular-nums">{adminCenter.totalCount}</span>
+                  </>
+                ) : (
+                  <ShieldCheck className="size-4 text-emerald-400/80" />
+                )}
+              </button>
+            )}
+
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -1092,6 +1204,158 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
           </div>
         )}
       </Modal>
+
+      {isStaff && (
+        <Modal
+          open={adminCenterOpen}
+          onClose={() => setAdminCenterOpen(false)}
+          title="Yönetim Bildirimleri & Yapılacak İşler"
+          description="Guild Master ve Görevliler (Officer) için bekleyen onaylar, günlük WoW Armory uyarıları ve hatırlatmalar."
+          className="max-w-xl"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-background/60 px-3.5 py-2.5 text-xs">
+              <span className="text-muted-foreground">
+                Son WoW Armory Taraması:{' '}
+                <strong className="text-silver">
+                  {adminCenter.lastArmoryCheckAt
+                    ? new Date(adminCenter.lastArmoryCheckAt).toLocaleString('tr-TR', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'Henüz yapılmadı'}
+                </strong>
+                {adminCenter.armorySource === 'cron' && (
+                  <span className="ml-1.5 text-[10px] text-neon">(Günlük Oto)</span>
+                )}
+              </span>
+              <GhostButton
+                type="button"
+                disabled={armoryRefreshing}
+                onClick={async () => {
+                  setArmoryRefreshing(true)
+                  try {
+                    const res = await fetch('/api/admin/armory-audit', {
+                      credentials: 'same-origin',
+                      headers: authHeaders(),
+                      cache: 'no-store',
+                    })
+                    if (res.ok) {
+                      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
+                      toast({
+                        title: 'WoW Armory Taraması Güncellendi',
+                        description: 'Tüm üyelerin TURX guild durumu yenilendi.',
+                      })
+                    }
+                  } finally {
+                    setArmoryRefreshing(false)
+                  }
+                }}
+                className="text-[11px] py-1 px-2.5 cursor-pointer"
+              >
+                {armoryRefreshing ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                {armoryRefreshing ? 'Taranıyor...' : 'Armory Tara'}
+              </GhostButton>
+            </div>
+
+            {adminCenter.items.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center">
+                <CheckCircle2 className="size-8 text-emerald-400" />
+                <p className="font-display text-sm font-bold text-emerald-300">Bekleyen yönetim işlemi yok!</p>
+                <p className="text-xs text-muted-foreground">
+                  Tüm WoW Armory kontrolleri, başvurular ve talepler güncel durumda.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 max-h-[55vh] overflow-y-auto pr-1">
+                {adminCenter.items.map((item) => (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      'rounded-xl border p-4 flex flex-col gap-2.5',
+                      item.severity === 'high'
+                        ? 'border-red-500/60 bg-red-500/[0.08]'
+                        : item.severity === 'medium'
+                          ? 'border-gold/50 bg-gold/[0.07]'
+                          : 'border-neon/40 bg-neon/[0.06]',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p
+                          className={cn(
+                            'text-sm font-bold',
+                            item.severity === 'high'
+                              ? 'text-red-300'
+                              : item.severity === 'medium'
+                                ? 'text-gold'
+                                : 'text-neon',
+                          )}
+                        >
+                          {item.title}
+                        </p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
+                      </div>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-2.5 py-0.5 text-xs font-black tabular-nums border',
+                          item.severity === 'high'
+                            ? 'border-red-500/60 bg-red-500/20 text-red-200'
+                            : item.severity === 'medium'
+                              ? 'border-gold/50 bg-gold/15 text-gold'
+                              : 'border-neon/40 bg-neon/15 text-neon',
+                        )}
+                      >
+                        {item.count}
+                      </span>
+                    </div>
+
+                    {item.previewItems.length > 0 && (
+                      <ul className="flex flex-wrap gap-1.5 pt-1">
+                        {item.previewItems.map((line) => (
+                          <li
+                            key={line}
+                            className="rounded-md border border-border/80 bg-background/70 px-2 py-0.5 text-[11px] text-silver"
+                          >
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="flex justify-end pt-1">
+                      <GoldButton
+                        type="button"
+                        onClick={() => {
+                          if (item.targetSubTab && typeof window !== 'undefined') {
+                            sessionStorage.setItem('turx_admin_pending_subtab', item.targetSubTab)
+                            window.dispatchEvent(
+                              new CustomEvent('turx:admin-subtab', { detail: item.targetSubTab }),
+                            )
+                          }
+                          setAdminCenterOpen(false)
+                          onNavigate?.(item.targetTab)
+                        }}
+                        className="text-xs py-1.5 px-3 cursor-pointer"
+                      >
+                        İlgili Bölüme Git <ArrowRight className="size-3.5" />
+                      </GoldButton>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-border">
+              <GhostButton type="button" onClick={() => setAdminCenterOpen(false)} className="text-xs cursor-pointer">
+                Kapat
+              </GhostButton>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

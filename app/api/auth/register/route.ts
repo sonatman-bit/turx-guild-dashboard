@@ -38,6 +38,9 @@ export async function POST(request: Request) {
           },
         }
         store.users.push(account)
+        if (store.deletedUsers?.[username.toLowerCase()]) {
+          delete store.deletedUsers[username.toLowerCase()]
+        }
         return publicAccount(account)
       })
     })

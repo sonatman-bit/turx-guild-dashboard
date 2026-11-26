@@ -125,6 +125,7 @@ export type StoredGuildMessage = {
 
 export type GuildStore = {
   users: StoredAccount[]
+  deletedUsers?: Record<string, string>
   applications: StoredApplication[]
   polls: StoredPoll[]
   recruitmentNeeds: StoredRecruitNeed[]
@@ -159,6 +160,7 @@ const globalForStore = globalThis as unknown as {
 export function emptyStore(): GuildStore {
   return {
     users: [],
+    deletedUsers: {},
     applications: [],
     polls: [],
     recruitmentNeeds: [],
@@ -173,6 +175,8 @@ export function emptyStore(): GuildStore {
 
 function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStore {
   if (!data || typeof data !== 'object') return emptyStore()
+  const deletedUsers: Record<string, string> =
+    data.deletedUsers && typeof data.deletedUsers === 'object' ? { ...data.deletedUsers } : {}
   const rawUsers = Array.isArray(data.users) ? data.users : []
   const users = rawUsers.map((user) => {
     const profile = { ...(user.profile || {}) } as Record<string, unknown>
@@ -184,6 +188,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
   })
   return {
     users,
+    deletedUsers,
     applications: Array.isArray(data.applications) ? data.applications : [],
     polls: Array.isArray(data.polls) ? data.polls : [],
     recruitmentNeeds: Array.isArray(data.recruitmentNeeds) ? data.recruitmentNeeds : [],
@@ -318,10 +323,21 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
   const base = normalizeStore(incoming)
   const target = normalizeStore(current)
 
+  // Merge deleted-user tombstones so intentionally removed users are never resurrected from older snapshots
+  const deletedUsers: Record<string, string> = {
+    ...(base.deletedUsers || {}),
+    ...(target.deletedUsers || {}),
+  }
+
   // Merge users (prefer fuller profile/characters from either side, keep current role if promoted)
   const userMap = new Map<string, StoredAccount>()
   for (const u of base.users) {
-    if (u?.username) userMap.set(u.username.toLowerCase(), cloneStore({ ...emptyStore(), users: [u] }).users[0])
+    if (!u?.username) continue
+    const key = u.username.toLowerCase()
+    if (deletedUsers[key] && !target.users.some((tu) => tu?.username?.toLowerCase() === key)) {
+      continue
+    }
+    userMap.set(key, cloneStore({ ...emptyStore(), users: [u] }).users[0])
   }
   for (const u of target.users) {
     if (!u?.username) continue
@@ -420,6 +436,7 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
 
   return {
     users: [...userMap.values()],
+    deletedUsers,
     applications: mergedApplications,
     polls: [...pollMap.values()],
     recruitmentNeeds:
@@ -741,6 +758,9 @@ export function upsertMissingAccount(store: GuildStore, incoming: ImportableAcco
   const existing = store.users.find(
     (item) => item.username.toLowerCase() === username.toLowerCase() || item.email.toLowerCase() === email,
   )
+  if (!existing && store.deletedUsers?.[username.toLowerCase()]) {
+    return 'exists'
+  }
   if (existing) {
     let updated = false
     if (!existing.profile && incomingProfile) {

@@ -101,11 +101,15 @@ function DashboardShellInner() {
   const canAccessTab = useCallback(
     (id: TabId) => {
       if (id === 'admin') return canOpenAdmin
+      if (id === 'roster') return Boolean(user)
       const modKey = MODULE_TAB_MAP[id]
-      if (modKey) return canOpenAdmin || Boolean(publicModules[modKey])
+      if (modKey) {
+        if (id === 'roadmap') return canOpenAdmin || Boolean(publicModules.roadmap)
+        return Boolean(user) && (canOpenAdmin || Boolean(publicModules[modKey]))
+      }
       return true
     },
-    [canOpenAdmin, publicModules],
+    [user, canOpenAdmin, publicModules],
   )
 
   useEffect(() => {
@@ -144,8 +148,9 @@ function DashboardShellInner() {
     initialTabAppliedRef.current = true
     if (navigationLocked && id !== 'profile') {
       toast({
+        variant: 'error',
         title: 'Profil kilidi aktif',
-        description: 'Profil bilgilerini ve en az bir Main karakteri kaydetmeden diğer sekmelere geçilemez.',
+        description: '5 adımlı profil ve WoW Armory (TURX) doğrulamasını tamamlamadan diğer sekmelere geçilemez.',
       })
       setTab('profile')
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -153,8 +158,11 @@ function DashboardShellInner() {
     }
     if (!canAccessTab(id)) {
       toast({
-        title: 'Yetki yok',
-        description: 'Bu bölüm şu an yalnızca Guild Master ve Görevli (Officer) deneme yayınına açıktır.',
+        variant: 'error',
+        title: !user ? 'Üye girişi gerekli' : 'Yetki yok',
+        description: !user
+          ? 'Bu bölüm yalnızca TURX lonca üyelerine açıktır. Lütfen giriş yapın veya kayıt olun.'
+          : 'Bu bölüm şu an yalnızca Guild Master ve Görevli (Officer) deneme yayınına açıktır.',
       })
       return
     }
@@ -191,7 +199,7 @@ function DashboardShellInner() {
             {tab === 'loot' && canAccessTab('loot') && <LootDistributionView />}
             {tab === 'attendance' && canAccessTab('attendance') && <AttendanceTrackerView />}
             {tab === 'roadmap' && canAccessTab('roadmap') && <RoadmapView />}
-            {tab === 'roster' && <RosterView />}
+            {tab === 'roster' && canAccessTab('roster') && <RosterView />}
             {tab === 'applications' && <RecruitView />}
             {tab === 'bank' && <BankView />}
             {tab === 'strategy' && <StrategyView />}

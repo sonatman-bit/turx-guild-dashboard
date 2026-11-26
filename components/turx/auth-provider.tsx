@@ -983,13 +983,21 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
             )}
 
             <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
+              {isSignup && (
+                <div className="rounded-lg border border-gold/35 bg-gold/10 px-3 py-2.5 text-xs leading-relaxed text-silver">
+                  <strong className="text-gold">WoW Armory (TURX) Doğrulaması:</strong> Hesap oluşturduktan sonra
+                  siteye tam erişim açılmadan önce aktif <strong className="text-foreground">Main</strong> karakterinizin
+                  WoW Forever Armory üzerinde <strong className="text-gold">TURX</strong> guildinde olduğu doğrulanacaktır.
+                </div>
+              )}
+
               <Field label="Kullanıcı Adı (Siteye Özel)">
-                <input name="username" required className={inputClass} placeholder="Örn: Sonat" autoComplete={isSignup ? 'username' : 'username'} />
+                <input name="username" required className={inputClass} placeholder="Kullanıcı adı" autoComplete="username" />
               </Field>
 
               {isSignup && (
                 <Field label="E-posta Adresi">
-                  <input name="email" type="email" required className={inputClass} placeholder="ornek@mail.com" autoComplete="email" />
+                  <input name="email" type="email" required className={inputClass} placeholder="eposta@ornek.com" autoComplete="email" />
                 </Field>
               )}
 

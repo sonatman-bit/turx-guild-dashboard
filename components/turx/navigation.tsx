@@ -75,10 +75,18 @@ function NavList({
   const { user } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+  const isLoggedIn = mounted && Boolean(user)
   const showAdmin = mounted && canAccessAdminPanel(user?.role)
   const items = NAV_ITEMS.filter((item) => {
     if (item.id === 'admin') return showAdmin
-    if (item.moduleFlag) return showAdmin || Boolean(publicModules[item.moduleFlag])
+    if (item.id === 'roster') return isLoggedIn
+    if (item.moduleFlag) {
+      if (item.id === 'roadmap') {
+        return showAdmin || Boolean(publicModules.roadmap)
+      }
+      // Raid Kayıt, Loot Dağıtımı, Devam Takibi: yalnızca kayıtlı kullanıcılara görünür
+      return isLoggedIn && (showAdmin || Boolean(publicModules[item.moduleFlag]))
+    }
     return true
   })
 
@@ -91,7 +99,7 @@ function NavList({
             Profil kilidi
           </p>
           <p className="mt-1 text-muted-foreground">
-            Profil bilgileri ve en az bir Main karakter kaydedilene kadar menü kapalı.
+            5 adımlı profil ve WoW Armory (TURX) doğrulaması tamamlanana kadar menü kapalı.
           </p>
         </div>
       )}

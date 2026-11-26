@@ -6,11 +6,18 @@ import {
   oauthConfigured,
   publicLinks,
 } from '@/lib/account-links'
+import { syncMainCharacterArmory } from '@/lib/armory-account'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { normalizeAvailability } from '@/lib/availability'
-import { hasRequiredOnboarding, type OnboardingCharacter, type OnboardingProfile } from '@/lib/profile-gate'
+import {
+  hasAvailabilityRequirement,
+  hasRequiredOnboarding,
+  type OnboardingCharacter,
+  type OnboardingProfile,
+} from '@/lib/profile-gate'
 import { sanitizeStaffInterests } from '@/lib/staff-roles'
 import { blobConfigured, loadGuildStore, mutateGuildStore } from '@/lib/turx-store'
+import type { ArmoryVerificationResult } from '@/lib/wow-armory'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +37,22 @@ export async function GET(request: Request) {
       found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
     }
     if (!found) return json({ error: 'Hesap bulunamadı.' }, 404)
+
+    let characters = (found.characters || []) as OnboardingCharacter[]
+    const mainChar = characters.find((c) => c.isMain && c.firstName?.trim() && c.lastName?.trim())
+    if (mainChar && mainChar.armoryVerified !== true) {
+      const synced = await syncMainCharacterArmory(characters, characters)
+      if (synced.changed && synced.armoryResult?.ok) {
+        characters = synced.characters
+        await mutateGuildStore((s) => {
+          const target = s.users.find((u) => u.username.toLowerCase() === session.username.toLowerCase())
+          if (target) {
+            target.characters = synced.characters
+          }
+        }).catch(() => undefined)
+      }
+    }
+
     const links = publicLinks(found.links)
     const stored = (found.profile || {}) as Record<string, unknown>
     const storedTag = typeof stored.discordTag === 'string' ? stored.discordTag : ''
@@ -39,9 +62,17 @@ export async function GET(request: Request) {
     const kickLogin = typeof stored.kickLogin === 'string' ? stored.kickLogin : ''
     const youtubeHandle = typeof stored.youtubeHandle === 'string' ? stored.youtubeHandle : ''
     const showRealNameInRoster = stored.showRealNameInRoster !== false
+    const skipRaidsForNow = stored.skipRaidsForNow === true
     const profile = {
       ...stored,
       availability: normalizeAvailability(stored.availability),
+      skipRaidsForNow,
+      availabilityConfirmed:
+        stored.availabilityConfirmed === true ||
+        hasAvailabilityRequirement({
+          skipRaidsForNow,
+          availability: normalizeAvailability(stored.availability),
+        }),
       showRealNameInRoster,
       discordConnected: links.discord.connected || Boolean(storedTag),
       discordTag: links.discord.username || storedTag,
@@ -53,7 +84,6 @@ export async function GET(request: Request) {
       kickLogin,
       youtubeHandle,
     } as unknown as OnboardingProfile
-    const characters = (found.characters || []) as OnboardingCharacter[]
     return json({
       profile,
       characters,
@@ -77,11 +107,34 @@ export async function PUT(request: Request) {
       profile?: OnboardingProfile
       characters?: OnboardingCharacter[]
       staffInterests?: unknown
+      forceArmoryCheck?: boolean
     }
     const profile = { ...(body.profile || {}) } as Record<string, unknown>
     profile.availability = normalizeAvailability(profile.availability)
-    const characters = Array.isArray(body.characters) ? body.characters : []
+    profile.skipRaidsForNow = profile.skipRaidsForNow === true
+    profile.availabilityConfirmed =
+      profile.availabilityConfirmed === true ||
+      hasAvailabilityRequirement(profile as unknown as OnboardingProfile)
+
+    const incomingCharacters = Array.isArray(body.characters) ? body.characters : []
     const staffInterests = sanitizeStaffInterests(body.staffInterests)
+
+    // Pre-read current user characters to verify Main character on WoW Forever Armory outside store lock
+    const currentStore = await loadGuildStore()
+    const currentUser = currentStore.users.find(
+      (item) => item.username.toLowerCase() === session.username.toLowerCase(),
+    )
+    if (!currentUser) {
+      return json({ error: 'Hesap bulunamadı.' }, 404)
+    }
+
+    const syncedArmory = await syncMainCharacterArmory(
+      incomingCharacters,
+      currentUser.characters || [],
+      { forceCheck: Boolean(body.forceArmoryCheck) },
+    )
+    const verifiedCharacters = syncedArmory.characters
+    const armoryResult: ArmoryVerificationResult | null = syncedArmory.armoryResult
 
     await mutateGuildStore((store) => {
       const found = store.users.find((item) => item.username.toLowerCase() === session.username.toLowerCase())
@@ -127,16 +180,28 @@ export async function PUT(request: Request) {
       profile.twitchConnected = Boolean(twitchLogin)
       profile.kickLogin = normalizeKickSlug(String(profile.kickLogin || ''))
       profile.youtubeHandle = normalizeYoutubeHandle(String(profile.youtubeHandle || ''))
-      const profileComplete = hasRequiredOnboarding(profile as OnboardingProfile, characters)
+
+      const profileComplete = hasRequiredOnboarding(
+        profile as unknown as OnboardingProfile,
+        verifiedCharacters,
+      )
       found.profile = profile
-      found.characters = characters
+      found.characters = verifiedCharacters
       found.staffInterests = staffInterests
       found.onboardingComplete = profileComplete
     })
 
-    const profileComplete = hasRequiredOnboarding(profile as OnboardingProfile, characters)
+    const profileComplete = hasRequiredOnboarding(
+      profile as unknown as OnboardingProfile,
+      verifiedCharacters,
+    )
 
-    return json({ ok: true, profileComplete })
+    return json({
+      ok: true,
+      profileComplete,
+      characters: verifiedCharacters,
+      armoryResult,
+    })
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_FOUND') {
       return json({ error: 'Hesap bulunamadı.' }, 404)

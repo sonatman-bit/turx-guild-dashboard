@@ -246,6 +246,46 @@ export async function GET(request: Request) {
       )
     }
 
+    // External (non-registered) visitors may only view Road Map settings when Road Map is public
+    if (!caller.account) {
+      if (!rs.settings.publicModules.roadmap) {
+        return NextResponse.json(
+          {
+            locked: true,
+            publicModules: rs.settings.publicModules,
+            isGm: false,
+            isOfficer: false,
+          },
+          { headers: { 'Cache-Control': 'no-store' } },
+        )
+      }
+      return NextResponse.json(
+        {
+          locked: false,
+          publicModules: rs.settings.publicModules,
+          isGm: false,
+          isOfficer: false,
+          activePhaseId: rs.settings.activePhaseId,
+          raidSystem: {
+            ...rs,
+            events: [],
+            lootItems: [],
+            boeLogs: [],
+            bopRecipes: [],
+            adjustments: [],
+            roadmapAcks: rs.roadmapAcks.map(() => ({
+              username: '',
+              characterName: '',
+              acknowledgedAt: '',
+            })),
+          },
+          attendanceLeaderboard: [],
+          guildMembers: [],
+        },
+        { headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+
     const phaseId = requestedPhase || rs.settings.activePhaseId
     const attendanceLeaderboard = computeAttendanceLeaderboard(store, phaseId)
     const guildMembers = extractGuildMainMembers(store)

@@ -17,26 +17,101 @@ type StoredCharacter = {
   firstName?: string
   lastName?: string
   wowClass?: string
+  role?: string
+  isMain?: boolean
 }
 
 function isWowClass(value: string | undefined): value is WowClass {
   return Boolean(value && value in CLASS_COLORS)
 }
 
+function buildPublicSummary(users: Awaited<ReturnType<typeof loadGuildStore>>['users']) {
+  const wowClasses = Object.keys(CLASS_COLORS) as WowClass[]
+  const mainClasses = Object.fromEntries(wowClasses.map((c) => [c, 0])) as Record<WowClass, number>
+  const altClasses = Object.fromEntries(wowClasses.map((c) => [c, 0])) as Record<WowClass, number>
+  const players = new Set<string>()
+  let totalCharacters = 0
+  let mainCount = 0
+  let altCount = 0
+  let tank = 0
+  let healer = 0
+  let dps = 0
+
+  for (const account of users) {
+    const rawProfile = (account.profile || {}) as Record<string, unknown>
+    const showRealName = rawProfile.showRealNameInRoster !== false
+    const rawFullName = typeof rawProfile.fullName === 'string' && rawProfile.fullName.trim()
+      ? rawProfile.fullName.trim()
+      : ''
+    const displayRealName = showRealName ? (rawFullName || account.username) : ''
+    const playerKey = displayRealName || account.username
+
+    const chars = Array.isArray(account.characters) ? (account.characters as StoredCharacter[]) : []
+    for (const character of chars) {
+      if (!character.firstName?.trim() || !character.lastName?.trim()) continue
+      players.add(playerKey)
+      totalCharacters += 1
+      const wowClass: WowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
+      if (character.isMain) {
+        mainCount += 1
+        mainClasses[wowClass] += 1
+        const role = (character.role || 'MELEE').toUpperCase()
+        if (role === 'TANK') tank += 1
+        else if (role === 'HEALER') healer += 1
+        else dps += 1
+      } else {
+        altCount += 1
+        altClasses[wowClass] += 1
+      }
+    }
+  }
+
+  return {
+    totalPlayers: players.size,
+    totalCharacters,
+    mainCount,
+    altCount,
+    mainRoles: { tank, healer, dps },
+    mainClasses,
+    altClasses,
+  }
+}
+
 export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const summaryOnly = searchParams.get('summary') === '1'
+
     if (!blobConfigured()) {
-      return NextResponse.json({ members: [] })
+      return summaryOnly
+        ? NextResponse.json({ summary: buildPublicSummary([]) })
+        : NextResponse.json({ members: [] })
     }
-    const session = sessionFromRequest(request)
+
     const store = await loadGuildStore()
-    const isGmOrOfficer = session
-      ? store.users.some(
-          (u) =>
-            u.username.toLowerCase() === session.username.toLowerCase() &&
-            (isGuildMasterEmail(u.email) || u.role === 'Officer' || u.role === 'Guild Master'),
-        )
-      : false
+
+    // Public summary for Guild Başvuru page (no member PII exposed)
+    if (summaryOnly) {
+      return NextResponse.json(
+        { summary: buildPublicSummary(store.users) },
+        { headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+
+    // Full Guild Kadrosu is restricted to registered/logged-in members
+    const session = sessionFromRequest(request)
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Guild Kadrosu yalnızca kayıtlı lonca üyelerine açıktır.', members: [] },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+
+    const isGmOrOfficer = store.users.some(
+      (u) =>
+        u.username.toLowerCase() === session.username.toLowerCase() &&
+        (isGuildMasterEmail(u.email) || u.role === 'Officer' || u.role === 'Görevli' || u.role === 'Guild Master'),
+    )
 
     const lookup: Array<{ firstName: string; lastName: string; wowClass: WowClass }> = []
 

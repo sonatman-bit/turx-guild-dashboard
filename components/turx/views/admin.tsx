@@ -29,8 +29,13 @@ import {
   Paperclip,
   ExternalLink,
   Sparkles,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react'
 import { useAuth } from '../auth-provider'
+import { WowArmoryLogo } from '../wow-armory-badge'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { DEFAULT_RECRUITMENT_MATRIX, RECRUIT_NEEDS, type RecruitClassNeed, type RecruitNeed } from '@/lib/recruitment'
@@ -65,7 +70,35 @@ interface MemberAttendanceDto {
   spec: string
   role: 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
   hasConfigured: boolean
+  skipRaidsForNow?: boolean
   availability: Record<DayKey, { status: 'available' | 'maybe' | 'busy'; startTime: string; endTime: string }>
+}
+
+interface ArmoryAuditRow {
+  username: string
+  email: string
+  role: string
+  isProtectedGm: boolean
+  mainCharName: string
+  armoryUrl: string | null
+  status: string
+  guildName: string | null
+  level: number | null
+  inTurxGuild: boolean
+  matchedCharName: string | null
+  message: string
+}
+
+interface ArmoryAuditReport {
+  checkedAt: string
+  summary: {
+    total: number
+    verifiedTurx: number
+    nonTurxRemovable: number
+    armoryUnavailable: number
+    protectedGm: number
+  }
+  users: ArmoryAuditRow[]
 }
 
 const RANK_STYLES: Record<string, string> = {
@@ -176,6 +209,9 @@ export function AdminDashboardView() {
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
   const [members, setMembers] = useState<MemberItem[]>([])
+  const [armoryAudit, setArmoryAudit] = useState<ArmoryAuditReport | null>(null)
+  const [armoryAuditLoading, setArmoryAuditLoading] = useState(false)
+  const [armoryPruneBusy, setArmoryPruneBusy] = useState(false)
 
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
   const [applications, setApplications] = useState<AdminApplication[]>([])
@@ -374,20 +410,151 @@ export function AdminDashboardView() {
       })
   }
 
-  const handleKickMember = (memberId: string, memberAccount: string, currentRank: GuildRank) => {
+  const handleKickMember = async (memberId: string, memberAccount: string, currentRank: GuildRank) => {
     if (currentRank === 'Guild Master') {
       toast({
+        variant: 'error',
         title: '🔒 Güvenlik Koruması',
-        description: 'Guild Master (GM) londan çıkarılamaz!',
+        description: 'Guild Master (GM) loncadan çıkarılamaz!',
       })
       return
     }
 
-    setMembers(prev => prev.filter(m => m.id !== memberId))
-    toast({
-      title: 'Hesap Loncadan Çıkarıldı',
-      description: `${memberAccount} hesabı lonca kadrosundan kaldırıldı.`,
-    })
+    if (!confirm(`"${memberAccount}" kullanıcısını kullanıcı listesinden kalıcı olarak silmek istediğinize emin misiniz?`)) {
+      return
+    }
+
+    const previous = members
+    setMembers((prev) => prev.filter((m) => m.id !== memberId))
+
+    try {
+      const res = await fetch('/api/admin/armory-audit', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ action: 'kick_user', username: memberAccount }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        setMembers(previous)
+        toast({
+          variant: 'error',
+          title: 'Silinemedi',
+          description: data.error || 'Kullanıcı silinirken bir hata oluştu.',
+        })
+        return
+      }
+      setArmoryAudit((prev) =>
+        prev
+          ? {
+              ...prev,
+              users: prev.users.filter((u) => u.username.toLowerCase() !== memberAccount.toLowerCase()),
+            }
+          : null,
+      )
+      toast({
+        title: 'Hesap Loncadan Çıkarıldı',
+        description: `${memberAccount} hesabı kullanıcı listesinden kalıcı olarak silindi.`,
+      })
+    } catch {
+      setMembers(previous)
+      toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    }
+  }
+
+  const handleRunArmoryAudit = async () => {
+    setArmoryAuditLoading(true)
+    try {
+      const res = await fetch('/api/admin/armory-audit', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        cache: 'no-store',
+      })
+      const data = (await res.json().catch(() => ({}))) as Partial<ArmoryAuditReport> & { error?: string }
+      if (!res.ok || !data.users || !data.summary) {
+        toast({
+          variant: 'error',
+          title: 'WoW Armory Taraması Başarısız',
+          description: data.error || 'Kullanıcılar kontrol edilemedi.',
+        })
+        return
+      }
+      setArmoryAudit({
+        checkedAt: data.checkedAt || new Date().toISOString(),
+        summary: data.summary,
+        users: data.users,
+      })
+      toast({
+        title: 'WoW Armory Taraması Tamamlandı',
+        description: `${data.summary.verifiedTurx} TURX onaylı · ${data.summary.nonTurxRemovable} TURX dışı kullanıcı bulundu.`,
+      })
+    } catch {
+      toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Armory denetimi tamamlanamadı.' })
+    } finally {
+      setArmoryAuditLoading(false)
+    }
+  }
+
+  const handlePruneNonTurx = async () => {
+    const removableCount = armoryAudit?.summary.nonTurxRemovable
+    const msg =
+      typeof removableCount === 'number'
+        ? `WoW Forever Armory (EU) kontrolünde TURX guild listesinde görünmeyen ${removableCount} kullanıcı kalıcı olarak silinecek ve çıkarılacak. Onaylıyor musunuz?`
+        : 'Tüm aktif kullanıcılar WoW Forever Armory üzerinden kontrol edilecek ve TURX guild listesinde görünmeyenler kullanıcı listesinden kalıcı olarak silinecek. Devam edilsin mi?'
+    if (!confirm(msg)) return
+
+    setArmoryPruneBusy(true)
+    try {
+      const res = await fetch('/api/admin/armory-audit', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ action: 'prune_non_turx' }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        removedCount?: number
+        removedUsers?: ArmoryAuditRow[]
+        keptCount?: number
+        skippedUnavailableCount?: number
+        auditRows?: ArmoryAuditRow[]
+        checkedAt?: string
+        error?: string
+      }
+      if (!res.ok || !data.ok) {
+        toast({
+          variant: 'error',
+          title: 'Temizlik Başarısız',
+          description: data.error || 'TURX dışı kullanıcılar silinemedi.',
+        })
+        return
+      }
+
+      const removedSet = new Set((data.removedUsers || []).map((u) => u.username.toLowerCase()))
+      setMembers((prev) => prev.filter((m) => !removedSet.has(m.accountName.toLowerCase())))
+      if (Array.isArray(data.auditRows)) {
+        const rows = data.auditRows
+        setArmoryAudit({
+          checkedAt: data.checkedAt || new Date().toISOString(),
+          summary: {
+            total: rows.length,
+            verifiedTurx: rows.filter((r) => r.inTurxGuild).length,
+            nonTurxRemovable: rows.filter((r) => !r.inTurxGuild && !r.isProtectedGm && r.status !== 'armory_unavailable').length,
+            armoryUnavailable: rows.filter((r) => r.status === 'armory_unavailable').length,
+            protectedGm: rows.filter((r) => r.isProtectedGm).length,
+          },
+          users: rows,
+        })
+      }
+      toast({
+        title: 'WoW Armory Temizliği Tamamlandı! 🛡️',
+        description: `${data.removedCount ?? 0} TURX dışı kullanıcı silindi. ${data.keptCount ?? 0} onaylı üye kaldı.`,
+      })
+    } catch {
+      toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    } finally {
+      setArmoryPruneBusy(false)
+    }
   }
 
   const handleAppAction = async (appId: string, status: 'APPROVED' | 'REJECTED') => {
@@ -782,6 +949,149 @@ export function AdminDashboardView() {
 
       {/* SEKME 1: ÜYE & RÜTBE YÖNETİMİ (Hesap ve Ana Karakter Odaklı) */}
       {activeTab === 'members' && (
+        <div className="flex flex-col gap-6">
+          {/* WoW Forever Armory (TURX) Üye Kontrol & Temizlik Paneli */}
+          <Panel className="flex flex-col gap-4 border-neon/35 bg-gradient-to-br from-[#0b1f34] via-card to-card">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-3">
+              <div className="flex items-center gap-3">
+                <WowArmoryLogo />
+                <div>
+                  <h3 className="font-display text-base font-bold text-gold">
+                    WoW Forever Armory — TURX Guild Kontrolü & Temizlik
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Tüm aktif kullanıcıların karakterlerini WoW Forever Armory (EU) üzerinden denetler ve TURX guild
+                    listesinde görünmeyen kullanıcıları listeden kalıcı olarak siler.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <GhostButton
+                  type="button"
+                  onClick={() => void handleRunArmoryAudit()}
+                  disabled={armoryAuditLoading || armoryPruneBusy}
+                  className="text-xs py-1.5 px-3 cursor-pointer"
+                >
+                  {armoryAuditLoading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="size-3.5" />
+                  )}
+                  {armoryAuditLoading ? 'Armory Taranıyor...' : "Tüm Üyeleri Armory'den Tara"}
+                </GhostButton>
+                <GoldButton
+                  type="button"
+                  onClick={() => void handlePruneNonTurx()}
+                  disabled={armoryAuditLoading || armoryPruneBusy}
+                  className="text-xs py-1.5 px-3 cursor-pointer"
+                >
+                  {armoryPruneBusy ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5" />
+                  )}
+                  {armoryPruneBusy
+                    ? 'Temizleniyor...'
+                    : `TURX Dışındakileri Sil ve Çıkar${armoryAudit ? ` (${armoryAudit.summary.nonTurxRemovable})` : ''}`}
+                </GoldButton>
+              </div>
+            </div>
+
+            {armoryAudit && (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  <div className="rounded-lg border border-border bg-background/60 p-2.5">
+                    <span className="text-muted-foreground block">Taranan Hesap</span>
+                    <strong className="font-display text-lg text-foreground tabular-nums">{armoryAudit.summary.total}</strong>
+                  </div>
+                  <div className="rounded-lg border border-success/40 bg-success/10 p-2.5">
+                    <span className="text-emerald-200 block">TURX Onaylı</span>
+                    <strong className="font-display text-lg text-success tabular-nums">{armoryAudit.summary.verifiedTurx}</strong>
+                  </div>
+                  <div className="rounded-lg border border-red-500/50 bg-red-500/10 p-2.5">
+                    <span className="text-red-200 block">TURX Dışı (Çıkarılacak)</span>
+                    <strong className="font-display text-lg text-red-400 tabular-nums">{armoryAudit.summary.nonTurxRemovable}</strong>
+                  </div>
+                  <div className="rounded-lg border border-gold/40 bg-gold/10 p-2.5">
+                    <span className="text-gold/90 block">Armory Erişilemeyen</span>
+                    <strong className="font-display text-lg text-gold tabular-nums">{armoryAudit.summary.armoryUnavailable}</strong>
+                  </div>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-border bg-background/50">
+                  <table className="w-full text-left text-xs">
+                    <thead className="sticky top-0 bg-card border-b border-border text-[11px] uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2">Hesap</th>
+                        <th className="px-3 py-2">Main Karakter</th>
+                        <th className="px-3 py-2">Armory Guild</th>
+                        <th className="px-3 py-2">Durum</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {armoryAudit.users.map((row) => (
+                        <tr key={row.username} className={cn(!row.inTurxGuild && !row.isProtectedGm && 'bg-red-500/[0.05]')}>
+                          <td className="px-3 py-2 font-semibold text-silver">{row.username}</td>
+                          <td className="px-3 py-2">
+                            {row.armoryUrl ? (
+                              <a
+                                href={row.armoryUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-neon hover:underline inline-flex items-center gap-1"
+                              >
+                                {row.mainCharName}
+                                {row.level ? ` (Lv ${row.level})` : ''}
+                                <ExternalLink className="size-3" />
+                              </a>
+                            ) : (
+                              <span className="text-muted-foreground">{row.mainCharName}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono">
+                            {row.guildName ? (
+                              <span className={row.inTurxGuild ? 'text-success font-bold' : 'text-red-300'}>
+                                &lt;{row.guildName}&gt;
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {row.inTurxGuild ? (
+                              <Badge className="border-success/50 bg-success/15 text-success text-[10px]">
+                                <ShieldCheck className="size-3 mr-1" /> TURX Onaylı
+                              </Badge>
+                            ) : row.isProtectedGm ? (
+                              <Badge className="border-gold/50 bg-gold/15 text-gold text-[10px]">
+                                GM Korumalı
+                              </Badge>
+                            ) : row.status === 'armory_unavailable' ? (
+                              <Badge className="border-amber-400/50 bg-amber-400/15 text-amber-300 text-[10px]">
+                                <AlertTriangle className="size-3 mr-1" /> Yanıt Yok (Atlandı)
+                              </Badge>
+                            ) : (
+                              <Badge className="border-red-500/60 bg-red-500/15 text-red-300 text-[10px]">
+                                <ShieldAlert className="size-3 mr-1" />
+                                {row.status === 'wrong_guild'
+                                  ? 'Farklı Guild'
+                                  : row.status === 'no_guild'
+                                    ? 'Guildsiz'
+                                    : row.status === 'no_character'
+                                      ? 'Karakter Yok'
+                                      : "Armory'de Yok"}
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </Panel>
+
         <Panel className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <PanelTitle icon={Users}>Hesap & Rütbe Matrisi</PanelTitle>
@@ -858,6 +1168,7 @@ export function AdminDashboardView() {
             </table>
           </div>
         </Panel>
+        </div>
       )}
 
       {/* SEKME 2: DETAYLI BAŞVURU YÖNETİMİ (Officer & GM Özel Görünüm) */}
@@ -1255,10 +1566,15 @@ export function AdminDashboardView() {
                             <span className="text-xs text-silver/80">
                               {m.fullName} <span className="text-muted-foreground font-mono">(@{m.username})</span>
                             </span>
-                            <div className="mt-1">
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
                               <Badge className={cn("text-[10px] py-0 px-1.5", RANK_STYLES[m.guildRank])}>
                                 {m.guildRank}
                               </Badge>
+                              {m.skipRaidsForNow && (
+                                <Badge className="text-[10px] py-0 px-1.5 border-gold/40 bg-gold/10 text-gold">
+                                  Raid Dışı
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </td>

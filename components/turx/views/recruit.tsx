@@ -7,6 +7,7 @@ import { DEFAULT_RECRUITMENT_MATRIX, type RecruitClassNeed } from '@/lib/recruit
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
+import { emptyRosterSummary, RosterSummarySection, type RosterSummaryStats } from '../roster-summary'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
@@ -78,6 +79,7 @@ export function RecruitView() {
 
   const [applications, setApplications] = useState<ApplicationItem[]>([])
   const [matrix, setMatrix] = useState<RecruitClassNeed[]>(DEFAULT_RECRUITMENT_MATRIX)
+  const [rosterSummary, setRosterSummary] = useState<RosterSummaryStats>(() => emptyRosterSummary())
 
   const loadApplications = async () => {
     const response = await fetch('/api/applications')
@@ -95,6 +97,14 @@ export function RecruitView() {
         const data = (await response.json().catch(() => ({}))) as { matrix?: RecruitClassNeed[] }
         if (response.ok && Array.isArray(data.matrix) && data.matrix.length > 0) {
           setMatrix(data.matrix)
+        }
+      })
+      .catch(() => undefined)
+    fetch('/api/roster?summary=1', { cache: 'no-store' })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { summary?: RosterSummaryStats }
+        if (response.ok && data.summary) {
+          setRosterSummary(data.summary)
         }
       })
       .catch(() => undefined)
@@ -221,6 +231,9 @@ export function RecruitView() {
           </div>
         </div>
       </div>
+
+      {/* Güncel Guild Kadrosu Özeti */}
+      <RosterSummarySection stats={rosterSummary} />
 
       {/* İhtiyaç Matrisi */}
       <Panel>
@@ -412,16 +425,16 @@ export function RecruitView() {
         <form key={presetClass} className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Karakter Adı">
-              <input name="charName" required className={inputClass} placeholder="Örn: Waffle" />
+              <input name="charName" required className={inputClass} placeholder="Karakter Adı" />
             </Field>
             <Field label="Soyadı / Unvan">
-              <input name="charSurname" required className={inputClass} placeholder="Örn: Theone" />
+              <input name="charSurname" required className={inputClass} placeholder="Karakter Soyadı" />
             </Field>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Discord Kullanıcı Adı">
-              <input name="discord" required className={inputClass} placeholder="Waffle (Sonat)" />
+              <input name="discord" required className={inputClass} placeholder="Discord kullanıcı adı" />
             </Field>
             <Field label="Irk (Race)">
               <select 
@@ -466,7 +479,7 @@ export function RecruitView() {
           </div>
 
           <Field label="WarcraftLogs Profil Linki (İsteğe Bağlı)" hint="Önceki Classic / SoD loglarınız">
-            <input name="logs" type="url" className={inputClass} placeholder="https://waffle.com/" />
+            <input name="logs" type="url" className={inputClass} placeholder="https://www.warcraftlogs.com/character/..." />
           </Field>
           
           <Field label="World of Warcraft Tecrübesi ve Eklemek İstedikleriniz">

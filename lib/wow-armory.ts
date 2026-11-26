@@ -2,14 +2,43 @@ import type { WowClass } from '@/lib/guild-data'
 
 export const FOREVER_ARMORY_ORIGIN = 'https://worldofwarcraft.blizzard.com'
 export const FOREVER_ARMORY_REGION = 'eu'
+export const TURX_GUILD_NAME = 'TURX'
+export const TURX_GUILD_SLUG = 'turx'
 
 export type ArmorySnapshot = {
   url: string
   slug: string
+  found: boolean
   level: number | null
   avatarUrl: string | null
   renderUrl: string | null
   classIconUrl: string
+  guildName: string | null
+  guildSlug: string | null
+  inTurxGuild: boolean
+  characterClass: string | null
+  characterRace: string | null
+}
+
+export type ArmoryVerificationStatus =
+  | 'verified_turx'
+  | 'wrong_guild'
+  | 'no_guild'
+  | 'not_found'
+  | 'armory_unavailable'
+
+export type ArmoryVerificationResult = {
+  status: ArmoryVerificationStatus
+  ok: boolean
+  url: string
+  slug: string
+  level: number | null
+  guildName: string | null
+  guildSlug: string | null
+  characterClass: string | null
+  characterRace: string | null
+  avatarUrl: string | null
+  message: string
 }
 
 const CLASS_ICON_SLUG: Record<WowClass, string> = {
@@ -25,7 +54,7 @@ const CLASS_ICON_SLUG: Record<WowClass, string> = {
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000
-const FETCH_TIMEOUT_MS = 6000
+const FETCH_TIMEOUT_MS = 8000
 const FETCH_CONCURRENCY = 4
 
 type CacheEntry = { expires: number; snapshot: ArmorySnapshot | null }
@@ -44,14 +73,26 @@ export function classIconUrl(wowClass: WowClass) {
   return `https://render.worldofwarcraft.com/us/icons/56/classicon_${CLASS_ICON_SLUG[wowClass]}.jpg`
 }
 
+export function isTurxGuildMatch(guildName?: string | null, guildSlug?: string | null) {
+  const slug = (guildSlug || '').trim().toLowerCase()
+  const name = (guildName || '').trim().toUpperCase()
+  return slug === TURX_GUILD_SLUG || name === TURX_GUILD_NAME
+}
+
 export function emptyArmory(firstName: string, lastName: string, wowClass: WowClass): ArmorySnapshot {
   return {
     url: foreverArmoryUrl(firstName, lastName),
     slug: foreverArmorySlug(firstName, lastName),
+    found: false,
     level: null,
     avatarUrl: null,
     renderUrl: null,
     classIconUrl: classIconUrl(wowClass),
+    guildName: null,
+    guildSlug: null,
+    inTurxGuild: false,
+    characterClass: null,
+    characterRace: null,
   }
 }
 
@@ -60,6 +101,18 @@ type CharacterState = {
     level?: number
     avatar?: { url?: string }
     media?: Record<string, { url?: string } | undefined>
+    guild?: {
+      name?: string
+      slug?: string
+    } | null
+    class?: {
+      name?: string
+      slug?: string
+    } | null
+    race?: {
+      name?: string
+      slug?: string
+    } | null
   }
 }
 
@@ -93,7 +146,12 @@ function extractJsonObject(source: string, start: number) {
   return null
 }
 
-export function parseForeverCharacterHtml(html: string): Pick<ArmorySnapshot, 'level' | 'avatarUrl' | 'renderUrl'> | null {
+export function parseForeverCharacterHtml(
+  html: string,
+): Pick<
+  ArmorySnapshot,
+  'found' | 'level' | 'avatarUrl' | 'renderUrl' | 'guildName' | 'guildSlug' | 'inTurxGuild' | 'characterClass' | 'characterRace'
+> | null {
   const marker = 'var characterProfileInitialState = '
   const markerAt = html.indexOf(marker)
   const jsonStart = markerAt >= 0 ? html.indexOf('{', markerAt) : html.indexOf('{"character":')
@@ -105,52 +163,216 @@ export function parseForeverCharacterHtml(html: string): Pick<ArmorySnapshot, 'l
     const character = data.character
     if (!character) return null
     const media = character.media || {}
+    const guildName = typeof character.guild?.name === 'string' && character.guild.name.trim()
+      ? character.guild.name.trim()
+      : null
+    const guildSlug = typeof character.guild?.slug === 'string' && character.guild.slug.trim()
+      ? character.guild.slug.trim().toLowerCase()
+      : null
     return {
+      found: true,
       level: typeof character.level === 'number' ? character.level : null,
       avatarUrl: media.avatar?.url || character.avatar?.url || media['avatar-sd']?.url || null,
       renderUrl: media['main-raw']?.url || media['main-sd-raw']?.url || null,
+      guildName,
+      guildSlug,
+      inTurxGuild: isTurxGuildMatch(guildName, guildSlug),
+      characterClass: typeof character.class?.name === 'string' ? character.class.name : null,
+      characterRace: typeof character.race?.name === 'string' ? character.race.name : null,
     }
   } catch {
     return null
   }
 }
 
-async function fetchArmoryPage(url: string) {
+async function fetchArmoryPage(url: string, bypassCache = false): Promise<{ status: number; html: string | null }> {
   const response = await fetch(url, {
-    cache: 'force-cache',
+    cache: bypassCache ? 'no-store' : 'force-cache',
     headers: {
       Accept: 'text/html',
       'User-Agent': 'TURX-Guild-Dashboard/1.0 (Forever Armory roster)',
     },
-    next: { revalidate: 900 },
+    ...(bypassCache ? {} : { next: { revalidate: 900 } }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
-  if (!response.ok) return null
-  return response.text()
+  if (!response.ok) return { status: response.status, html: null }
+  return { status: response.status, html: await response.text() }
 }
 
-export async function loadArmorySnapshot(firstName: string, lastName: string, wowClass: WowClass): Promise<ArmorySnapshot> {
+export async function loadArmorySnapshot(
+  firstName: string,
+  lastName: string,
+  wowClass: WowClass,
+  options?: { bypassCache?: boolean },
+): Promise<ArmorySnapshot> {
   const base = emptyArmory(firstName, lastName, wowClass)
+  const bypassCache = Boolean(options?.bypassCache)
   const cached = memoryCache.get(base.slug)
-  if (cached && cached.expires > Date.now()) {
+  if (!bypassCache && cached && cached.expires > Date.now()) {
     return cached.snapshot || base
   }
 
   try {
-    const html = await fetchArmoryPage(base.url)
+    const { html } = await fetchArmoryPage(base.url, bypassCache)
     const parsed = html ? parseForeverCharacterHtml(html) : null
     const snapshot: ArmorySnapshot = parsed
       ? { ...base, ...parsed }
-      : cached?.snapshot || base
-    memoryCache.set(base.slug, { expires: Date.now() + CACHE_TTL_MS, snapshot: parsed ? snapshot : cached?.snapshot || null })
+      : bypassCache
+        ? base
+        : cached?.snapshot || base
+    memoryCache.set(base.slug, {
+      expires: Date.now() + CACHE_TTL_MS,
+      snapshot: parsed ? snapshot : bypassCache ? null : cached?.snapshot || null,
+    })
     return snapshot
   } catch {
-    return cached?.snapshot || base
+    return bypassCache ? base : cached?.snapshot || base
+  }
+}
+
+export async function verifyCharacterInTurxGuild(
+  firstName: string,
+  lastName: string,
+  wowClass: WowClass = 'Warrior',
+): Promise<ArmoryVerificationResult> {
+  const cleanFirst = firstName.trim()
+  const cleanLast = lastName.trim()
+  const base = emptyArmory(cleanFirst, cleanLast, wowClass)
+
+  if (!cleanFirst || !cleanLast) {
+    return {
+      status: 'not_found',
+      ok: false,
+      url: base.url,
+      slug: base.slug,
+      level: null,
+      guildName: null,
+      guildSlug: null,
+      characterClass: null,
+      characterRace: null,
+      avatarUrl: null,
+      message: 'Karakter adı ve soyadı boş bırakılamaz.',
+    }
+  }
+
+  try {
+    const { status, html } = await fetchArmoryPage(base.url, true)
+    if (!html) {
+      if (status === 404 || status === 500) {
+        return {
+          status: 'not_found',
+          ok: false,
+          url: base.url,
+          slug: base.slug,
+          level: null,
+          guildName: null,
+          guildSlug: null,
+          characterClass: null,
+          characterRace: null,
+          avatarUrl: null,
+          message: `"${cleanFirst} ${cleanLast}" karakteri WoW Forever Armory (EU) üzerinde bulunamadı. İsim/soyisim yazımını kontrol edin (karakterin en az Level 10 olması ve oyundan çıkış yapmış olması gerekir).`,
+        }
+      }
+      return {
+        status: 'armory_unavailable',
+        ok: false,
+        url: base.url,
+        slug: base.slug,
+        level: null,
+        guildName: null,
+        guildSlug: null,
+        characterClass: null,
+        characterRace: null,
+        avatarUrl: null,
+        message: 'WoW Forever Armory şu an yanıt vermiyor. Lütfen birkaç saniye sonra tekrar deneyin.',
+      }
+    }
+
+    const parsed = parseForeverCharacterHtml(html)
+    if (!parsed || !parsed.found) {
+      return {
+        status: 'not_found',
+        ok: false,
+        url: base.url,
+        slug: base.slug,
+        level: null,
+        guildName: null,
+        guildSlug: null,
+        characterClass: null,
+        characterRace: null,
+        avatarUrl: null,
+        message: `"${cleanFirst} ${cleanLast}" karakteri WoW Forever Armory üzerinde doğrulanamadı. Karakter isim ve soyismini tam olarak girdiğinizden emin olun.`,
+      }
+    }
+
+    const snapshot: ArmorySnapshot = { ...base, ...parsed }
+    memoryCache.set(base.slug, { expires: Date.now() + CACHE_TTL_MS, snapshot })
+
+    if (parsed.inTurxGuild) {
+      return {
+        status: 'verified_turx',
+        ok: true,
+        url: base.url,
+        slug: base.slug,
+        level: parsed.level,
+        guildName: parsed.guildName || TURX_GUILD_NAME,
+        guildSlug: parsed.guildSlug || TURX_GUILD_SLUG,
+        characterClass: parsed.characterClass,
+        characterRace: parsed.characterRace,
+        avatarUrl: parsed.avatarUrl,
+        message: `${cleanFirst} ${cleanLast} (Level ${parsed.level ?? '?'}) TURX guild üyesi olarak WoW Armory'de doğrulandı!`,
+      }
+    }
+
+    if (parsed.guildName) {
+      return {
+        status: 'wrong_guild',
+        ok: false,
+        url: base.url,
+        slug: base.slug,
+        level: parsed.level,
+        guildName: parsed.guildName,
+        guildSlug: parsed.guildSlug,
+        characterClass: parsed.characterClass,
+        characterRace: parsed.characterRace,
+        avatarUrl: parsed.avatarUrl,
+        message: `"${cleanFirst} ${cleanLast}" WoW Armory'de "${parsed.guildName}" guildinde görünüyor. Site kaydı için aktif olarak TURX guild listesinde yer alan main karakterinizi girmelisiniz.`,
+      }
+    }
+
+    return {
+      status: 'no_guild',
+      ok: false,
+      url: base.url,
+      slug: base.slug,
+      level: parsed.level,
+      guildName: null,
+      guildSlug: null,
+      characterClass: parsed.characterClass,
+      characterRace: parsed.characterRace,
+      avatarUrl: parsed.avatarUrl,
+      message: `"${cleanFirst} ${cleanLast}" WoW Armory'de herhangi bir guild üyesi olarak görünmüyor. Site kaydı için TURX guildinde bulunan aktif main karakterinizi girmelisiniz.`,
+    }
+  } catch {
+    return {
+      status: 'armory_unavailable',
+      ok: false,
+      url: base.url,
+      slug: base.slug,
+      level: null,
+      guildName: null,
+      guildSlug: null,
+      characterClass: null,
+      characterRace: null,
+      avatarUrl: null,
+      message: 'WoW Forever Armory bağlantısı zaman aşımına uğradı. Lütfen tekrar deneyin.',
+    }
   }
 }
 
 export async function loadArmorySnapshots(
   characters: Array<{ firstName: string; lastName: string; wowClass: WowClass }>,
+  options?: { bypassCache?: boolean },
 ) {
   const unique = new Map<string, { firstName: string; lastName: string; wowClass: WowClass }>()
   for (const character of characters) {
@@ -168,7 +390,7 @@ export async function loadArmorySnapshots(
       const index = cursor
       cursor += 1
       const character = entries[index]
-      const snapshot = await loadArmorySnapshot(character.firstName, character.lastName, character.wowClass)
+      const snapshot = await loadArmorySnapshot(character.firstName, character.lastName, character.wowClass, options)
       results.set(snapshot.slug, snapshot)
     }
   }

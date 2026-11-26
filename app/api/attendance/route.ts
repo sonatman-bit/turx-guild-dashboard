@@ -72,7 +72,8 @@ export async function GET(request: Request) {
         paz: normalizedAv.paz,
       }
 
-      const hasConfigured = Object.values(availability).some((d) => d.status !== 'busy')
+      const skipRaidsForNow = rawProfile.skipRaidsForNow === true
+      const hasConfigured = skipRaidsForNow || Object.values(availability).some((d) => d.status !== 'busy')
 
       return {
         username: account.username,
@@ -84,6 +85,7 @@ export async function GET(request: Request) {
         role,
         availability,
         hasConfigured,
+        skipRaidsForNow,
       }
     })
 

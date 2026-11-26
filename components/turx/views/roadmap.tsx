@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Coins,
-  Crown,
   Dices,
   HelpCircle,
   Play,
@@ -23,7 +22,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CLASS_COLORS } from '@/lib/guild-data'
-import { DEFAULT_POINT_RULES, DEFAULT_RAIDER_TARGET_40, getSpecColor } from '@/lib/raid-loot-system'
+import { DEFAULT_POINT_RULES, getSpecColor } from '@/lib/raid-loot-system'
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
@@ -34,10 +33,8 @@ import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
 const SLIDE_TITLES = [
   '1. Vizyon & Zaman Çizelgesi',
   '2. Haftalık Raid Döngüsü',
-  '3. İnteraktif Puan Simülatörü',
-  '4. Şeffaf Loot Kutu Rotasyonu',
-  '5. 1 Ocak 2027: Raider Kadrosu',
-  '6. SSS & Sistem Onayı',
+  '3. Şeffaf Loot Kutu Rotasyonu',
+  '4. SSS & Sistem Onayı',
 ]
 
 const DEMO_ORDER = ['Tank Warrior', 'Tank Paladin', 'Rogue', 'Fury Warrior', 'Hunter'] as const
@@ -161,14 +158,6 @@ export function RoadmapView() {
   const [mode, setMode] = useState<'scroll' | 'slides'>('scroll')
   const [slideIndex, setSlideIndex] = useState(0)
 
-  // Interactive Point Simulator state
-  const [sim10, setSim10] = useState(1)
-  const [sim20, setSim20] = useState(1)
-  const [sim40, setSim40] = useState(1)
-  const [simBench, setSimBench] = useState(0)
-  const [simLate, setSimLate] = useState(0)
-  const [simNoShow, setSimNoShow] = useState(0)
-
   // Interactive Loot Rotation Demo state
   const [demoStepCount, setDemoStepCount] = useState(0)
 
@@ -177,7 +166,6 @@ export function RoadmapView() {
 
   const rs = data?.raidSystem
   const rules = rs?.settings.pointRules || DEFAULT_POINT_RULES
-  const target40 = rs?.settings.raiderTarget40 || DEFAULT_RAIDER_TARGET_40
   const videoEmbed = toEmbedUrl(rs?.settings.roadmapVideoUrl || '')
   const acks = rs?.roadmapAcks || []
   const totalGuildMembers = data?.guildMembers?.length || 0
@@ -198,17 +186,6 @@ export function RoadmapView() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mode])
-
-  // Simulated Weekly Points calculation
-  const simTotalRaids = sim10 + sim20 + sim40 + simBench
-  const simSignupConfirm = simTotalRaids * (rules.signup + rules.confirm)
-  const simRaidPoints =
-    sim10 * rules.raid10 +
-    sim20 * rules.raid20 +
-    sim40 * rules.raid40 +
-    simBench * (rules.benchReadyEqual ? rules.raid20 : 0)
-  const simPenalties = simLate * rules.latePenalty + simNoShow * rules.noShowPenalty
-  const simTotal = simSignupConfirm + simRaidPoints + simPenalties
 
   // Compute demo board state from demoStepCount
   const demoBoard = useMemo(() => {
@@ -293,72 +270,8 @@ export function RoadmapView() {
       <WeeklyRaidTimeline rules={rules} />
     </Panel>,
 
-    // SLIDE 2: INTERACTIVE POINT SIMULATOR
-    <Panel key="s2" className="border-gold/30">
-      <PanelTitle icon={Sparkles}>3. Puanlama Sistemi & İnteraktif Haftalık Simülatör</PanelTitle>
-      <p className="mb-4 text-xs text-muted-foreground">
-        Aşağıdaki sayıları değiştirerek bir haftada ne kadar devam puanı kazanacağınızı (veya geç kalma / habersiz gelmemenin etkisini) anında test edin!
-      </p>
-
-      <div className="grid gap-5 lg:grid-cols-12">
-        <div className="grid gap-3 sm:grid-cols-2 lg:col-span-8">
-          {[
-            { label: `10-Man Raid (+${rules.raid10}p + ${rules.signup + rules.confirm}p imza/konf.)`, val: sim10, set: setSim10, max: 3, tone: 'text-neon' },
-            { label: `20-Man Raid (+${rules.raid20}p + ${rules.signup + rules.confirm}p imza/konf.)`, val: sim20, set: setSim20, max: 2, tone: 'text-sky-300' },
-            { label: `40-Man Raid (+${rules.raid40}p + ${rules.signup + rules.confirm}p imza/konf.)`, val: sim40, set: setSim40, max: 2, tone: 'text-gold' },
-            { label: `Bench Hazır Bekleme (Eşit Raid Puanı!)`, val: simBench, set: setSimBench, max: 3, tone: 'text-emerald-300' },
-            { label: `Raide Geç Kalma (${rules.latePenalty}p)`, val: simLate, set: setSimLate, max: 3, tone: 'text-amber-300' },
-            { label: `Habersiz Gelmeme / No-Show (${rules.noShowPenalty}p)`, val: simNoShow, set: setSimNoShow, max: 2, tone: 'text-rose-400' },
-          ].map((ctrl) => (
-            <div key={ctrl.label} className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-[#071422] px-3.5 py-3">
-              <span className={cn('text-xs font-medium', ctrl.tone)}>{ctrl.label}</span>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => ctrl.set(Math.max(0, ctrl.val - 1))}
-                  className="size-7 cursor-pointer rounded-md border border-border bg-[#0b1b2d] text-sm font-bold text-foreground hover:border-neon"
-                >
-                  −
-                </button>
-                <span className="w-6 text-center font-mono text-sm font-bold text-foreground">{ctrl.val}</span>
-                <button
-                  onClick={() => ctrl.set(Math.min(ctrl.max, ctrl.val + 1))}
-                  className="size-7 cursor-pointer rounded-md border border-border bg-[#0b1b2d] text-sm font-bold text-foreground hover:border-neon"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-col justify-between rounded-2xl border border-gold/40 bg-gradient-to-b from-gold/15 via-[#0b1b2d] to-[#071422] p-5 lg:col-span-4">
-          <div>
-            <p className="text-[11px] font-semibold tracking-widest text-gold uppercase">Simülasyon Sonucu</p>
-            <p className={cn('mt-2 font-display text-5xl font-black', simTotal >= 0 ? 'text-gold text-glow-gold' : 'text-rose-400')}>
-              {simTotal > 0 ? `+${simTotal}` : simTotal}
-              <span className="ml-1 text-lg font-normal text-silver">puan</span>
-            </p>
-          </div>
-          <div className="mt-4 space-y-1.5 border-t border-border/60 pt-3 text-xs">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">İmza + Konfirmasyon:</span>
-              <span className="font-mono text-cyan-300">+{simSignupConfirm}p</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Raid + Bench Hazır:</span>
-              <span className="font-mono text-emerald-300">+{simRaidPoints}p</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Cezalar:</span>
-              <span className="font-mono text-rose-400">{simPenalties}p</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Panel>,
-
-    // SLIDE 3: INTERACTIVE LOOT ROTATION DEMO
-    <Panel key="s3" className="border-neon/35">
+    // SLIDE 2: INTERACTIVE LOOT ROTATION DEMO
+    <Panel key="s2" className="border-neon/35">
       <PanelTitle
         icon={Award}
         action={
@@ -377,7 +290,7 @@ export function RoadmapView() {
           </div>
         }
       >
-        4. Şeffaf Loot Kutu Rotasyonu (Canlı Demo!)
+        3. Şeffaf Loot Kutu Rotasyonu (Canlı Demo!)
       </PanelTitle>
 
       <div className="mb-4 rounded-xl border border-gold/30 bg-[#071422] p-4">
@@ -468,34 +381,10 @@ export function RoadmapView() {
       </div>
     </Panel>,
 
-    // SLIDE 4: JAN 1 2027 40-MAN RAIDER TARGET
-    <Panel key="s4" className="border-gold/35">
-      <PanelTitle icon={Crown}>5. 1 Ocak 2027: İsimsiz 40-Man Raider Kontenjanı</PanelTitle>
-      <p className="mb-4 text-xs text-silver">
-        1 Ocak 2027 tarihine kadar tüm LvL 60 Main karakterler <strong className="text-neon">TURX</strong> rütbesiyle yarışır. 1 Ocak&apos;ta aşağıdaki isimsiz kadro ihtiyacına göre en yüksek devam puanlı oyuncular <strong className="text-gold">Raider</strong> rütbesine terfi eder.
-      </p>
-
-      <div className="grid gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-        {target40
-          .filter((s) => s.count > 0)
-          .map((slot) => (
-            <div
-              key={slot.id}
-              className="flex items-center justify-between rounded-xl border border-border/70 bg-[#071422] px-3.5 py-2.5"
-            >
-              <span className="text-xs font-bold" style={{ color: CLASS_COLORS[slot.wowClass] }}>
-                {slot.specLabel}
-              </span>
-              <Badge className="border-gold/40 bg-gold/10 font-mono text-gold">{slot.count}</Badge>
-            </div>
-          ))}
-      </div>
-    </Panel>,
-
-    // SLIDE 5: FAQ & ACKNOWLEDGEMENT
-    <div key="s5" className="space-y-5">
+    // SLIDE 3: FAQ & ACKNOWLEDGEMENT
+    <div key="s3" className="space-y-5">
       <Panel>
-        <PanelTitle icon={HelpCircle}>6. Sıkça Sorulan Sorular (SSS)</PanelTitle>
+        <PanelTitle icon={HelpCircle}>4. Sıkça Sorulan Sorular (SSS)</PanelTitle>
         <div className="space-y-2">
           {FAQ_ITEMS.map((item, idx) => {
             const open = openFaq === idx

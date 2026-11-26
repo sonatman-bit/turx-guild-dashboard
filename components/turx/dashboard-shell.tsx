@@ -17,7 +17,6 @@ import { LootDistributionView } from './views/loot-distribution'
 import { OverviewView } from './views/overview'
 import { ProfileView } from './views/profile'
 import { RaidSignupView } from './views/raid-signup'
-import { RaidsView } from './views/raids'
 import { RecruitView } from './views/recruit'
 import { RoadmapView } from './views/roadmap'
 import { RosterView } from './views/roster'
@@ -28,7 +27,6 @@ const TAB_IDS: TabId[] = [
   'roster',
   'applications',
   'strategy',
-  'raids',
   'raid-signup',
   'loot',
   'attendance',
@@ -196,8 +194,9 @@ function DashboardShellInner() {
           <Header active={tab} onSelect={select} onOpenMobile={() => setMobileOpen(true)} mobileOpen={mobileOpen} />
 
           <main key={tab} className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 animate-in fade-in slide-in-from-bottom-2 md:px-6 md:py-8">
-            {tab === 'overview' && <OverviewView onNavigate={select} />}
-            {tab === 'raids' && <RaidsView />}
+            {tab === 'overview' && (
+              <OverviewView onNavigate={select} canOpenRaidSignup={canAccessTab('raid-signup')} />
+            )}
             {tab === 'raid-signup' && canAccessTab('raid-signup') && <RaidSignupView />}
             {tab === 'loot' && canAccessTab('loot') && <LootDistributionView />}
             {tab === 'attendance' && canAccessTab('attendance') && <AttendanceTrackerView />}

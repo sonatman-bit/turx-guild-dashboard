@@ -3,7 +3,6 @@
 import {
   Award,
   CalendarCheck,
-  CalendarClock,
   ClipboardList,
   Coins,
   LayoutDashboard,
@@ -30,7 +29,6 @@ export type TabId =
   | 'roster'
   | 'applications'
   | 'strategy'
-  | 'raids'
   | 'raid-signup'
   | 'loot'
   | 'attendance'
@@ -51,7 +49,6 @@ export const NAV_ITEMS: {
   { id: 'roster', label: 'Guild Kadrosu', short: 'Roster & Analitik', icon: Users },
   { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus },
   { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText },
-  { id: 'raids', label: 'Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
   { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins, moduleFlag: 'bank' },
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock },
   { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, moduleFlag: 'raidSignup' },

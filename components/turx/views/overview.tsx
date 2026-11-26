@@ -133,7 +133,13 @@ function ProgressTracker() {
   )
 }
 
-function NextRaid({ onNavigate }: { onNavigate: (t: TabId) => void }) {
+function NextRaid({
+  onNavigate,
+  canOpenRaidSignup,
+}: {
+  onNavigate: (t: TabId) => void
+  canOpenRaidSignup?: boolean
+}) {
   const c = useCountdown(RAID_DATE)
   return (
     <Panel className="flex flex-col">
@@ -151,9 +157,11 @@ function NextRaid({ onNavigate }: { onNavigate: (t: TabId) => void }) {
           </li>
         ))}
       </ul>
-      <GhostButton className="mt-6 w-full" onClick={() => onNavigate('raids')}>
-        Raid Kaydına Git
-      </GhostButton>
+      {canOpenRaidSignup && (
+        <GhostButton className="mt-6 w-full cursor-pointer" onClick={() => onNavigate('raid-signup')}>
+          Raid Kaydına Git
+        </GhostButton>
+      )}
     </Panel>
   )
 }
@@ -294,7 +302,13 @@ function DiscordFeed() {
   )
 }
 
-export function OverviewView({ onNavigate }: { onNavigate: (t: TabId) => void }) {
+export function OverviewView({
+  onNavigate,
+  canOpenRaidSignup = false,
+}: {
+  onNavigate: (t: TabId) => void
+  canOpenRaidSignup?: boolean
+}) {
   return (
     <div className="flex flex-col gap-6">
       <HeroLanding onNavigate={onNavigate} />
@@ -302,7 +316,7 @@ export function OverviewView({ onNavigate }: { onNavigate: (t: TabId) => void })
         <div className="xl:col-span-2">
           <Roadmap />
         </div>
-        <NextRaid onNavigate={onNavigate} />
+        <NextRaid onNavigate={onNavigate} canOpenRaidSignup={canOpenRaidSignup} />
       </div>
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <ProgressTracker />

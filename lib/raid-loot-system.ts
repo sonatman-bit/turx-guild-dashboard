@@ -108,6 +108,7 @@ export type PublicModuleFlags = {
   loot: boolean
   attendance: boolean
   roadmap: boolean
+  bank: boolean
 }
 
 export type RaiderTargetSlot = {
@@ -1376,6 +1377,7 @@ export function defaultRaidSystemStore(): RaidSystemStore {
         loot: false,
         attendance: false,
         roadmap: false,
+        bank: false,
       },
       activePhaseId: 'phase-1',
       pointRules: { ...DEFAULT_POINT_RULES },
@@ -1434,6 +1436,7 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
       loot: Boolean(rawSettings.publicModules?.loot),
       attendance: Boolean(rawSettings.publicModules?.attendance),
       roadmap: Boolean(rawSettings.publicModules?.roadmap),
+      bank: Boolean(rawSettings.publicModules?.bank),
     },
     activePhaseId: rawSettings.activePhaseId || defaults.settings.activePhaseId,
     pointRules: {

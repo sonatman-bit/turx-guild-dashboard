@@ -52,7 +52,7 @@ export const NAV_ITEMS: {
   { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus },
   { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText },
   { id: 'raids', label: 'Raid Takvimi', short: 'Kadro Onay Sistemi', icon: CalendarClock },
-  { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins },
+  { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins, moduleFlag: 'bank' },
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock },
   { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, moduleFlag: 'raidSignup' },
   { id: 'loot', label: 'Loot Dağıtımı', short: 'Öncelik & BoE/BoP', icon: Award, moduleFlag: 'loot' },
@@ -193,7 +193,7 @@ export function Sidebar({
   mobileOpen,
   onCloseMobile,
   navigationLocked = false,
-  publicModules = { raidSignup: false, loot: false, attendance: false, roadmap: false },
+  publicModules = { raidSignup: false, loot: false, attendance: false, roadmap: false, bank: false },
 }: {
   active: TabId
   onSelect: (id: TabId) => void

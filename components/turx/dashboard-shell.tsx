@@ -44,6 +44,7 @@ const MODULE_TAB_MAP: Partial<Record<TabId, keyof PublicModuleFlags>> = {
   loot: 'loot',
   attendance: 'attendance',
   roadmap: 'roadmap',
+  bank: 'bank',
 }
 
 function DashboardShellInner() {
@@ -59,6 +60,7 @@ function DashboardShellInner() {
     loot: false,
     attendance: false,
     roadmap: false,
+    bank: false,
   })
   const closeMobile = useCallback(() => setMobileOpen(false), [])
   const initialTabAppliedRef = useRef(false)
@@ -83,7 +85,8 @@ function DashboardShellInner() {
           prev.raidSignup === next.raidSignup &&
           prev.loot === next.loot &&
           prev.attendance === next.attendance &&
-          prev.roadmap === next.roadmap
+          prev.roadmap === next.roadmap &&
+          prev.bank === next.bank
             ? prev
             : next,
         )
@@ -201,7 +204,7 @@ function DashboardShellInner() {
             {tab === 'roadmap' && canAccessTab('roadmap') && <RoadmapView />}
             {tab === 'roster' && canAccessTab('roster') && <RosterView />}
             {tab === 'applications' && <RecruitView />}
-            {tab === 'bank' && <BankView />}
+            {tab === 'bank' && canAccessTab('bank') && <BankView />}
             {tab === 'strategy' && <StrategyView />}
             {tab === 'anonymous' && <FeedbackView />}
             {tab === 'profile' && <ProfileView />}

@@ -143,6 +143,7 @@ export function AttendanceTrackerView() {
           loot: openAll,
           attendance: openAll,
           roadmap: openAll,
+          bank: openAll,
         },
       },
       openAll ? 'Tüm yeni Raid & Loot modülleri canlıya alındı!' : 'Tüm modüller Beta (GM & Officer) moduna alındı.',
@@ -598,13 +599,14 @@ export function AttendanceTrackerView() {
               Kapalı olan modüller sol menüde yalnızca <strong>GM ve Officerlar</strong> tarafından görülür. Toplantı sonrası istediğiniz modülü (örneğin önce <em>Road Map</em> sunumunu, sonra tüm sistemi) tek tıkla tüm guild üyelerine açabilirsiniz.
             </p>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {(
                 [
                   ['roadmap', 'Road Map Sunumu', 'Oyuncular için interaktif sistem rehberi'],
                   ['raidSignup', 'Raid Kayıt', 'İmza takvimi, çoklu roster ve konfirmasyon'],
                   ['loot', 'Loot Dağıtımı', 'Şeffaf öncelik kutuları, BoE ve BoP tarifler'],
                   ['attendance', 'Devam Takibi', 'Puan sıralaması ve 1 Ocak 40-Man hedefi'],
+                  ['bank', 'Guild Bankası', 'Malzeme talebi ve lonca banka defteri'],
                 ] as const
               ).map(([key, title, desc]) => {
                 const isPublic = rs.settings.publicModules[key]

@@ -8,9 +8,11 @@ import {
   Dices,
   Edit3,
   Hammer,
+  Lock,
   Plus,
   RotateCcw,
   Search,
+  ShieldCheck,
   Skull,
   Sparkles,
   Swords,
@@ -550,6 +552,42 @@ export function LootDistributionView() {
               </div>
             </Panel>
           )}
+
+          {/* TURX Hibrit Loot Kuralları Özeti */}
+          <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-gold/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
+              <p className="flex items-center gap-1.5 font-display font-bold text-gold">
+                <Lock className="size-3.5" /> Faz Başı Liste Kilidi
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Öncelik listesi faz başlamadan lonca görüşüne açılır, faz günü kilitlenir ve faz boyunca sabit kalır.
+              </p>
+            </div>
+            <div className="rounded-xl border border-neon/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
+              <p className="flex items-center gap-1.5 font-display font-bold text-neon">
+                <Award className="size-3.5" /> Kutu Rotasyonu &amp; Bekleyen Öncelik
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Her tur kutular sırayla dolar; o gün raidde olmayan sınıfın kutusu yanmaz, <em>Bekleyen Öncelik</em> olarak korunur.
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
+              <p className="flex items-center gap-1.5 font-display font-bold text-emerald-300">
+                <ShieldCheck className="size-3.5" /> RCLootCouncil &amp; Minor Update
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Oyun içi talep toplar; karar bu listedendir. Gönüllü <em>Minor Update</em> ile sırayı veren oyuncunun kutusu açık kalır.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-400/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
+              <p className="flex items-center gap-1.5 font-display font-bold text-amber-300">
+                <Dices className="size-3.5" /> Aynı Spec: Puan → Zar
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                Aynı kutuda birden fazla uygun oyuncu varsa <strong>Devam Puanı</strong> yüksek olan (eşitse zar) alır.
+              </p>
+            </div>
+          </div>
 
           {/* WoW Forever Beta Preview Banner */}
           <div className="flex items-start gap-3 rounded-xl border border-gold/25 bg-gold/5 px-4 py-3 text-xs text-silver">

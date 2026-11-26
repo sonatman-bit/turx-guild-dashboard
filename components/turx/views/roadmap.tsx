@@ -11,6 +11,7 @@ import {
   Coins,
   Dices,
   HelpCircle,
+  Lock,
   Play,
   Presentation,
   RotateCcw,
@@ -105,8 +106,8 @@ const DEMO_STEPS: DemoStep[] = [
 
 const FAQ_ITEMS = [
   {
-    q: 'Officer kararıyla Bench (Yedek) kalırsam puan kaybeder miyim?',
-    a: 'Hayır! Officer kararıyla veya kendi kararınızla Bench bekleyen ve raid saatinde oyunda/Discord\'da hazır bulunan oyuncular, Officer takibiyle raide girmiş gibi EŞİT (tam) raid puanı alır.',
+    q: 'Officer kararıyla Bench (Yedek) kalırsam puan kaybeder miyim? Gönüllü bench sınırı var mı?',
+    a: 'Hayır! Officer kararıyla veya kendi kararınızla Bench bekleyen ve raid saatinde oyunda/Discord\'da hazır bulunan oyuncular, Officer takibiyle raide girmiş gibi EŞİT (tam) raid puanı alır. Ancak suistimali önlemek adına aynı oyuncu kendi isteğiyle üst üste 2 kez benche yazılamaz (Officer kararıyla yapılan rotasyon bu sınıra dahil değildir). Raid saatinde çağrıldığında ulaşılamayan yedek oyunculara ceza puanı uygulanır.',
   },
   {
     q: 'Raide imza attım ama işim çıktı, -10 ceza yer miyim?',
@@ -115,6 +116,14 @@ const FAQ_ITEMS = [
   {
     q: 'Loot sırasında benim sınıfım var ama ben o gün raidde değildim, hakkım yanar mı?',
     a: 'Hayır, kutu mantığımız sayesinde hakkınız yanmaz! O gün sıradaki sınıf raidde yoksa bir sonraki sınıf kendi kutusunu doldurur; sizin kutunuz "Bekleyen Öncelik" olarak açık kalır ve bir sonraki düşüşte öncelik tekrar size gelir.',
+  },
+  {
+    q: 'RCLootCouncil addonu nasıl kullanılır? Gönüllü "Minor Update" seçersem kutu hakkım yanar mı?',
+    a: 'RCLootCouncil yalnızca boss sonrası oyun içinde hızlı talep toplamak (BIS / Major Update / Minor Update / OS / Pass) için kullanılır; nihai karar her zaman sitedeki Kutu Sırası + Devam Puanınındır. Hiçbir oyuncu pas geçmek zorunda değildir — elinde muadil eşya olsa bile BIS basarsa ve sıra kendisindeyse itemı alır. Takım arkadaşına büyük upgrade olması için gönüllü olarak "Minor Update" seçip sırayı verirse, alan kişinin kutusu dolar ve gönüllü öncelik veren oyuncunun kutusu AÇIK (Bekleyen Öncelik) olarak korunur.',
+  },
+  {
+    q: 'Faz içindeki Loot Öncelik Listesine itiraz edebilir miyiz?',
+    a: 'Her faz başlamadan 5–7 gün önce taslak öncelik listesi tüm loncaya sunulur ve tüm itiraz/öneriler değerlendirilip güncellenir. Faz açılış gününde liste kilitlenir ve sonraki faza kadar tartışmaya kapatılır; böylece raid sırasında sıfır tartışma ile hızlı ve şeffaf dağıtım yapılır.',
   },
   {
     q: 'Aynı gün ve saate 30 kişi 10-man Barrow Deeps için imza atarsa ne olur?',
@@ -126,7 +135,7 @@ const FAQ_ITEMS = [
   },
   {
     q: '1 Ocak 2027 tarihinde Raider rütbesi nasıl verilecek?',
-    a: '1 Ocak 2027\'ye kadar tüm LvL 60 Main karakterler TURX rütbesiyle puan biriktirir. 1 Ocak\'ta yayınlanan isimsiz 40-man sınıf/spec kontenjanına göre en yüksek devam puanına sahip oyunculara GM tarafından Raider rütbesi verilir.',
+    a: '1 Ocak 2027\'ye kadar tüm LvL 60 Main karakterler TURX rütbesiyle puan biriktirir. 1 Ocak\'ta en yüksek devam puanına ve kadro ihtiyacına göre GM tarafından Raider rütbesi verilir.',
   },
 ]
 
@@ -358,8 +367,39 @@ export function RoadmapView() {
         </div>
       </div>
 
+      {/* Hybrid Governance & In-Game Addon Rules */}
+      <div className="mt-4 grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-gold/30 bg-[#071422] p-4">
+          <p className="flex items-center gap-2 font-display text-sm font-bold text-gold">
+            <Lock className="size-4" />
+            Faz Başı İtiraz &amp; Liste Kilidi
+          </p>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            Öncelik listesi her faz başlamadan 5–7 gün önce tüm loncaya açılır ve öneriler değerlendirilir. Faz açılışında liste <strong>kilitlenir</strong> ve sonraki faza kadar tartışmaya kapatılır.
+          </p>
+        </div>
+        <div className="rounded-xl border border-neon/30 bg-[#071422] p-4">
+          <p className="flex items-center gap-2 font-display text-sm font-bold text-neon">
+            <ShieldCheck className="size-4" />
+            RCLootCouncil (Gönüllü Dayanışma)
+          </p>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            Oyun içi talep toplamak (<em>BIS / Major / Minor / OS / Pass</em>) için kullanılır; nihai karar sitedeki <strong>Kutu + Puan</strong> listesidir. Muadili olan oyuncu gönüllü <em>Minor Update</em> seçip sırayı verirse kendi kutusu <strong>Bekleyen Öncelik</strong> olarak korunur.
+          </p>
+        </div>
+        <div className="rounded-xl border border-emerald-500/30 bg-[#071422] p-4">
+          <p className="flex items-center gap-2 font-display text-sm font-bold text-emerald-300">
+            <Users className="size-4" />
+            Bench Sınırı &amp; Çift Kutu Esnekliği
+          </p>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            Aynı oyuncu kendi isteğiyle <strong>üst üste 2 kez benche yazılamaz</strong> (Officer kararı hariç). Progress kilitleyen 1–2 kritik tank/çekirdek parçada liste başına çift öncelik kutusu tanımlanabilir.
+          </p>
+        </div>
+      </div>
+
       {/* BoE & BoP Rules */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-gold/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-gold">
             <Coins className="size-4" />

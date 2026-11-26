@@ -1,12 +1,33 @@
 'use client'
 
-import { Gavel, Grid3x3, UserPlus, CheckCircle2, XCircle, Clock, MessageSquare, Shield, Swords, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  ArrowRight,
+  Award,
+  BookOpen,
+  CalendarCheck2,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Coins,
+  Dices,
+  Gavel,
+  Grid3x3,
+  Lock,
+  MessageSquare,
+  Shield,
+  ShieldCheck,
+  Swords,
+  UserPlus,
+  XCircle,
+} from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import { ALLIANCE_RACES, CLASS_COLORS, classesForRace, type WowClass } from '@/lib/guild-data'
 import { DEFAULT_RECRUITMENT_MATRIX, type RecruitClassNeed } from '@/lib/recruitment'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
+import type { TabId } from '../navigation'
 import { emptyRosterSummary, RosterSummarySection, type RosterSummaryStats } from '../roster-summary'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
@@ -30,10 +51,104 @@ const CLASS_SPECS: Record<WowClass, string[]> = {
   Druid: ['Balance', 'Feral Combat', 'Restoration'],
 }
 
-const LOOT_RULES = [
-  { id: 'lc', name: 'Loot Council', active: true, text: 'GM + 3 Officer + 1 Raider temsilcisi. Öncelik: Attendance > Progress katkısı > BIS listesi > Parse.' },
-  { id: 'epgp', name: 'EPGP', active: false, text: 'Her Raid saatinde EP kazanılır, item aldıkça GP eklenir. PR = EP / GP. Haftalık %10 decay.' },
-  { id: 'dkp', name: 'DKP', active: false, text: 'Zero-sum DKP. Boss kill başına 10 DKP, on-time bonus 5 DKP. Minimum bid 10.' },
+type LootGuideTab = {
+  id: 'rotation' | 'attendance' | 'addon' | 'boe'
+  name: string
+  badge?: string
+  summary: string
+  bullets: { title: string; desc: string }[]
+}
+
+const TURX_LOOT_GUIDE: LootGuideTab[] = [
+  {
+    id: 'rotation',
+    name: 'Kutu Rotasyonu & Liste Kilidi',
+    badge: 'AKTİF SİSTEM',
+    summary:
+      'TURX’ta kapalı kapılar ardında karar verilen klasik Loot Council veya puan yakmalı DKP/EPGP yoktur. Her eşyanın faz başında belirlenip kilitlenen şeffaf bir Spec Kutu Sırası vardır.',
+    bullets: [
+      {
+        title: 'Faz Başı İtiraz & Kilit',
+        desc: 'Her faz başlamadan 5–7 gün önce öncelik listesi loncaya sunulur ve öneriler değerlendirilir. Faz açılışında liste kilitlenir, sonraki faza kadar tartışmaya kapatılır.',
+      },
+      {
+        title: 'Kutu Kutu Adil Rotasyon (Round-Robin)',
+        desc: 'Eşya düştükçe sıradaki spec kutusunu doldurur; tüm kutular dolunca Tur 2 ile sıra başa döner. Kritik 1–2 tank/çekirdek parçada liste başına çift öncelik kutusu tanımlanabilir.',
+      },
+      {
+        title: 'Hakkınız Yanmaz (Bekleyen Öncelik)',
+        desc: 'Sıradaki spec o gün raidde yoksa sonraki uygun spec kendi kutusunu alır; eksik spec’in kutusu "Bekleyen Öncelik" olarak açık kalır ve bir sonraki dropta sıra tekrar ona gelir.',
+      },
+      {
+        title: 'Aynı Spec İçinde: Devam Puanı → Zar',
+        desc: 'Sırası gelen spec’ten raidde birden fazla oyuncu varsa en yüksek devam puanlı oyuncu eşyayı alır; puan eşitliğinde zar atılır.',
+      },
+    ],
+  },
+  {
+    id: 'attendance',
+    name: 'Devam Puanı & Bench',
+    summary:
+      'Sert yüzde uçurumları yerine 10 / 20 / 40 kişilik raid ağırlıklarına göre şeffaf puan birikir. Düzenli katılım, hazırlık ve raid disiplini doğrudan ödüllendirilir.',
+    bullets: [
+      {
+        title: 'Ağırlıklı Raid & Kayıt Puanları',
+        desc: '10-man (+4p), 20-man (+6p) ve 40-man (+10p) raid puanına ek olarak zamanında imza (+1p) ve konfirmasyon (+1p) puanı kazanılır.',
+      },
+      {
+        title: 'Bench (Yedek) Tam Puan & Üst Üste 2 Sınırı',
+        desc: 'Raid saatinde oyunda/Discord’da hazır bekleyen yedek oyuncular raide girmiş gibi tam puan alır. Suistimali önlemek için kendi isteğiyle üst üste en fazla 2 kez benche yazılınabilir (Officer rotasyonu hariç).',
+      },
+      {
+        title: 'Mazeretli Erken İptal (0p Ceza)',
+        desc: 'Raidten 24 saat öncesine kadar sistemden mazeretli iptal bildiren oyuncular ceza puanı almaz.',
+      },
+      {
+        title: 'Disiplin Cezaları',
+        desc: 'Konfirmasyon verip habersiz gelmeme (No-Show) -10p, geç kalma -5p ve eksik hazırlık (consumable/repair) -3p olarak yansıtılır.',
+      },
+    ],
+  },
+  {
+    id: 'addon',
+    name: 'RCLootCouncil & Dayanışma',
+    summary:
+      'Boss kesildikten sonra oyun içinde hızlı talep toplamak için RCLootCouncil addonu kullanılır; ancak nihai otorite her zaman sitedeki Kutu Sırası + Devam Puanıdır.',
+    bullets: [
+      {
+        title: 'Oyun İçi Hızlı Seçim',
+        desc: 'Her boss sonrası ekranda BIS, Major Update, Minor Update, OS ve Pass seçenekleri açılır; Loot Master tüm ekibin ihtiyacını tek bakışta görür.',
+      },
+      {
+        title: 'Kimse Pas Geçmeye Zorlanmaz',
+        desc: 'Öncelik sırası sizdeyse ve BIS basarsanız, elinizde muadil eşya olsa dahi hak sizindir.',
+      },
+      {
+        title: 'Gönüllü Minor Update Koruması',
+        desc: 'Sıradaki oyuncu, takım arkadaşına daha büyük upgrade olması için gönüllü olarak Minor Update seçip sırayı bırakırsa alan oyuncunun kutusu dolar; dayanışma gösteren oyuncunun kutusu ise "Bekleyen Öncelik" olarak açık kalır.',
+      },
+    ],
+  },
+  {
+    id: 'boe',
+    name: 'BoE, BoP Tarif & Şeffaflık',
+    summary:
+      'Lonca kaynakları tüm ekibin ortak progress gücü için yönetilir ve her hareket web sitemizde lonca üyelerine 7/24 açık şekilde kayıt altına alınır.',
+    bullets: [
+      {
+        title: 'BoE Eşyalar → Guild Bankası',
+        desc: 'Raidlerde düşen tüm BoE eşyalar istisnasız Guild Bankasına (flask, potion, repair fonu) aktarılır ve panelde şeffafça listelenir.',
+      },
+      {
+        title: 'BoP Tarifler → Meslek Sorumlusu & Min 300 Roll',
+        desc: 'Tüm BoP tarifler ilk düşüşte lonca üyelerine ücretsiz craft şartıyla Meslek Sorumlusuna verilir. Aynı tarif tekrar düşerse o meslekte min 300 olanlar anında öğrenmek şartıyla rollar.',
+      },
+      {
+        title: '1 Ocak 2027 Raider Rütbesi Hedefi',
+        desc: 'Phase 1’den itibaren tüm LvL 60 Main karakterler eşit şartlarda puan biriktirir; 40-man çekirdek kadro ve Raider rütbesi tamamen şeffaf devam puanına göre şekillenir.',
+      },
+    ],
+  },
 ]
 
 interface ApplicationItem {
@@ -50,12 +165,17 @@ interface ApplicationItem {
   date: string
 }
 
-export function RecruitView() {
+interface RecruitViewProps {
+  onNavigate?: (tab: TabId) => void
+  canOpenRoadmap?: boolean
+}
+
+export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewProps = {}) {
   const { user } = useAuth()
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
-  const [rule, setRule] = useState('lc')
+  const [rule, setRule] = useState<LootGuideTab['id']>('rotation')
   const [presetClass, setPresetClass] = useState<WowClass | ''>('')
   
   const [selectedRace, setSelectedRace] = useState<string>('')
@@ -273,29 +393,115 @@ export function RecruitView() {
         </div>
       </Panel>
 
-      {/* Loot Sistemi */}
-      <Panel className="mt-6">
-        <PanelTitle icon={Gavel}>Loot Kuralları Rehberi</PanelTitle>
-        <div role="tablist" aria-label="Loot sistemi" className="flex flex-wrap gap-2">
-          {LOOT_RULES.map((l) => (
+      {/* TURX Hibrit Raid & Loot Kuralları Rehberi */}
+      <Panel className="mt-2 border-gold/30 bg-gradient-to-br from-[#0b1d30] via-[#091829] to-[#071220]">
+        <PanelTitle
+          icon={Gavel}
+          action={
+            onNavigate && canOpenRoadmap ? (
+              <GhostButton
+                onClick={() => onNavigate('roadmap')}
+                className="border-gold/40 bg-gold/10 px-3 py-1.5 text-xs text-gold hover:bg-gold/20 cursor-pointer"
+              >
+                Road Map &amp; Canlı Demo
+                <ArrowRight className="size-3.5" />
+              </GhostButton>
+            ) : undefined
+          }
+        >
+          TURX Raid &amp; Loot Kuralları Özeti
+        </PanelTitle>
+
+        <p className="mb-4 max-w-3xl text-xs leading-relaxed text-silver">
+          Başvurmadan önce sistemimizi 30 saniyede tanıyın: TURX’ta <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> hibrit Kutu Rotasyonu + Ağırlıklı Devam Puanı sistemi uygulanır.
+        </p>
+
+        {/* 4 Kartlık Hızlı Bakış Özeti */}
+        <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-gold/30 bg-[#071422]/90 p-3.5">
+            <p className="flex items-center gap-1.5 font-display text-xs font-bold text-gold">
+              <Lock className="size-3.5 shrink-0" />
+              Faz Başı Kilitli Liste
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Öncelik sırası fazdan önce lonca onayına açılır, faz başlayınca kilitlenir.
+            </p>
+          </div>
+          <div className="rounded-xl border border-neon/30 bg-[#071422]/90 p-3.5">
+            <p className="flex items-center gap-1.5 font-display text-xs font-bold text-neon">
+              <Award className="size-3.5 shrink-0" />
+              Kutu Rotasyonu &amp; Puan
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Spec’ler sırayla kutu doldurur; aynı spec içinde yüksek devam puanı (eşitse zar) kazanır.
+            </p>
+          </div>
+          <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 p-3.5">
+            <p className="flex items-center gap-1.5 font-display text-xs font-bold text-emerald-300">
+              <ShieldCheck className="size-3.5 shrink-0" />
+              RCLootCouncil Dayanışma
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Gönüllü <em>Minor Update</em> ile sıra veren oyuncunun kutusu <strong>Bekleyen Öncelik</strong> olarak korunur.
+            </p>
+          </div>
+          <div className="rounded-xl border border-amber-400/30 bg-[#071422]/90 p-3.5">
+            <p className="flex items-center gap-1.5 font-display text-xs font-bold text-amber-300">
+              <Coins className="size-3.5 shrink-0" />
+              Bench, BoE &amp; BoP Netliği
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              Hazır Bench tam puan alır; BoE’ler Guild Bankasına, ilk BoP tarifler Meslek Sorumlusuna gider.
+            </p>
+          </div>
+        </div>
+
+        {/* Detay Sekmeleri */}
+        <div role="tablist" aria-label="TURX Raid ve Loot Sistemi" className="flex flex-wrap gap-2">
+          {TURX_LOOT_GUIDE.map((tabItem) => (
             <button
-              key={l.id}
+              key={tabItem.id}
+              type="button"
               role="tab"
-              aria-selected={rule === l.id}
-              onClick={() => setRule(l.id)}
+              aria-selected={rule === tabItem.id}
+              onClick={() => setRule(tabItem.id)}
               className={cn(
-                'inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition cursor-pointer',
-                rule === l.id ? 'border-gold bg-gold/10 text-gold' : 'border-border text-silver hover:border-neon/40',
+                'inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-semibold transition cursor-pointer',
+                rule === tabItem.id
+                  ? 'border-gold bg-gold/15 text-gold shadow-[0_0_16px_rgb(212_175_55/0.14)]'
+                  : 'border-border bg-[#071422]/70 text-silver hover:border-neon/40 hover:text-foreground',
               )}
             >
-              {l.name}
-              {l.active && <span className="rounded bg-success/20 px-1.5 text-[10px] font-bold text-success">AKTİF</span>}
+              {tabItem.id === 'rotation' && <Dices className="size-3.5" />}
+              {tabItem.id === 'attendance' && <CalendarCheck2 className="size-3.5" />}
+              {tabItem.id === 'addon' && <ShieldCheck className="size-3.5" />}
+              {tabItem.id === 'boe' && <BookOpen className="size-3.5" />}
+              {tabItem.name}
+              {tabItem.badge && (
+                <span className="rounded bg-success/20 px-1.5 py-0.5 text-[10px] font-bold text-success">
+                  {tabItem.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
-        <p role="tabpanel" className="mt-4 rounded-lg border border-border bg-[#071422] p-4 text-sm leading-relaxed text-pretty text-silver">
-          {LOOT_RULES.find((l) => l.id === rule)?.text}
-        </p>
+
+        {(() => {
+          const activeGuide = TURX_LOOT_GUIDE.find((t) => t.id === rule) || TURX_LOOT_GUIDE[0]
+          return (
+            <div role="tabpanel" className="mt-4 rounded-xl border border-border/80 bg-[#071422] p-4 sm:p-5">
+              <p className="text-sm leading-relaxed text-foreground">{activeGuide.summary}</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {activeGuide.bullets.map((b) => (
+                  <div key={b.title} className="rounded-lg border border-border/60 bg-[#0b1b2d]/70 p-3.5">
+                    <p className="text-xs font-bold text-gold">{b.title}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{b.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
       </Panel>
 
       {/* Alt Kısım Büyük Başvuru Çağrısı */}

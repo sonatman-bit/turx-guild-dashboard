@@ -202,7 +202,9 @@ function DashboardShellInner() {
             {tab === 'attendance' && canAccessTab('attendance') && <AttendanceTrackerView />}
             {tab === 'roadmap' && canAccessTab('roadmap') && <RoadmapView />}
             {tab === 'roster' && canAccessTab('roster') && <RosterView />}
-            {tab === 'applications' && <RecruitView />}
+            {tab === 'applications' && (
+              <RecruitView onNavigate={select} canOpenRoadmap={canAccessTab('roadmap')} />
+            )}
             {tab === 'bank' && canAccessTab('bank') && <BankView />}
             {tab === 'strategy' && <StrategyView />}
             {tab === 'anonymous' && <FeedbackView />}

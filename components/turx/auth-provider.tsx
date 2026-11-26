@@ -593,6 +593,38 @@ export function AuthNavbarWidget({ onNavigate }: { onNavigate?: (tab: 'profile')
 
       setBusy(true)
       try {
+        // Server-side uniqueness check for username/profile name and email before sending code
+        const checkRes = await fetch(
+          `/api/profile/check-name?username=${encodeURIComponent(username)}&email=${encodeURIComponent(email)}`,
+          { cache: 'no-store' },
+        )
+        if (checkRes.ok) {
+          const checkData = (await checkRes.json().catch(() => ({}))) as {
+            usernameTaken?: boolean
+            emailTaken?: boolean
+            message?: string
+          }
+          if (checkData.usernameTaken) {
+            toast({
+              variant: 'error',
+              title: 'Profil / Kullanıcı Adı Kullanılıyor',
+              description:
+                checkData.message ||
+                `"${username}" ismi daha önce kullanılmış. Lütfen başka bir isim seçin.`,
+            })
+            return
+          }
+          if (checkData.emailTaken) {
+            toast({
+              variant: 'error',
+              title: 'E-posta Zaten Kayıtlı',
+              description:
+                checkData.message || `"${email}" e-posta adresiyle zaten bir hesap kayıtlı.`,
+            })
+            return
+          }
+        }
+
         await apiJson('/api/auth/send-code', { purpose: 'signup', email })
         setPendingData({ username, email, pass: password })
         setInputCode('')

@@ -863,6 +863,7 @@ export function ProfileView() {
   const [showStep1Errors, setShowStep1Errors] = useState(false)
   const [showStep2Errors, setShowStep2Errors] = useState(false)
   const [showStep3Errors, setShowStep3Errors] = useState(false)
+  const [nicknameError, setNicknameError] = useState<string | null>(null)
   const [savingStep, setSavingStep] = useState(false)
 
   // WoW Armory live verification state
@@ -1115,12 +1116,47 @@ export function ProfileView() {
     saveOnboardingSnapshot(user.username, profile, characters)
   }, [profile, characters, ready, user])
 
+  const checkNicknameUnique = async (value: string): Promise<boolean> => {
+    const clean = value.trim()
+    if (!clean) {
+      setNicknameError(null)
+      return true
+    }
+    try {
+      const res = await fetch(`/api/profile/check-name?nickname=${encodeURIComponent(clean)}`, {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        cache: 'no-store',
+      })
+      if (!res.ok) return true
+      const data = (await res.json().catch(() => ({}))) as { nicknameTaken?: boolean; message?: string }
+      if (data.nicknameTaken) {
+        const msg =
+          data.message ||
+          `"${clean}" profil ismi daha önce kullanılmış. Lütfen başka bir profil ismi seçin.`
+        setNicknameError(msg)
+        return false
+      }
+      setNicknameError(null)
+      return true
+    } catch {
+      return true
+    }
+  }
+
   const persistGate = async (
     nextProfile: UserProfileData,
     nextCharacters: GuildCharacter[],
     options?: { forceArmoryCheck?: boolean },
-  ): Promise<{ complete: boolean; characters: GuildCharacter[]; armoryResult: ArmoryVerificationResult | null }> => {
-    if (!user) return { complete: false, characters: nextCharacters, armoryResult: null }
+  ): Promise<{
+    ok: boolean
+    complete: boolean
+    characters: GuildCharacter[]
+    armoryResult: ArmoryVerificationResult | null
+    conflictField?: string
+    error?: string
+  }> => {
+    if (!user) return { ok: false, complete: false, characters: nextCharacters, armoryResult: null }
     saveOnboardingSnapshot(user.username, nextProfile, nextCharacters)
     commitOnboardingStatus(user.username, nextProfile, nextCharacters)
     try {
@@ -1140,9 +1176,21 @@ export function ProfileView() {
         characters?: GuildCharacter[]
         armoryResult?: ArmoryVerificationResult | null
         error?: string
+        field?: string
       }
       if (!response.ok) {
-        toast({ variant: 'error', title: 'Sunucuya kaydedilemedi', description: data.error || 'Profil tarayıcıda kaldı.' })
+        if (response.status === 409 && data.field === 'nickname') {
+          setNicknameError(data.error || 'Bu profil ismi zaten kullanılıyor. Lütfen başka bir isim seçin.')
+        }
+        toast({ variant: 'error', title: response.status === 409 ? 'Profil İsmi Kullanılıyor' : 'Sunucuya kaydedilemedi', description: data.error || 'Profil tarayıcıda kaldı.' })
+        return {
+          ok: false,
+          complete: false,
+          characters: nextCharacters,
+          armoryResult: null,
+          conflictField: data.field,
+          error: data.error,
+        }
       }
       const syncedChars = Array.isArray(data.characters) ? data.characters : nextCharacters
       setCharacters(syncedChars)
@@ -1150,6 +1198,7 @@ export function ProfileView() {
       commitOnboardingStatus(user.username, nextProfile, syncedChars)
       await refreshProfileGate()
       return {
+        ok: true,
         complete: Boolean(data.profileComplete ?? commitOnboardingStatus(user.username, nextProfile, syncedChars)),
         characters: syncedChars,
         armoryResult: data.armoryResult || null,
@@ -1157,6 +1206,7 @@ export function ProfileView() {
     } catch {
       await refreshProfileGate()
       return {
+        ok: false,
         complete: commitOnboardingStatus(user.username, nextProfile, nextCharacters),
         characters: nextCharacters,
         armoryResult: null,
@@ -1472,7 +1522,29 @@ export function ProfileView() {
     setShowStep2Errors(false)
     setSavingStep(true)
     try {
+      const nickAvailable = await checkNicknameUnique(profile.nickname)
+      if (!nickAvailable) {
+        setShowStep2Errors(true)
+        const nickEl = document.querySelector<HTMLElement>('#profile-nickname')
+        nickEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        nickEl?.focus()
+        toast({
+          variant: 'error',
+          title: 'Profil İsmi Kullanılıyor',
+          description: `"${profile.nickname.trim()}" profil ismi daha önce kullanılmış. Lütfen başka bir profil ismi seçin.`,
+        })
+        return
+      }
       const persisted = await persistGate(profile, characters)
+      if (!persisted.ok) {
+        if (persisted.conflictField === 'nickname') {
+          setShowStep2Errors(true)
+          const nickEl = document.querySelector<HTMLElement>('#profile-nickname')
+          nickEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          nickEl?.focus()
+        }
+        return
+      }
       if (persisted.complete && profileComplete) {
         toast({ title: 'Kişisel Bilgiler Güncellendi', description: 'Profil değişiklikleriniz kaydedildi.' })
       } else if (advanceNext) {
@@ -2431,17 +2503,28 @@ export function ProfileView() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="profile-nickname" className="text-xs font-semibold text-silver">
-                Profil İsmi / Nick (Opsiyonel)
+              <label htmlFor="profile-nickname" className="text-xs font-semibold text-silver flex items-center justify-between">
+                <span>Profil İsmi / Nick (Opsiyonel)</span>
+                {nicknameError && (
+                  <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-[10px] font-bold text-red-300">Kullanılıyor</span>
+                )}
               </label>
               <input
                 id="profile-nickname"
                 type="text"
                 value={profile.nickname}
-                onChange={(e) => setProfile({ ...profile, nickname: e.target.value })}
+                onChange={(e) => {
+                  setProfile({ ...profile, nickname: e.target.value })
+                  if (nicknameError) setNicknameError(null)
+                }}
+                onBlur={(e) => void checkNicknameUnique(e.target.value)}
                 placeholder="Profil ismi / Nick"
-                className={inputClass}
+                className={cn(inputClass, nicknameError && errorInputClass)}
+                aria-invalid={Boolean(nicknameError)}
               />
+              {nicknameError && (
+                <span className="text-[11px] font-medium text-red-400">{nicknameError}</span>
+              )}
             </div>
 
             {/* Gerçek İsim Görünürlük Tercihi */}

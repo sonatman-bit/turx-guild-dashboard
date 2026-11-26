@@ -128,6 +128,31 @@ export async function PUT(request: Request) {
       return json({ error: 'Hesap bulunamadı.' }, 404)
     }
 
+    // Enforce unique profile nickname across all other accounts (case-insensitive)
+    const cleanNickname = typeof profile.nickname === 'string' ? profile.nickname.trim() : ''
+    profile.nickname = cleanNickname
+    if (cleanNickname) {
+      const normNick = cleanNickname.toLocaleLowerCase('tr-TR')
+      const takenByOther = currentStore.users.some((u) => {
+        if (u.username.toLowerCase() === session.username.toLowerCase()) return false
+        const otherUser = u.username.trim().toLocaleLowerCase('tr-TR')
+        const otherNick =
+          typeof u.profile?.nickname === 'string'
+            ? u.profile.nickname.trim().toLocaleLowerCase('tr-TR')
+            : ''
+        return otherUser === normNick || (Boolean(otherNick) && otherNick === normNick)
+      })
+      if (takenByOther) {
+        return json(
+          {
+            error: `"${cleanNickname}" profil ismi daha önce başka bir üye tarafından kullanılmış. Lütfen başka bir profil ismi seçin.`,
+            field: 'nickname',
+          },
+          409,
+        )
+      }
+    }
+
     const syncedArmory = await syncMainCharacterArmory(
       incomingCharacters,
       currentUser.characters || [],

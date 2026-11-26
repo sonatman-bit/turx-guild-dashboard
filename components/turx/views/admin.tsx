@@ -33,8 +33,10 @@ import {
   ShieldAlert,
   AlertTriangle,
   Loader2,
+  Edit3,
 } from 'lucide-react'
 import { useAuth } from '../auth-provider'
+import { GmMemberProfileModal } from '../gm-member-profile-modal'
 import { WowArmoryLogo } from '../wow-armory-badge'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
@@ -209,9 +211,11 @@ export function AdminDashboardView() {
 
   // 1. Üye Matrisi (Hesap/Profil tabanlı, ana karakter detaylı)
   const [members, setMembers] = useState<MemberItem[]>([])
+  const [editingMemberUsername, setEditingMemberUsername] = useState<string | null>(null)
   const [armoryAudit, setArmoryAudit] = useState<ArmoryAuditReport | null>(null)
   const [armoryAuditLoading, setArmoryAuditLoading] = useState(false)
   const [armoryPruneBusy, setArmoryPruneBusy] = useState(false)
+  const [armorySendEmails, setArmorySendEmails] = useState(true)
 
   // 2. Başvuru Yönetimi (Detaylı görünüm - Sadece GM ve Officer burada tüm detayları görür)
   const [applications, setApplications] = useState<AdminApplication[]>([])
@@ -509,7 +513,7 @@ export function AdminDashboardView() {
         method: 'POST',
         credentials: 'same-origin',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ action: 'prune_non_turx' }),
+        body: JSON.stringify({ action: 'prune_non_turx', sendEmails: armorySendEmails }),
       })
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean
@@ -517,6 +521,7 @@ export function AdminDashboardView() {
         removedUsers?: ArmoryAuditRow[]
         keptCount?: number
         skippedUnavailableCount?: number
+        emailsSentCount?: number
         auditRows?: ArmoryAuditRow[]
         checkedAt?: string
         error?: string
@@ -548,7 +553,7 @@ export function AdminDashboardView() {
       }
       toast({
         title: 'WoW Armory Temizliği Tamamlandı! 🛡️',
-        description: `${data.removedCount ?? 0} TURX dışı kullanıcı silindi. ${data.keptCount ?? 0} onaylı üye kaldı.`,
+        description: `${data.removedCount ?? 0} TURX dışı kullanıcı silindi${data.emailsSentCount ? ` · ${data.emailsSentCount} bilgilendirme e-postası gönderildi` : ''}. ${data.keptCount ?? 0} onaylı üye kaldı.`,
       })
     } catch {
       toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
@@ -966,6 +971,15 @@ export function AdminDashboardView() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-silver mr-1 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={armorySendEmails}
+                    onChange={(e) => setArmorySendEmails(e.target.checked)}
+                    className="accent-[#d4af37]"
+                  />
+                  Silinenlere rehber maili at
+                </label>
                 <GhostButton
                   type="button"
                   onClick={() => void handleRunArmoryAudit()}
@@ -1113,7 +1127,19 @@ export function AdminDashboardView() {
                 {members.map((member) => (
                   <tr key={member.id} className="hover:bg-muted/20 transition">
                     <td className="py-3 px-4 font-bold text-silver">
-                      {member.accountName}
+                      {isGm ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingMemberUsername(member.accountName)}
+                          className="group inline-flex items-center gap-1.5 text-left font-bold text-silver hover:text-gold hover:underline underline-offset-4 transition cursor-pointer"
+                          title="Üyenin profilini görüntüle ve düzenle (Sadece GM)"
+                        >
+                          <span>{member.accountName}</span>
+                          <Edit3 className="size-3.5 text-gold/70 opacity-70 group-hover:opacity-100" />
+                        </button>
+                      ) : (
+                        member.accountName
+                      )}
                     </td>
                     <td className="py-3 px-4 text-foreground font-medium">
                       {member.mainCharacter}
@@ -2049,6 +2075,28 @@ export function AdminDashboardView() {
             </Modal>
           )}
         </div>
+      )}
+
+      {isGm && (
+        <GmMemberProfileModal
+          username={editingMemberUsername}
+          onClose={() => setEditingMemberUsername(null)}
+          onSaved={(updated) => {
+            setMembers((prev) =>
+              prev.map((m) =>
+                m.accountName.toLowerCase() === updated.username.toLowerCase()
+                  ? {
+                      ...m,
+                      rank: updated.role,
+                      mainCharacter: updated.mainCharacter,
+                      class: updated.wowClass,
+                      spec: updated.spec,
+                    }
+                  : m,
+              ),
+            )
+          }}
+        />
       )}
     </div>
   )

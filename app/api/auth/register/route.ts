@@ -19,9 +19,18 @@ export async function POST(request: Request) {
     }
 
     const user = await mutateGuildStore((store) => {
-      const taken = store.users.some(
-        (item) => item.username.toLowerCase() === username.toLowerCase() || item.email.toLowerCase() === email,
-      )
+      const normUser = username.toLocaleLowerCase('tr-TR')
+      const taken = store.users.some((item) => {
+        const otherNick =
+          typeof item.profile?.nickname === 'string'
+            ? item.profile.nickname.trim().toLocaleLowerCase('tr-TR')
+            : ''
+        return (
+          item.username.toLocaleLowerCase('tr-TR') === normUser ||
+          (Boolean(otherNick) && otherNick === normUser) ||
+          item.email.toLowerCase() === email
+        )
+      })
       if (taken) {
         throw new Error('USERNAME_OR_EMAIL_TAKEN')
       }

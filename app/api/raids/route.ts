@@ -141,7 +141,8 @@ export async function POST(request: Request) {
     // If publishing, optionally send Discord embed
     const finalState = updatedState as StoredRaidState | null
     if (action === 'publish') {
-      const webhook = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL || process.env.DISCORD_STREAM_WEBHOOK_URL
+      // Dedicated raid webhook only — never post raid rosters to Guild Başvuru or stream channels
+      const webhook = process.env.DISCORD_RAID_WEBHOOK_URL?.trim()
       if (webhook) {
         const activeRoster = (finalState?.signups || []).filter((s: StoredRaidSignup) => s.rosterStatus === 'roster')
         const tanks = activeRoster.filter((s: StoredRaidSignup) => s.role === 'TANK').map((s: StoredRaidSignup) => s.characterName).join(', ') || 'Yok'

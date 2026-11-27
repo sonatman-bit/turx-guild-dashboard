@@ -43,7 +43,8 @@ export async function POST(request: Request) {
       emailError = 'RESEND_API_KEY missing'
     }
 
-    const webhookUrl = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL
+    // Dedicated anonymous webhook only — never post to the Guild Başvuru (recruitment) channel
+    const webhookUrl = process.env.DISCORD_ANONYMOUS_WEBHOOK_URL?.trim()
     let discordOk = false
     if (webhookUrl) {
       const discord = await fetch(webhookUrl, {

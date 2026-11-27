@@ -397,7 +397,151 @@ export const ALL_SPEC_LABELS = [
   'Resto Shaman',
 ] as const
 
+export type WowSpecDefinition = {
+  label: string
+  wowClass: WowClass
+  specName: string
+  icon: string
+}
+
+export const WOW_CLASS_SPEC_GROUPS: {
+  wowClass: WowClass
+  color: string
+  specs: WowSpecDefinition[]
+}[] = [
+  {
+    wowClass: 'Druid',
+    color: CLASS_COLORS.Druid,
+    specs: [
+      { label: 'Druid (Balance)', wowClass: 'Druid', specName: 'Balance', icon: 'spell_nature_starfall' },
+      { label: 'Druid (Feral Tank)', wowClass: 'Druid', specName: 'Feral Tank', icon: 'ability_racial_bearform' },
+      { label: 'Druid (Feral DPS)', wowClass: 'Druid', specName: 'Feral DPS', icon: 'ability_druid_catform' },
+      { label: 'Druid (Restoration)', wowClass: 'Druid', specName: 'Restoration', icon: 'spell_nature_healingtouch' },
+    ],
+  },
+  {
+    wowClass: 'Hunter',
+    color: CLASS_COLORS.Hunter,
+    specs: [
+      { label: 'Hunter (Beast Mastery)', wowClass: 'Hunter', specName: 'Beast Mastery', icon: 'ability_hunter_beasttaming' },
+      { label: 'Hunter (Marksman)', wowClass: 'Hunter', specName: 'Marksman', icon: 'ability_marksmanship' },
+      { label: 'Hunter (Survival)', wowClass: 'Hunter', specName: 'Survival', icon: 'ability_hunter_swiftstrike' },
+    ],
+  },
+  {
+    wowClass: 'Mage',
+    color: CLASS_COLORS.Mage,
+    specs: [
+      { label: 'Mage (Arcane)', wowClass: 'Mage', specName: 'Arcane', icon: 'spell_holy_magicalsentry' },
+      { label: 'Mage (Fire)', wowClass: 'Mage', specName: 'Fire', icon: 'spell_fire_firebolt02' },
+      { label: 'Mage (Frost)', wowClass: 'Mage', specName: 'Frost', icon: 'spell_frost_frostbolt02' },
+    ],
+  },
+  {
+    wowClass: 'Paladin',
+    color: CLASS_COLORS.Paladin,
+    specs: [
+      { label: 'Paladin (Holy)', wowClass: 'Paladin', specName: 'Holy', icon: 'spell_holy_holybolt' },
+      { label: 'Paladin (Protection)', wowClass: 'Paladin', specName: 'Protection', icon: 'spell_holy_devotionaura' },
+      { label: 'Paladin (Retribution)', wowClass: 'Paladin', specName: 'Retribution', icon: 'spell_holy_auraoflight' },
+    ],
+  },
+  {
+    wowClass: 'Priest',
+    color: CLASS_COLORS.Priest,
+    specs: [
+      { label: 'Priest (Discipline)', wowClass: 'Priest', specName: 'Discipline', icon: 'spell_holy_wordfortitude' },
+      { label: 'Priest (Holy)', wowClass: 'Priest', specName: 'Holy', icon: 'spell_holy_guardianspirit' },
+      { label: 'Priest (Shadow)', wowClass: 'Priest', specName: 'Shadow', icon: 'spell_shadow_shadowwordpain' },
+    ],
+  },
+  {
+    wowClass: 'Rogue',
+    color: CLASS_COLORS.Rogue,
+    specs: [
+      { label: 'Rogue (Assassination)', wowClass: 'Rogue', specName: 'Assassination', icon: 'ability_rogue_eviscerate' },
+      { label: 'Rogue (Combat)', wowClass: 'Rogue', specName: 'Combat', icon: 'ability_backstab' },
+      { label: 'Rogue (Subtlety)', wowClass: 'Rogue', specName: 'Subtlety', icon: 'ability_stealth' },
+    ],
+  },
+  {
+    wowClass: 'Shaman',
+    color: CLASS_COLORS.Shaman,
+    specs: [
+      { label: 'Shaman (Elemental)', wowClass: 'Shaman', specName: 'Elemental', icon: 'spell_nature_lightning' },
+      { label: 'Shaman (Enhancement)', wowClass: 'Shaman', specName: 'Enhancement', icon: 'spell_nature_lightningshield' },
+      { label: 'Shaman (Restoration)', wowClass: 'Shaman', specName: 'Restoration', icon: 'spell_nature_magicimmunity' },
+    ],
+  },
+  {
+    wowClass: 'Warlock',
+    color: CLASS_COLORS.Warlock,
+    specs: [
+      { label: 'Warlock (Affliction)', wowClass: 'Warlock', specName: 'Affliction', icon: 'spell_shadow_deathcoil' },
+      { label: 'Warlock (Demonology)', wowClass: 'Warlock', specName: 'Demonology', icon: 'spell_shadow_metamorphosis' },
+      { label: 'Warlock (Destruction)', wowClass: 'Warlock', specName: 'Destruction', icon: 'spell_shadow_rainoffire' },
+    ],
+  },
+  {
+    wowClass: 'Warrior',
+    color: CLASS_COLORS.Warrior,
+    specs: [
+      { label: 'Warrior (Arms)', wowClass: 'Warrior', specName: 'Arms', icon: 'ability_warrior_savageblow' },
+      { label: 'Warrior (Fury)', wowClass: 'Warrior', specName: 'Fury', icon: 'ability_warrior_innerrage' },
+      { label: 'Warrior (Protection)', wowClass: 'Warrior', specName: 'Protection', icon: 'ability_warrior_defensivestance' },
+    ],
+  },
+]
+
+export const ALL_WOW_SPECS: WowSpecDefinition[] = WOW_CLASS_SPEC_GROUPS.flatMap((g) => g.specs)
+
+const SPEC_DEF_BY_LABEL = new Map<string, WowSpecDefinition>(
+  ALL_WOW_SPECS.map((s) => [s.label.toLowerCase(), s]),
+)
+
+const LEGACY_TO_CANONICAL_SPEC: Record<string, string> = {
+  'tank warrior': 'Warrior (Protection)',
+  'fury warrior': 'Warrior (Fury)',
+  'arms warrior': 'Warrior (Arms)',
+  'tank paladin': 'Paladin (Protection)',
+  'holy paladin': 'Paladin (Holy)',
+  'retribution paladin': 'Paladin (Retribution)',
+  'feral tank': 'Druid (Feral Tank)',
+  'feral dps': 'Druid (Feral DPS)',
+  'balance druid': 'Druid (Balance)',
+  'resto druid': 'Druid (Restoration)',
+  'holy priest': 'Priest (Holy)',
+  'shadow priest': 'Priest (Shadow)',
+  'elemental shaman': 'Shaman (Elemental)',
+  'enhancement shaman': 'Shaman (Enhancement)',
+  'resto shaman': 'Shaman (Restoration)',
+  rogue: 'Rogue (Combat)',
+  hunter: 'Hunter (Marksman)',
+  mage: 'Mage (Frost)',
+  warlock: 'Warlock (Destruction)',
+}
+
+export function canonicalizeSpecLabel(specLabel: string): string {
+  const clean = (specLabel || '').trim()
+  const lower = clean.toLowerCase()
+  if (SPEC_DEF_BY_LABEL.has(lower)) return SPEC_DEF_BY_LABEL.get(lower)!.label
+  if (LEGACY_TO_CANONICAL_SPEC[lower]) return LEGACY_TO_CANONICAL_SPEC[lower]
+  return clean
+}
+
+export function getSpecIconSlug(specLabel: string): string {
+  const canonical = canonicalizeSpecLabel(specLabel)
+  const def = SPEC_DEF_BY_LABEL.get(canonical.toLowerCase())
+  if (def) return def.icon
+  const cls = getSpecWowClass(specLabel)
+  const fallback = WOW_CLASS_SPEC_GROUPS.find((g) => g.wowClass === cls)?.specs[0]
+  return fallback?.icon || 'inv_misc_questionmark'
+}
+
 export function getSpecWowClass(specLabel: string): WowClass {
+  const canonical = canonicalizeSpecLabel(specLabel)
+  const def = SPEC_DEF_BY_LABEL.get(canonical.toLowerCase())
+  if (def) return def.wowClass
   if (SPEC_CLASS_MAP[specLabel]) return SPEC_CLASS_MAP[specLabel]
   const lower = specLabel.toLowerCase()
   if (lower.includes('warrior')) return 'Warrior'
@@ -1821,7 +1965,7 @@ export function characterMatchesTier(
   return tier.specs.some((sp) => characterMatchesSpecLabel(char, sp))
 }
 
-/** Match whether a character's class/spec fits a priority spec label (e.g. "Tank Warrior") */
+/** Match whether a character's class/spec fits a priority spec label (e.g. "Warrior (Protection)" or legacy "Tank Warrior") */
 export function characterMatchesSpecLabel(
   char: { wowClass: string; spec: string; role?: string },
   specLabel: string,
@@ -1836,20 +1980,49 @@ export function characterMatchesSpecLabel(
   // Pure class labels like "Rogue", "Hunter", "Mage", "Warlock" match any spec of that class
   if (labelLower === targetClass.toLowerCase()) return true
 
-  if (labelLower.includes('tank')) {
+  // Tanks
+  if (labelLower.includes('protection') || labelLower.includes('tank')) {
     return roleLower === 'tank' || specLower.includes('prot') || specLower.includes('tank') || specLower.includes('feral')
   }
-  if (labelLower.includes('holy') || labelLower.includes('resto') || labelLower.includes('disc')) {
-    return roleLower === 'healer' || specLower.includes('holy') || specLower.includes('resto') || specLower.includes('disc')
+  // Healers
+  if (labelLower.includes('holy') || labelLower.includes('restoration') || labelLower.includes('resto') || labelLower.includes('discipline') || labelLower.includes('disc')) {
+    return (
+      roleLower === 'healer' ||
+      specLower.includes('holy') ||
+      specLower.includes('resto') ||
+      specLower.includes('disc') ||
+      specLower.includes('heal')
+    )
   }
+  // Warrior DPS
   if (labelLower.includes('fury')) return specLower.includes('fury') || (roleLower === 'melee' && !specLower.includes('arms'))
   if (labelLower.includes('arms')) return specLower.includes('arms')
-  if (labelLower.includes('ret')) return specLower.includes('ret') || roleLower === 'melee'
+  // Paladin DPS
+  if (labelLower.includes('retribution') || labelLower.includes('ret')) return specLower.includes('ret') || roleLower === 'melee'
+  // Priest DPS
   if (labelLower.includes('shadow')) return specLower.includes('shadow') || roleLower === 'ranged'
+  // Druid DPS
   if (labelLower.includes('balance')) return specLower.includes('bal') || specLower.includes('boom') || roleLower === 'ranged'
   if (labelLower.includes('feral dps')) return specLower.includes('feral') && roleLower !== 'tank'
+  // Shaman DPS
   if (labelLower.includes('enhancement')) return specLower.includes('enh') || roleLower === 'melee'
   if (labelLower.includes('elemental')) return specLower.includes('ele') || roleLower === 'ranged'
+  // Hunter specs (if player's spec string mentions it, match; otherwise match any Hunter)
+  if (labelLower.includes('marksman')) return !specLower || specLower.includes('mark') || specLower.includes('mm') || (!specLower.includes('beast') && !specLower.includes('surv'))
+  if (labelLower.includes('beast mastery')) return specLower.includes('beast') || specLower.includes('bm')
+  if (labelLower.includes('survival')) return specLower.includes('surv')
+  // Mage specs
+  if (labelLower.includes('arcane')) return specLower.includes('arc')
+  if (labelLower.includes('fire')) return specLower.includes('fire')
+  if (labelLower.includes('frost')) return !specLower || specLower.includes('frost') || (!specLower.includes('fire') && !specLower.includes('arc'))
+  // Rogue specs
+  if (labelLower.includes('assassination')) return specLower.includes('assass') || specLower.includes('mutil')
+  if (labelLower.includes('combat')) return !specLower || specLower.includes('combat') || (!specLower.includes('assass') && !specLower.includes('subt'))
+  if (labelLower.includes('subtlety')) return specLower.includes('subt')
+  // Warlock specs
+  if (labelLower.includes('affliction')) return specLower.includes('affl')
+  if (labelLower.includes('demonology')) return specLower.includes('demo')
+  if (labelLower.includes('destruction')) return !specLower || specLower.includes('destr') || (!specLower.includes('affl') && !specLower.includes('demo'))
 
   return true
 }

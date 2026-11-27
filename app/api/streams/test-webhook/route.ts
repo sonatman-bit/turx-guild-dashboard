@@ -39,12 +39,11 @@ export async function POST(request: Request) {
 
     const webhook = streamWebhookUrl()
     const hasDedicatedStreamWebhook = Boolean(process.env.DISCORD_STREAM_WEBHOOK_URL?.trim())
-    const hasRecruitmentWebhook = Boolean(process.env.DISCORD_RECRUITMENT_WEBHOOK_URL?.trim())
 
     if (!webhook) {
       return NextResponse.json({
         ok: false,
-        error: 'DISCORD_STREAM_WEBHOOK_URL ve DISCORD_RECRUITMENT_WEBHOOK_URL ortam değişkenleri tanımlı değil.',
+        error: 'DISCORD_STREAM_WEBHOOK_URL ortam değişkeni tanımlı değil.',
         hasDedicatedStreamWebhook: false,
       }, { status: 400 })
     }
@@ -57,7 +56,7 @@ export async function POST(request: Request) {
           description: 'Bu mesaj TURX Guild Dashboard üzerinden test amaçlı gönderilmiştir. Discord webhook bağlantısı başarıyla çalışıyor!',
           fields: [
             { name: 'Test Eden Yetkili', value: session.username, inline: true },
-            { name: 'Kanal Hedefi', value: hasDedicatedStreamWebhook ? '#canlıyayın (Özel Webhook)' : '#alım / fallback kanalı', inline: true },
+            { name: 'Kanal Hedefi', value: '#canlıyayın (Stream Webhook)', inline: true },
             { name: 'Zaman Damgası', value: new Date().toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul' }), inline: true },
           ],
           footer: { text: 'TURX Stream Radar Entegrasyonu' },
@@ -87,7 +86,6 @@ export async function POST(request: Request) {
         ok: false,
         status: response.status,
         hasDedicatedStreamWebhook,
-        hasRecruitmentWebhook,
         error: `Discord hata döndürdü (HTTP ${response.status}): ${discordMessage}`,
       })
     }
@@ -96,10 +94,7 @@ export async function POST(request: Request) {
       ok: true,
       status: response.status,
       hasDedicatedStreamWebhook,
-      hasRecruitmentWebhook,
-      message: hasDedicatedStreamWebhook
-        ? 'Test mesajı başarıyla #canlıyayın kanalına gönderildi!'
-        : 'DISCORD_STREAM_WEBHOOK_URL tanımlı olmadığı için mesaj recruitment webhook kanalına gönderildi. #canlıyayın için ayrı DISCORD_STREAM_WEBHOOK_URL tanımlamanız önerilir.',
+      message: 'Test mesajı başarıyla #canlıyayın kanalına gönderildi!',
     })
   } catch (err) {
     console.error('stream test-webhook', err)

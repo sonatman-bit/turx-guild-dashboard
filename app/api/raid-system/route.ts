@@ -1002,11 +1002,17 @@ export async function POST(request: Request) {
             )
             if (nextTiers.length > 0) {
               const prevCount = getItemPriorityTiers(item).length
+              const mapping = Array.isArray(body.tierOrderMapping)
+                ? (body.tierOrderMapping as number[])
+                : null
               item.priorityTiers = nextTiers
               item.priorityOrder = nextTiers.map(formatTierLabel)
               item.rounds = item.rounds.map((r) => {
                 const prevAwards = getRoundTierAwards(r, prevCount)
-                const nextAwards = nextTiers.map((_, idx) => prevAwards[idx] || [])
+                const nextAwards = nextTiers.map((_, idx) => {
+                  const sourceIdx = mapping && typeof mapping[idx] === 'number' ? mapping[idx] : idx
+                  return sourceIdx >= 0 ? prevAwards[sourceIdx] || [] : []
+                })
                 return {
                   ...r,
                   slots: nextAwards.map((list) => list[0] || null),
@@ -1315,7 +1321,8 @@ export async function POST(request: Request) {
         rosters: { name: string; members: string[] }[]
         bench: string[]
       }
-      const webhook = process.env.DISCORD_RECRUITMENT_WEBHOOK_URL || process.env.DISCORD_STREAM_WEBHOOK_URL
+      // Dedicated raid webhook only — never post raid rosters to Guild Başvuru or stream channels
+      const webhook = process.env.DISCORD_RAID_WEBHOOK_URL?.trim()
       if (webhook) {
         const fields = summary.rosters.map((r) => ({
           name: `⚔️ ${r.name} (${r.members.length})`,

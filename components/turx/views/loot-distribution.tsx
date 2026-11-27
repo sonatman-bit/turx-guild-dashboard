@@ -11,8 +11,10 @@ import {
   Coins,
   Dices,
   Edit3,
+  GripVertical,
   Hammer,
   Lock,
+  Minus,
   Plus,
   RotateCcw,
   Search,
@@ -21,12 +23,13 @@ import {
   Sparkles,
   Swords,
   Trash2,
+  X,
   Zap,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import {
-  ALL_SPEC_LABELS,
+  canonicalizeSpecLabel,
   characterMatchesTier,
   defaultQuotaForRaid,
   formatTierLabel,
@@ -47,6 +50,7 @@ import {
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { LootPhilosophyBanner } from '../loot-philosophy-banner'
+import { SpecIconPicker, SpecMiniIcon } from '../spec-icon-picker'
 import { useToast } from '../toast'
 import {
   Badge,
@@ -108,15 +112,20 @@ export function LootDistributionView() {
   const [formEffectsText, setFormEffectsText] = useState('')
   const [formNotes, setFormNotes] = useState('')
   const [formWowheadUrl, setFormWowheadUrl] = useState('')
-  const [formPriorityTiers, setFormPriorityTiers] = useState<LootPriorityTier[]>([
-    { specs: ['Tank Warrior'], quota: 1 },
-    { specs: ['Tank Paladin'], quota: 1 },
-    { specs: ['Rogue'], quota: 1 },
-    { specs: ['Fury Warrior'], quota: 1 },
-    { specs: ['Hunter'], quota: 1 },
-  ])
-  const [specToAdd, setSpecToAdd] = useState<string>('Rogue')
+  const [formPriorityTiers, setFormPriorityTiers] = useState<LootPriorityTier[]>([])
+  const [draftTierSpecs, setDraftTierSpecs] = useState<string[]>([])
   const [quotaToAdd, setQuotaToAdd] = useState<number>(1)
+  const [editingFormTierIdx, setEditingFormTierIdx] = useState<number | null>(null)
+
+  // Direct on-card drag-and-drop & quick tier picker modal
+  const [dragState, setDragState] = useState<{ itemId: string; fromIndex: number } | null>(null)
+  const [dragOverState, setDragOverState] = useState<{ itemId: string; overIndex: number } | null>(null)
+  const [quickTierModal, setQuickTierModal] = useState<{
+    item: LootItem
+    tierIndex: number | null
+    specs: string[]
+    quota: number
+  } | null>(null)
 
   // BoE & BoP Recipe forms
   const [boeModalOpen, setBoeModalOpen] = useState(false)
@@ -354,6 +363,8 @@ export function LootDistributionView() {
     setFormNotes('')
     setFormWowheadUrl('')
     setFormPriorityTiers([])
+    setDraftTierSpecs([])
+    setEditingFormTierIdx(null)
     setQuotaToAdd(defQuota)
     setItemModalOpen(true)
   }
@@ -371,9 +382,73 @@ export function LootDistributionView() {
     setFormEffectsText((item.tooltip?.effects || []).join('\n'))
     setFormNotes(item.notes || '')
     setFormWowheadUrl(item.wowheadUrl || '')
-    setFormPriorityTiers(getItemPriorityTiers(item).map((t) => ({ specs: [...t.specs], quota: t.quota })))
+    setFormPriorityTiers(
+      getItemPriorityTiers(item).map((t) => ({
+        specs: t.specs.map(canonicalizeSpecLabel),
+        quota: t.quota,
+      })),
+    )
+    setDraftTierSpecs([])
+    setEditingFormTierIdx(null)
     setQuotaToAdd(defaultQuotaForRaid(item.raidId))
     setItemModalOpen(true)
+  }
+
+  const persistItemTiers = async (
+    item: LootItem,
+    nextTiers: LootPriorityTier[],
+    tierOrderMapping: number[] | undefined,
+    successMsg: string,
+  ) => {
+    const cleaned = nextTiers
+      .map((t) => ({
+        specs: [...new Set(t.specs.map(canonicalizeSpecLabel).filter(Boolean))],
+        quota: Math.max(1, Math.min(15, Math.floor(Number(t.quota) || 1))),
+      }))
+      .filter((t) => t.specs.length > 0)
+    if (cleaned.length === 0) return false
+    return runAction(
+      {
+        action: 'update_loot_item',
+        itemId: item.id,
+        priorityTiers: cleaned,
+        priorityOrder: cleaned.map(formatTierLabel),
+        tierOrderMapping,
+      },
+      successMsg,
+    )
+  }
+
+  const handleSaveQuickTier = async () => {
+    if (!quickTierModal || quickTierModal.specs.length === 0) {
+      toast({ title: 'Sınıf / Spec Seçin', description: 'En az 1 sınıf/spec ikonu seçmelisiniz.' })
+      return
+    }
+    const { item, tierIndex, specs, quota } = quickTierModal
+    const currentTiers = getItemPriorityTiers(item).map((t) => ({
+      specs: t.specs.map(canonicalizeSpecLabel),
+      quota: t.quota,
+    }))
+    const nextTier: LootPriorityTier = {
+      specs: [...new Set(specs.map(canonicalizeSpecLabel))],
+      quota: Math.max(1, Math.min(15, Math.floor(quota) || 1)),
+    }
+    let nextTiers: LootPriorityTier[]
+    let mapping: number[]
+    if (tierIndex === null) {
+      nextTiers = [...currentTiers, nextTier]
+      mapping = [...currentTiers.map((_, i) => i), -1]
+    } else {
+      nextTiers = currentTiers.map((t, i) => (i === tierIndex ? nextTier : t))
+      mapping = currentTiers.map((_, i) => i)
+    }
+    const ok = await persistItemTiers(
+      item,
+      nextTiers,
+      mapping,
+      tierIndex === null ? 'Yeni öncelik sırası eklendi.' : 'Öncelik sırası güncellendi.',
+    )
+    if (ok) setQuickTierModal(null)
   }
 
   const handleSaveItem = async (e: React.FormEvent) => {
@@ -850,52 +925,219 @@ export function LootDistributionView() {
                                   </div>
                                 </div>
 
-                                {/* Active Round Flexible Priority Tiers with Quotas */}
+                                {/* Active Round Flexible Priority Tiers — Direct Drag & Drop + Inline Controls */}
                                 <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                                   {tiers.map((tier, idx) => {
                                     const awards = activeTierAwards[idx] || []
                                     const isFull = awards.length >= tier.quota
                                     const isNextPriority = !isFull && idx === roundState.primarySlotIndex
                                     const isSkippedWaiting = !isFull && idx < highestAwardedTierIdx
-                                    const tierLabel = formatTierLabel(tier)
+                                    const canonicalSpecs = tier.specs.map(canonicalizeSpecLabel)
+                                    const tierLabel = canonicalSpecs.join(' / ')
+                                    const isDragging =
+                                      dragState?.itemId === item.id && dragState.fromIndex === idx
+                                    const isDragOver =
+                                      dragOverState?.itemId === item.id &&
+                                      dragOverState.overIndex === idx &&
+                                      dragState?.fromIndex !== idx
+
+                                    const handleDropOnTier = (targetIdx: number) => {
+                                      if (!dragState || dragState.itemId !== item.id) return
+                                      const fromIdx = dragState.fromIndex
+                                      setDragState(null)
+                                      setDragOverState(null)
+                                      if (fromIdx === targetIdx) return
+                                      const nextTiers = [...tiers]
+                                      const mapping = tiers.map((_, i) => i)
+                                      const [movedTier] = nextTiers.splice(fromIdx, 1)
+                                      const [movedIdx] = mapping.splice(fromIdx, 1)
+                                      nextTiers.splice(targetIdx, 0, movedTier)
+                                      mapping.splice(targetIdx, 0, movedIdx)
+                                      void persistItemTiers(
+                                        item,
+                                        nextTiers,
+                                        mapping,
+                                        `${item.itemName} öncelik sırası yeniden düzenlendi.`,
+                                      )
+                                    }
+
+                                    const adjustQuota = (delta: number) => {
+                                      const minAllowed = Math.max(1, awards.length)
+                                      const nextQuota = Math.max(minAllowed, Math.min(15, tier.quota + delta))
+                                      if (nextQuota === tier.quota) return
+                                      const nextTiers = tiers.map((t, i) =>
+                                        i === idx ? { ...t, quota: nextQuota } : t,
+                                      )
+                                      void persistItemTiers(
+                                        item,
+                                        nextTiers,
+                                        tiers.map((_, i) => i),
+                                        `${tierLabel} kotası ${nextQuota} olarak güncellendi.`,
+                                      )
+                                    }
+
+                                    const removeThisTier = () => {
+                                      if (tiers.length <= 1) return
+                                      const nextTiers = tiers.filter((_, i) => i !== idx)
+                                      const mapping = tiers.map((_, i) => i).filter((i) => i !== idx)
+                                      void persistItemTiers(
+                                        item,
+                                        nextTiers,
+                                        mapping,
+                                        `${tierLabel} öncelik sırası kaldırıldı.`,
+                                      )
+                                    }
 
                                     return (
                                       <div
                                         key={`${tierLabel}-${idx}`}
+                                        draggable={isOfficer && !busy}
+                                        onDragStart={(e) => {
+                                          if (!isOfficer || busy) return
+                                          e.dataTransfer.effectAllowed = 'move'
+                                          setDragState({ itemId: item.id, fromIndex: idx })
+                                        }}
+                                        onDragOver={(e) => {
+                                          if (!dragState || dragState.itemId !== item.id) return
+                                          e.preventDefault()
+                                          e.dataTransfer.dropEffect = 'move'
+                                          if (
+                                            dragOverState?.itemId !== item.id ||
+                                            dragOverState.overIndex !== idx
+                                          ) {
+                                            setDragOverState({ itemId: item.id, overIndex: idx })
+                                          }
+                                        }}
+                                        onDragLeave={() => {
+                                          if (
+                                            dragOverState?.itemId === item.id &&
+                                            dragOverState.overIndex === idx
+                                          ) {
+                                            setDragOverState(null)
+                                          }
+                                        }}
+                                        onDrop={(e) => {
+                                          e.preventDefault()
+                                          handleDropOnTier(idx)
+                                        }}
+                                        onDragEnd={() => {
+                                          setDragState(null)
+                                          setDragOverState(null)
+                                        }}
                                         className={cn(
                                           'relative flex flex-col justify-between rounded-xl border p-3 transition',
-                                          isFull
-                                            ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
-                                            : isNextPriority
-                                              ? 'border-gold/70 bg-gold/[0.08] shadow-[0_0_18px_rgb(212_175_55/0.16)]'
-                                              : 'border-border/70 bg-[#071422]/80',
+                                          isOfficer && !busy && 'cursor-grab active:cursor-grabbing',
+                                          isDragging && 'scale-[0.97] opacity-45',
+                                          isDragOver && 'border-neon ring-2 ring-neon/50 bg-neon/10',
+                                          !isDragOver &&
+                                            (isFull
+                                              ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
+                                              : isNextPriority
+                                                ? 'border-gold/70 bg-gold/[0.08] shadow-[0_0_18px_rgb(212_175_55/0.16)]'
+                                                : 'border-border/70 bg-[#071422]/80'),
                                         )}
                                       >
-                                        <div className="flex flex-wrap items-start justify-between gap-1.5">
-                                          <div className="min-w-0 flex-1 text-[11px] leading-snug font-bold">
-                                            <span className="mr-1 text-muted-foreground">{idx + 1}.</span>
-                                            {tier.specs.map((sp, spIdx) => (
-                                              <span key={sp}>
-                                                {spIdx > 0 && <span className="mx-1 text-muted-foreground">/</span>}
-                                                <span style={{ color: getSpecColor(sp) }}>{sp}</span>
-                                              </span>
-                                            ))}
-                                          </div>
-                                          <div className="flex shrink-0 items-center gap-1">
-                                            <span
-                                              className={cn(
-                                                'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold',
-                                                isFull
-                                                  ? 'bg-emerald-500/20 text-emerald-300'
-                                                  : isNextPriority
-                                                    ? 'bg-gold/20 text-gold'
-                                                    : 'bg-white/5 text-silver',
+                                        <div className="space-y-1.5">
+                                          <div className="flex items-start justify-between gap-1.5">
+                                            <div className="flex min-w-0 flex-1 items-start gap-1">
+                                              {isOfficer && (
+                                                <GripVertical
+                                                  className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60"
+                                                  aria-hidden
+                                                />
                                               )}
-                                              title={`Kota: ${awards.length} / ${tier.quota}`}
-                                            >
-                                              {awards.length}/{tier.quota}
-                                              {isFull && <CheckCircle2 className="size-2.5" />}
-                                            </span>
+                                              <div className="min-w-0 flex-1 space-y-1">
+                                                {canonicalSpecs.map((sp, spIdx) => (
+                                                  <div
+                                                    key={sp}
+                                                    className="flex items-center gap-1.5 text-[11px] leading-tight font-bold"
+                                                  >
+                                                    {spIdx === 0 && (
+                                                      <span className="font-mono text-[10px] text-muted-foreground">
+                                                        {idx + 1}.
+                                                      </span>
+                                                    )}
+                                                    <SpecMiniIcon specLabel={sp} size={16} />
+                                                    <span className="truncate" style={{ color: getSpecColor(sp) }}>
+                                                      {sp}
+                                                    </span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+
+                                            {isOfficer && (
+                                              <div className="flex shrink-0 items-center gap-0.5">
+                                                <button
+                                                  type="button"
+                                                  disabled={busy}
+                                                  onClick={() =>
+                                                    setQuickTierModal({
+                                                      item,
+                                                      tierIndex: idx,
+                                                      specs: canonicalSpecs,
+                                                      quota: tier.quota,
+                                                    })
+                                                  }
+                                                  className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-white/10 hover:text-neon"
+                                                  title="Sınıf / Spec ve kotayı düzenle"
+                                                >
+                                                  <Edit3 className="size-3" />
+                                                </button>
+                                                {tiers.length > 1 && (
+                                                  <button
+                                                    type="button"
+                                                    disabled={busy}
+                                                    onClick={removeThisTier}
+                                                    className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/15 hover:text-rose-400"
+                                                    title="Bu öncelik kutusunu kaldır"
+                                                  >
+                                                    <X className="size-3" />
+                                                  </button>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+
+                                          <div className="flex flex-wrap items-center justify-between gap-1">
+                                            <div className="inline-flex items-center gap-1">
+                                              {isOfficer && (
+                                                <button
+                                                  type="button"
+                                                  disabled={busy || tier.quota <= Math.max(1, awards.length)}
+                                                  onClick={() => adjustQuota(-1)}
+                                                  className="inline-flex size-4 cursor-pointer items-center justify-center rounded border border-border/70 bg-[#0b1b2d] text-silver hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
+                                                  title="Kotayı azalt"
+                                                >
+                                                  <Minus className="size-2.5" />
+                                                </button>
+                                              )}
+                                              <span
+                                                className={cn(
+                                                  'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold',
+                                                  isFull
+                                                    ? 'bg-emerald-500/20 text-emerald-300'
+                                                    : isNextPriority
+                                                      ? 'bg-gold/20 text-gold'
+                                                      : 'bg-white/5 text-silver',
+                                                )}
+                                                title={`Kota: ${awards.length} / ${tier.quota}`}
+                                              >
+                                                {awards.length}/{tier.quota}
+                                                {isFull && <CheckCircle2 className="size-2.5" />}
+                                              </span>
+                                              {isOfficer && (
+                                                <button
+                                                  type="button"
+                                                  disabled={busy || tier.quota >= 15}
+                                                  onClick={() => adjustQuota(1)}
+                                                  className="inline-flex size-4 cursor-pointer items-center justify-center rounded border border-border/70 bg-[#0b1b2d] text-silver hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
+                                                  title="Kotayı artır"
+                                                >
+                                                  <Plus className="size-2.5" />
+                                                </button>
+                                              )}
+                                            </div>
                                             {isNextPriority && (
                                               <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-gold uppercase">
                                                 {isSkippedWaiting ? 'Bekleyen' : 'Sırada'}
@@ -984,6 +1226,26 @@ export function LootDistributionView() {
                                       </div>
                                     )
                                   })}
+
+                                  {isOfficer && (
+                                    <button
+                                      type="button"
+                                      disabled={busy}
+                                      onClick={() =>
+                                        setQuickTierModal({
+                                          item,
+                                          tierIndex: null,
+                                          specs: [],
+                                          quota: defaultQuotaForRaid(item.raidId),
+                                        })
+                                      }
+                                      className="flex min-h-[104px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-gold/35 bg-gold/[0.03] p-3 text-xs font-semibold text-gold/80 transition hover:border-gold hover:bg-gold/10 hover:text-gold disabled:opacity-50"
+                                      title="Bu itema yeni öncelik sırası ekle"
+                                    >
+                                      <Plus className="size-5" />
+                                      <span>Öncelik Ekle</span>
+                                    </button>
+                                  )}
                                 </div>
 
                                 {/* Previous Completed Rounds History */}
@@ -1462,58 +1724,64 @@ export function LootDistributionView() {
             </Field>
           </div>
 
-          {/* Flexible Priority Tier Builder (Multi-Spec Equal Share + Per-Tier Quota) */}
-          <div className="space-y-2.5">
+          {/* Flexible Priority Tier Builder — Visual WoW Class/Spec Icon Picker (Zero Dropdowns) */}
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-medium tracking-wide text-silver uppercase">
                 Öncelik Sıraları (1 → {formPriorityTiers.length}) · Eşit Spec &amp; Kota
               </p>
               <span className="text-[10px] text-muted-foreground">
-                Aynı sıraya birden fazla spec ekleyerek eşit öncelik verebilirsiniz
+                İkonlardan 1 veya birden fazla eşit öncelikli spec seçip sıraya ekleyin
               </span>
             </div>
 
-            <div className="space-y-2 rounded-xl border border-border bg-[#071422] p-2.5">
-              {formPriorityTiers.length === 0 ? (
-                <p className="py-3 text-center text-xs text-muted-foreground">
-                  Henüz öncelik sırası yok. Aşağıdan yeni sıra ekleyin.
-                </p>
-              ) : (
-                formPriorityTiers.map((tier, idx) => (
-                  <div
-                    key={idx}
-                    className="flex flex-col gap-2 rounded-lg border border-border/70 bg-[#0b1b2d]/90 p-2.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
+            {formPriorityTiers.length > 0 && (
+              <div className="space-y-1.5 rounded-xl border border-border bg-[#071422] p-2.5">
+                {formPriorityTiers.map((tier, idx) => {
+                  const isEditingRow = editingFormTierIdx === idx
+                  return (
+                    <div
+                      key={idx}
+                      className={cn(
+                        'flex flex-wrap items-center justify-between gap-2 rounded-lg border px-2.5 py-2 transition',
+                        isEditingRow
+                          ? 'border-neon bg-neon/10'
+                          : 'border-border/70 bg-[#0b1b2d]/90',
+                      )}
+                    >
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="rounded bg-gold/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gold">
                           #{idx + 1}
                         </span>
-                        {tier.specs.map((sp) => (
-                          <span
-                            key={sp}
-                            className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-[#071422] px-2.5 py-0.5 text-xs font-semibold"
-                            style={{ color: getSpecColor(sp) }}
-                          >
-                            {sp}
-                            {tier.specs.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setFormPriorityTiers((prev) =>
-                                    prev.map((t, ti) =>
-                                      ti === idx ? { ...t, specs: t.specs.filter((s) => s !== sp) } : t,
-                                    ),
-                                  )
-                                }
-                                className="cursor-pointer text-muted-foreground hover:text-rose-400"
-                                title="Bu spec'i sıradan çıkar"
-                              >
-                                ×
-                              </button>
-                            )}
-                          </span>
-                        ))}
+                        {tier.specs.map((sp) => {
+                          const canon = canonicalizeSpecLabel(sp)
+                          return (
+                            <span
+                              key={canon}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-[#071422] px-2 py-0.5 text-xs font-semibold"
+                              style={{ color: getSpecColor(canon) }}
+                            >
+                              <SpecMiniIcon specLabel={canon} size={14} />
+                              {canon}
+                              {tier.specs.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setFormPriorityTiers((prev) =>
+                                      prev.map((t, ti) =>
+                                        ti === idx ? { ...t, specs: t.specs.filter((s) => s !== sp) } : t,
+                                      ),
+                                    )
+                                  }
+                                  className="cursor-pointer text-muted-foreground hover:text-rose-400"
+                                  title="Bu spec'i sıradan çıkar"
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </span>
+                          )
+                        })}
                       </div>
 
                       <div className="flex items-center gap-1.5">
@@ -1533,6 +1801,28 @@ export function LootDistributionView() {
                             className="w-12 rounded border border-gold/40 bg-[#071422] px-1.5 py-0.5 text-center font-mono text-xs font-bold text-gold"
                           />
                         </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isEditingRow) {
+                              setEditingFormTierIdx(null)
+                              setDraftTierSpecs([])
+                            } else {
+                              setEditingFormTierIdx(idx)
+                              setDraftTierSpecs(tier.specs.map(canonicalizeSpecLabel))
+                              setQuotaToAdd(tier.quota)
+                            }
+                          }}
+                          className={cn(
+                            'cursor-pointer rounded border px-1.5 py-1 text-[10px] font-semibold',
+                            isEditingRow
+                              ? 'border-neon bg-neon/20 text-neon'
+                              : 'border-border/70 text-muted-foreground hover:text-neon',
+                          )}
+                          title="Bu sıranın spec'lerini ikonlarla düzenle"
+                        >
+                          <Edit3 className="size-3" />
+                        </button>
                         <button
                           type="button"
                           disabled={idx === 0}
@@ -1567,7 +1857,13 @@ export function LootDistributionView() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setFormPriorityTiers((prev) => prev.filter((_, ti) => ti !== idx))}
+                          onClick={() => {
+                            setFormPriorityTiers((prev) => prev.filter((_, ti) => ti !== idx))
+                            if (editingFormTierIdx === idx) {
+                              setEditingFormTierIdx(null)
+                              setDraftTierSpecs([])
+                            }
+                          }}
                           className="cursor-pointer rounded border border-rose-500/30 p-1 text-rose-400 hover:bg-rose-500/10"
                           title="Öncelik sırasını sil"
                         >
@@ -1575,75 +1871,81 @@ export function LootDistributionView() {
                         </button>
                       </div>
                     </div>
+                  )
+                })}
+              </div>
+            )}
 
-                    {/* Add an equal-priority spec to THIS tier */}
-                    <div className="flex items-center gap-2">
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          const chosen = e.target.value
-                          if (!chosen) return
-                          setFormPriorityTiers((prev) =>
-                            prev.map((t, ti) =>
-                              ti === idx && !t.specs.includes(chosen)
-                                ? { ...t, specs: [...t.specs, chosen] }
-                                : t,
-                            ),
-                          )
-                        }}
-                        className="rounded-md border border-dashed border-neon/35 bg-[#071422] px-2 py-1 text-[11px] text-neon focus:border-neon focus:outline-none"
-                      >
-                        <option value="">+ Eşit öncelikli sınıf/spec ekle...</option>
-                        {ALL_SPEC_LABELS.filter((sp) => !tier.specs.includes(sp)).map((sp) => (
-                          <option key={sp} value={sp}>
-                            {sp}
-                          </option>
-                        ))}
-                      </select>
-                      {tier.specs.length > 1 && (
-                        <span className="text-[10px] text-emerald-300/90">
-                          Eşit paylaşım: Devam Puanı yüksek olan alır
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {/* Visual Class/Spec Icon Selector Panel */}
+            <div className="space-y-2.5 rounded-xl border border-neon/25 bg-[#06111e] p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-neon">
+                  {editingFormTierIdx !== null
+                    ? `#${editingFormTierIdx + 1} Öncelik Sırasını Düzenle`
+                    : 'Yeni Öncelik Sırası Oluştur (Sınıf / Spec İkonu Seç)'}
+                </span>
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center gap-1.5 text-xs text-silver">
+                    <span>Kota:</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={15}
+                      value={quotaToAdd}
+                      onChange={(e) => setQuotaToAdd(Math.max(1, Math.min(15, Number(e.target.value) || 1)))}
+                      className="w-12 rounded border border-gold/40 bg-[#0b1b2d] px-1.5 py-0.5 text-center font-mono text-xs font-bold text-gold"
+                    />
+                  </label>
+                  {editingFormTierIdx !== null && (
+                    <GhostButton
+                      type="button"
+                      onClick={() => {
+                        setEditingFormTierIdx(null)
+                        setDraftTierSpecs([])
+                        setQuotaToAdd(defaultQuotaForRaid(formRaidId))
+                      }}
+                      className="px-2 py-1 text-[11px]"
+                    >
+                      Vazgeç
+                    </GhostButton>
+                  )}
+                  <GoldButton
+                    type="button"
+                    disabled={draftTierSpecs.length === 0}
+                    onClick={() => {
+                      if (draftTierSpecs.length === 0) return
+                      const tierObj: LootPriorityTier = {
+                        specs: [...draftTierSpecs],
+                        quota: quotaToAdd,
+                      }
+                      if (editingFormTierIdx !== null) {
+                        setFormPriorityTiers((prev) =>
+                          prev.map((t, ti) => (ti === editingFormTierIdx ? tierObj : t)),
+                        )
+                        setEditingFormTierIdx(null)
+                      } else {
+                        setFormPriorityTiers((prev) => [...prev, tierObj])
+                      }
+                      setDraftTierSpecs([])
+                      setQuotaToAdd(defaultQuotaForRaid(formRaidId))
+                    }}
+                    className="px-3 py-1 text-xs"
+                  >
+                    <Plus className="size-3.5" />
+                    {editingFormTierIdx !== null ? 'Sırayı Güncelle' : 'Öncelik Sırası Ekle'}
+                  </GoldButton>
+                </div>
+              </div>
 
-            {/* Add New Priority Tier Row */}
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                className={cn(inputClass, 'min-w-[160px] flex-1 text-xs')}
-                value={specToAdd}
-                onChange={(e) => setSpecToAdd(e.target.value)}
-              >
-                {ALL_SPEC_LABELS.map((sp) => (
-                  <option key={sp} value={sp}>
-                    {sp}
-                  </option>
-                ))}
-              </select>
-              <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-[#071422] px-2.5 py-1.5 text-xs text-silver">
-                <span>Kota:</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={15}
-                  value={quotaToAdd}
-                  onChange={(e) => setQuotaToAdd(Math.max(1, Math.min(15, Number(e.target.value) || 1)))}
-                  className="w-12 rounded border border-gold/40 bg-[#0b1b2d] px-1.5 py-0.5 text-center font-mono text-xs font-bold text-gold"
-                />
-              </label>
-              <GhostButton
-                type="button"
-                onClick={() =>
-                  setFormPriorityTiers((prev) => [...prev, { specs: [specToAdd], quota: quotaToAdd }])
+              <SpecIconPicker
+                compact
+                selectedSpecs={draftTierSpecs}
+                onToggleSpec={(label) =>
+                  setDraftTierSpecs((prev) =>
+                    prev.includes(label) ? prev.filter((s) => s !== label) : [...prev, label],
+                  )
                 }
-                className="text-xs"
-              >
-                + Yeni Öncelik Sırası Ekle
-              </GhostButton>
+              />
             </div>
           </div>
 
@@ -1676,6 +1978,97 @@ export function LootDistributionView() {
             </GoldButton>
           </div>
         </form>
+      </Modal>
+
+      {/* Quick Direct On-Card Tier Add / Edit Modal (WoW Class/Spec Icon Picker) */}
+      <Modal
+        open={Boolean(quickTierModal)}
+        onClose={() => setQuickTierModal(null)}
+        title={
+          quickTierModal
+            ? quickTierModal.tierIndex === null
+              ? `Öncelik Ekle: ${quickTierModal.item.itemName}`
+              : `#${quickTierModal.tierIndex + 1} Öncelik Düzenle: ${quickTierModal.item.itemName}`
+            : 'Öncelik Sırası'
+        }
+        description="Sınıf/spec ikonlarına tıklayarak 1 veya daha fazla eşit öncelikli spec seçip kotayı belirleyin."
+        className="max-w-3xl"
+      >
+        {quickTierModal && (
+          <div className="space-y-4">
+            <SpecIconPicker
+              selectedSpecs={quickTierModal.specs}
+              onToggleSpec={(label) =>
+                setQuickTierModal((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        specs: prev.specs.includes(label)
+                          ? prev.specs.filter((s) => s !== label)
+                          : [...prev.specs, label],
+                      }
+                    : null,
+                )
+              }
+            />
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-silver">Kota:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQuickTierModal((prev) =>
+                      prev ? { ...prev, quota: Math.max(1, prev.quota - 1) } : null,
+                    )
+                  }
+                  className="inline-flex size-7 cursor-pointer items-center justify-center rounded-lg border border-border bg-[#071422] text-silver hover:border-gold/60 hover:text-gold"
+                >
+                  <Minus className="size-3.5" />
+                </button>
+                <input
+                  type="number"
+                  min={1}
+                  max={15}
+                  value={quickTierModal.quota}
+                  onChange={(e) =>
+                    setQuickTierModal((prev) =>
+                      prev
+                        ? { ...prev, quota: Math.max(1, Math.min(15, Number(e.target.value) || 1)) }
+                        : null,
+                    )
+                  }
+                  className="w-14 rounded-lg border border-gold/40 bg-[#071422] px-2 py-1 text-center font-mono text-sm font-bold text-gold"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQuickTierModal((prev) =>
+                      prev ? { ...prev, quota: Math.min(15, prev.quota + 1) } : null,
+                    )
+                  }
+                  className="inline-flex size-7 cursor-pointer items-center justify-center rounded-lg border border-border bg-[#071422] text-silver hover:border-gold/60 hover:text-gold"
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <GhostButton type="button" onClick={() => setQuickTierModal(null)}>
+                  İptal
+                </GhostButton>
+                <GoldButton
+                  type="button"
+                  disabled={busy || quickTierModal.specs.length === 0}
+                  onClick={() => void handleSaveQuickTier()}
+                >
+                  <Plus className="size-4" />
+                  {quickTierModal.tierIndex === null ? 'Öncelik Ekle' : 'Kaydet'}
+                </GoldButton>
+              </div>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Add BoE Modal */}

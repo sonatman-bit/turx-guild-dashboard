@@ -34,6 +34,7 @@ import {
   resolveUserRole,
   type GuildStore,
 } from '@/lib/turx-store'
+import { loadArmorySnapshot } from '@/lib/wow-armory'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,7 +46,14 @@ type StoredCharacter = {
   spec?: string
   role?: string
   level?: number
+  armoryLevel?: number | null
   isMain?: boolean
+}
+
+function resolveStoredLevel(main?: StoredCharacter): number {
+  if (typeof main?.armoryLevel === 'number' && main.armoryLevel > 0) return main.armoryLevel
+  if (typeof main?.level === 'number' && main.level > 0) return main.level
+  return 0
 }
 
 function getCallerInfo(username: string | null | undefined, store: GuildStore) {
@@ -80,7 +88,7 @@ function extractGuildMainMembers(store: GuildStore) {
     const wowClass = (main?.wowClass || 'Warrior') as WowClass
     const spec = main?.spec || 'DPS'
     const role = normalizeRole(main?.role, spec)
-    const level = typeof main?.level === 'number' && main.level > 0 ? main.level : 60
+    const level = resolveStoredLevel(main)
     return {
       username: u.username,
       characterId: main?.id || `${u.username}-main`,
@@ -316,6 +324,31 @@ export async function GET(request: Request) {
     const attendanceLeaderboard = computeAttendanceLeaderboard(store, phaseId)
     const guildMembers = extractGuildMainMembers(store)
 
+    // Ensure the logged-in member's own WoW Armory level is fresh if stored level is missing or < 60
+    const callerChars = Array.isArray(caller.account.characters)
+      ? (caller.account.characters as StoredCharacter[])
+      : []
+    const callerMain = callerChars.find((c) => c.isMain) || callerChars[0]
+    const callerStoredLevel = resolveStoredLevel(callerMain)
+    if (callerMain?.firstName?.trim() && callerMain?.lastName?.trim() && callerStoredLevel < 60) {
+      try {
+        const snap = await loadArmorySnapshot(
+          callerMain.firstName.trim(),
+          callerMain.lastName.trim(),
+          (callerMain.wowClass || 'Warrior') as WowClass,
+        )
+        if (snap.found && typeof snap.level === 'number' && snap.level > 0) {
+          const ownLower = caller.account.username.toLowerCase()
+          const gmRow = guildMembers.find((m) => m.username.toLowerCase() === ownLower)
+          if (gmRow) gmRow.level = snap.level
+          const lbRow = attendanceLeaderboard.find((r) => r.username.toLowerCase() === ownLower)
+          if (lbRow) lbRow.level = snap.level
+        }
+      } catch {
+        // Non-fatal: keep stored level
+      }
+    }
+
     return NextResponse.json(
       {
         locked: false,
@@ -359,6 +392,62 @@ export async function POST(request: Request) {
       bench: string[]
     } | null = null
 
+    // Live WoW Armory Level 60 gate before signup / manual armory level refresh
+    let verifiedArmoryLevel: number | null = null
+    if (action === 'signup' || action === 'refresh_my_armory_level') {
+      const preStore = await loadGuildStore()
+      const preCaller = getCallerInfo(session.username, preStore)
+      if (!preCaller.account) {
+        return NextResponse.json({ error: 'Kullanıcı hesabı bulunamadı.' }, { status: 404 })
+      }
+      const chars = Array.isArray(preCaller.account.characters)
+        ? (preCaller.account.characters as StoredCharacter[])
+        : []
+      const main = chars.find((c) => c.isMain) || chars[0]
+      const storedLevel = resolveStoredLevel(main)
+      const firstName = main?.firstName?.trim() || ''
+      const lastName = main?.lastName?.trim() || ''
+      const charDisplayName = `${firstName} ${lastName}`.trim() || session.username
+
+      if (firstName && lastName) {
+        try {
+          const snap = await loadArmorySnapshot(
+            firstName,
+            lastName,
+            (main?.wowClass || 'Warrior') as WowClass,
+            { bypassCache: action === 'refresh_my_armory_level' || storedLevel < 60 },
+          )
+          if (snap.found && typeof snap.level === 'number' && snap.level > 0) {
+            verifiedArmoryLevel = snap.level
+          }
+        } catch {
+          // Fall back to stored Armory level if Armory temporarily unavailable
+        }
+      }
+
+      const effectiveLevel = verifiedArmoryLevel ?? (storedLevel > 0 ? storedLevel : null)
+
+      if (action === 'signup') {
+        if (effectiveLevel === null) {
+          return NextResponse.json(
+            {
+              error: `WoW Armory üzerinden "${charDisplayName}" karakterinin seviyesi doğrulanamadı. Raidlere imza atabilmek için Level 60 olduğunuzun WoW Armory'de görünmesi gerekir.`,
+            },
+            { status: 403 },
+          )
+        }
+        if (effectiveLevel < 60) {
+          return NextResponse.json(
+            {
+              error: `Raidlere yalnızca Level 60 karakterler imza atabilir. WoW Armory verisine göre "${charDisplayName}" şu an Level ${effectiveLevel}.`,
+            },
+            { status: 403 },
+          )
+        }
+        verifiedArmoryLevel = effectiveLevel
+      }
+    }
+
     await mutateGuildStore((store) => {
       const caller = getCallerInfo(session.username, store)
       if (!caller.account) throw new Error('ACCOUNT_NOT_FOUND')
@@ -377,6 +466,15 @@ export async function POST(request: Request) {
 
       switch (action) {
         // ============ MEMBER ACTIONS ============
+        case 'refresh_my_armory_level': {
+          if (verifiedArmoryLevel !== null && Array.isArray(caller.account.characters)) {
+            const chars = caller.account.characters as StoredCharacter[]
+            const main = chars.find((c) => c.isMain) || chars[0]
+            if (main) main.armoryLevel = verifiedArmoryLevel
+          }
+          break
+        }
+
         case 'signup': {
           const eventId = String(body.eventId || '')
           const ev = rs.events.find((e) => e.id === eventId)
@@ -384,6 +482,12 @@ export async function POST(request: Request) {
           if (ev.status === 'ARCHIVED') throw new Error('EVENT_ARCHIVED')
           if (!caller.isOfficer && new Date(ev.signupDeadline).getTime() < Date.now()) {
             throw new Error('SIGNUP_CLOSED')
+          }
+
+          if (verifiedArmoryLevel !== null && Array.isArray(caller.account.characters)) {
+            const chars = caller.account.characters as StoredCharacter[]
+            const main = chars.find((c) => c.isMain) || chars[0]
+            if (main) main.armoryLevel = verifiedArmoryLevel
           }
 
           const char = (body.character || {}) as {
@@ -395,6 +499,8 @@ export async function POST(request: Request) {
             level?: number
           }
           if (!char.name) throw new Error('CHAR_REQUIRED')
+
+          const resolvedLevel = verifiedArmoryLevel ?? (typeof char.level === 'number' ? char.level : 60)
 
           const existingIdx = ev.signups.findIndex(
             (s) => s.username.toLowerCase() === session.username.toLowerCase(),
@@ -409,7 +515,7 @@ export async function POST(request: Request) {
               wowClass: char.wowClass || prev.wowClass,
               spec: char.spec || prev.spec,
               role: normalizeRole(char.role, char.spec),
-              level: typeof char.level === 'number' ? char.level : prev.level,
+              level: resolvedLevel,
             }
           } else {
             const entry: RaidEventSignup = {
@@ -420,7 +526,7 @@ export async function POST(request: Request) {
               wowClass: char.wowClass || 'Warrior',
               spec: char.spec || 'DPS',
               role: normalizeRole(char.role, char.spec),
-              level: typeof char.level === 'number' ? char.level : 60,
+              level: resolvedLevel,
               signedAt: nowIso,
               assignment: 'POOL',
               confirmStatus: 'PENDING',

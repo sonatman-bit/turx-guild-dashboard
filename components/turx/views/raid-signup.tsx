@@ -11,8 +11,10 @@ import {
   Clock,
   Info,
   Layers,
+  Lock,
   Pencil,
   Plus,
+  RefreshCw,
   Send,
   ShieldAlert,
   Sparkles,
@@ -591,8 +593,15 @@ export function RaidSignupView() {
                   isOfficer={isOfficer}
                   busy={busy}
                   currentUsername={user?.username || null}
+                  myMain={myMain}
                   rules={rules}
                   onSignup={() => void handleSignup(selectedEvent)}
+                  onRefreshArmoryLevel={() =>
+                    void runAction(
+                      { action: 'refresh_my_armory_level' },
+                      'WoW Armory seviyeniz güncellendi.',
+                    )
+                  }
                   onWithdraw={() =>
                     void runAction(
                       { action: 'withdraw_signup', eventId: selectedEvent.id },
@@ -1101,8 +1110,10 @@ function EventWorkspace({
   isOfficer,
   busy,
   currentUsername,
+  myMain,
   rules,
   onSignup,
+  onRefreshArmoryLevel,
   onWithdraw,
   onOpenConfirm,
   onOpenDecline,
@@ -1124,6 +1135,16 @@ function EventWorkspace({
   isOfficer: boolean
   busy: boolean
   currentUsername: string | null
+  myMain: {
+    username: string
+    characterId: string
+    characterName: string
+    wowClass: WowClass
+    spec: string
+    role: RaidRoleType
+    level: number
+    guildRank: string
+  } | null
   rules: {
     raid10: number
     raid20: number
@@ -1138,6 +1159,7 @@ function EventWorkspace({
     missingPrepPenalty: number
   }
   onSignup: () => void
+  onRefreshArmoryLevel: () => void
   onWithdraw: () => void
   onOpenConfirm: () => void
   onOpenDecline: () => void
@@ -1212,60 +1234,101 @@ function EventWorkspace({
         </div>
 
         {/* Player CTA Bar */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-[#071422]/85 px-4 py-3">
-          <div className="text-xs">
-            {myEntry ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">Durumun:</span>
-                <span className="inline-flex items-center gap-1.5">
-                  <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
-                  <PointsPill points={pointsByUser.get(myEntry.username.toLowerCase()) ?? 0} />
-                </span>
-                <Badge className="border-neon/30 bg-neon/10 text-neon">{myAssignmentLabel}</Badge>
-                {myEntry.confirmStatus === 'CONFIRMED' && (
-                  <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
-                    Konfirme Edildi (+{rules.confirm}p)
-                  </Badge>
-                )}
-                {myEntry.confirmStatus === 'DECLINED_EXCUSED' && (
-                  <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">Mazeretli İptal</Badge>
+        {(() => {
+          const myLevel = myMain?.level ?? 0
+          const isBelowLevel60 = Boolean(currentUsername && myLevel < 60)
+          return (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-[#071422]/85 px-4 py-3">
+              <div className="text-xs">
+                {myEntry ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">Durumun:</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
+                      <PointsPill points={pointsByUser.get(myEntry.username.toLowerCase()) ?? 0} />
+                    </span>
+                    <Badge className="border-neon/30 bg-neon/10 text-neon">{myAssignmentLabel}</Badge>
+                    {myEntry.confirmStatus === 'CONFIRMED' && (
+                      <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
+                        Konfirme Edildi (+{rules.confirm}p)
+                      </Badge>
+                    )}
+                    {myEntry.confirmStatus === 'DECLINED_EXCUSED' && (
+                      <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">Mazeretli İptal</Badge>
+                    )}
+                  </div>
+                ) : isBelowLevel60 ? (
+                  <span className="flex items-center gap-1.5 text-amber-300">
+                    <Lock className="size-3.5 shrink-0" />
+                    <span>
+                      {myLevel > 0 ? (
+                        <>
+                          WoW Armory verisine göre karakteriniz (<strong>{myMain?.characterName}</strong>) şu an{' '}
+                          <strong>Level {myLevel}</strong>. Raidlere yalnızca <strong>Level 60</strong> karakterler imza atabilir.
+                        </>
+                      ) : (
+                        <>
+                          WoW Armory üzerinden karakterinizin <strong>Level 60</strong> olduğu doğrulandığında raidlere imza atabilirsiniz.
+                        </>
+                      )}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    Bu raide henüz imza atmadınız. Tek imza havuzuna kaydolun, Officerlar uygun gruba atasın.
+                  </span>
                 )}
               </div>
-            ) : (
-              <span className="text-muted-foreground">
-                Bu raide henüz imza atmadınız. Tek imza havuzuna kaydolun, Officerlar uygun gruba atasın.
-              </span>
-            )}
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {!myEntry ? (
-              <GoldButton disabled={busy || (signupExpired && !isOfficer)} onClick={onSignup}>
-                <UserCheck className="size-4" />
-                Raide İmza At (+{rules.signup}p)
-              </GoldButton>
-            ) : (
-              <>
-                {event.status === 'ROSTERS_PUBLISHED' && myEntry.confirmStatus !== 'CONFIRMED' && (
-                  <GoldButton disabled={busy || (confirmExpired && !isOfficer)} onClick={onOpenConfirm}>
-                    <CheckCircle2 className="size-4" />
-                    Katılımı Konfirme Et (+{rules.confirm}p)
-                  </GoldButton>
+              <div className="flex flex-wrap items-center gap-2">
+                {!myEntry ? (
+                  isBelowLevel60 ? (
+                    <>
+                      <GhostButton
+                        type="button"
+                        disabled={busy}
+                        onClick={onRefreshArmoryLevel}
+                        className="px-3 py-1.5 text-xs"
+                        title="Yeni 60 olduysanız WoW Armory seviyenizi yeniden kontrol eder"
+                      >
+                        <RefreshCw className="size-3.5" />
+                        Armory Yenile
+                      </GhostButton>
+                      <GoldButton disabled className="opacity-55">
+                        <Lock className="size-4" />
+                        Level 60 Gerekli{myLevel > 0 ? ` (Lv${myLevel})` : ''}
+                      </GoldButton>
+                    </>
+                  ) : (
+                    <GoldButton disabled={busy || (signupExpired && !isOfficer)} onClick={onSignup}>
+                      <UserCheck className="size-4" />
+                      Raide İmza At (+{rules.signup}p)
+                    </GoldButton>
+                  )
+                ) : (
+                  <>
+                    {event.status === 'ROSTERS_PUBLISHED' && myEntry.confirmStatus !== 'CONFIRMED' && (
+                      <GoldButton disabled={busy || (confirmExpired && !isOfficer)} onClick={onOpenConfirm}>
+                        <CheckCircle2 className="size-4" />
+                        Katılımı Konfirme Et (+{rules.confirm}p)
+                      </GoldButton>
+                    )}
+                    {myEntry.confirmStatus !== 'DECLINED_EXCUSED' && (
+                      <GhostButton
+                        disabled={busy}
+                        onClick={event.status === 'SIGNUP_OPEN' ? onWithdraw : onOpenDecline}
+                        className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10"
+                      >
+                        <XCircle className="size-4" />
+                        {event.status === 'SIGNUP_OPEN' ? 'İmzayı Geri Çek' : 'Mazeretli İptal (0p)'}
+                      </GhostButton>
+                    )}
+                  </>
                 )}
-                {myEntry.confirmStatus !== 'DECLINED_EXCUSED' && (
-                  <GhostButton
-                    disabled={busy}
-                    onClick={event.status === 'SIGNUP_OPEN' ? onWithdraw : onOpenDecline}
-                    className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10"
-                  >
-                    <XCircle className="size-4" />
-                    {event.status === 'SIGNUP_OPEN' ? 'İmzayı Geri Çek' : 'Mazeretli İptal (0p)'}
-                  </GhostButton>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Officer Toolbar */}
         {isOfficer && (

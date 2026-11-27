@@ -36,7 +36,6 @@ import {
   getSpecColor,
   getSpecWowClass,
   hasCharacterReceivedItem,
-  LOOT_PRIORITY_PRESETS,
   RAID_CATALOG,
   WOW_ITEM_ICON_PRESETS,
   type LootItem,
@@ -354,7 +353,7 @@ export function LootDistributionView() {
     setFormEffectsText('')
     setFormNotes('')
     setFormWowheadUrl('')
-    setFormPriorityTiers(LOOT_PRIORITY_PRESETS[0].order.map((sp) => ({ specs: [sp], quota: defQuota })))
+    setFormPriorityTiers([])
     setQuotaToAdd(defQuota)
     setItemModalOpen(true)
   }
@@ -1461,28 +1460,6 @@ export function LootDistributionView() {
                 onChange={(e) => setFormEffectsText(e.target.value)}
               />
             </Field>
-          </div>
-
-          {/* Preset Templates */}
-          <div>
-            <p className="mb-1.5 text-xs font-medium tracking-wide text-silver uppercase">
-              Hızlı Öncelik Şablonu Uygula (1 Tık)
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {LOOT_PRIORITY_PRESETS.map((preset) => (
-                <button
-                  type="button"
-                  key={preset.id}
-                  onClick={() => {
-                    const q = defaultQuotaForRaid(formRaidId)
-                    setFormPriorityTiers(preset.order.map((sp) => ({ specs: [sp], quota: q })))
-                  }}
-                  className="cursor-pointer rounded-md border border-neon/30 bg-neon/5 px-2.5 py-1 text-[11px] text-neon hover:bg-neon/15"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Flexible Priority Tier Builder (Multi-Spec Equal Share + Per-Tier Quota) */}

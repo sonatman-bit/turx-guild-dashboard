@@ -1,6 +1,11 @@
 import { BlobNotFoundError, get, put } from '@vercel/blob'
 import { Resend } from 'resend'
 import type { AccountLinks, StreamNotice } from '@/lib/account-links'
+import {
+  DEFAULT_ARMORY_RANK_MAPPINGS,
+  normalizeArmoryRankMappings,
+  type ArmoryRankMapping,
+} from '@/lib/armory-ranks'
 import { normalizeAvailability } from '@/lib/availability'
 import {
   defaultRaidSystemStore,
@@ -160,6 +165,7 @@ export type GuildStore = {
   messages?: StoredGuildMessage[]
   raidSystem?: RaidSystemStore
   armoryAudit?: StoredArmoryAuditState | null
+  armoryRankMappings?: ArmoryRankMapping[]
 }
 
 const PATH = 'turx-guild-store.json'
@@ -196,6 +202,7 @@ export function emptyStore(): GuildStore {
     messages: [],
     raidSystem: defaultRaidSystemStore(),
     armoryAudit: null,
+    armoryRankMappings: DEFAULT_ARMORY_RANK_MAPPINGS.map((m) => ({ ...m })),
   }
 }
 
@@ -236,6 +243,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     messages: Array.isArray(data.messages) ? data.messages : [],
     raidSystem: normalizeRaidSystemStore(data.raidSystem),
     armoryAudit,
+    armoryRankMappings: normalizeArmoryRankMappings(data.armoryRankMappings),
   }
 }
 

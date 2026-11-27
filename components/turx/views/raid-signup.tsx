@@ -26,6 +26,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import type { ArmoryRankColorId } from '@/lib/armory-ranks'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import {
   calculateSignupPoints,
@@ -58,6 +59,7 @@ import {
   Panel,
   PanelTitle,
   PointsPill,
+  RankPill,
   SectionHeader,
 } from '../ui'
 import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
@@ -234,6 +236,17 @@ export function RaidSignupView() {
     }
     return map
   }, [data?.attendanceLeaderboard])
+  const rankByUser = useMemo(() => {
+    const map = new Map<string, { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }>()
+    for (const m of guildMembers) {
+      map.set(m.username.toLowerCase(), {
+        label: m.armoryRankLabel || m.guildRank,
+        color: m.armoryRankColor,
+        armoryRankId: m.armoryRankId,
+      })
+    }
+    return map
+  }, [guildMembers])
   const myMain = useMemo(
     () => guildMembers.find((m) => m.username.toLowerCase() === (user?.username || '').toLowerCase()) || null,
     [guildMembers, user?.username],
@@ -597,6 +610,7 @@ export function RaidSignupView() {
                   event={selectedEvent}
                   allEvents={rs.events}
                   pointsByUser={pointsByUser}
+                  rankByUser={rankByUser}
                   isOfficer={isOfficer}
                   busy={busy}
                   currentUsername={user?.username || null}
@@ -816,8 +830,18 @@ export function RaidSignupView() {
                                   return (
                                     <tr key={s.id} className="hover:bg-white/[0.02]">
                                       <td className="py-2 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                                        <span className="inline-flex items-center gap-1.5">
+                                        <span className="inline-flex flex-wrap items-center gap-1.5">
                                           <span>{s.characterName}</span>
+                                          {(() => {
+                                            const rk = rankByUser.get(s.username.toLowerCase())
+                                            return rk ? (
+                                              <RankPill
+                                                label={rk.label}
+                                                color={rk.color}
+                                                armoryRankId={rk.armoryRankId}
+                                              />
+                                            ) : null
+                                          })()}
                                           <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
                                         </span>
                                         <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
@@ -1123,6 +1147,7 @@ function EventWorkspace({
   event,
   allEvents,
   pointsByUser,
+  rankByUser,
   isOfficer,
   busy,
   currentUsername,
@@ -1148,6 +1173,7 @@ function EventWorkspace({
   event: RaidEvent
   allEvents: RaidEvent[]
   pointsByUser: Map<string, number>
+  rankByUser: Map<string, { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }>
   isOfficer: boolean
   busy: boolean
   currentUsername: string | null
@@ -1264,6 +1290,12 @@ function EventWorkspace({
                     <span className="text-muted-foreground">Durumun:</span>
                     <span className="inline-flex items-center gap-1.5">
                       <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
+                      {(() => {
+                        const rk = rankByUser.get(myEntry.username.toLowerCase())
+                        return rk ? (
+                          <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                        ) : null
+                      })()}
                       <PointsPill points={pointsByUser.get(myEntry.username.toLowerCase()) ?? 0} />
                     </span>
                     <Badge className="border-neon/30 bg-neon/10 text-neon">{myAssignmentLabel}</Badge>
@@ -1426,6 +1458,7 @@ function EventWorkspace({
                       signup={s}
                       event={event}
                       points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
+                      rankInfo={rankByUser.get(s.username.toLowerCase())}
                       conflicts={getSameWeekConflicts(event, allEvents, s.username)}
                       isOfficer={isOfficer}
                       busy={busy}
@@ -1453,6 +1486,7 @@ function EventWorkspace({
                       signup={s}
                       event={event}
                       points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
+                      rankInfo={rankByUser.get(s.username.toLowerCase())}
                       conflicts={getSameWeekConflicts(event, allEvents, s.username)}
                       isOfficer={isOfficer}
                       busy={busy}
@@ -1633,6 +1667,7 @@ function EventWorkspace({
                             signup={s}
                             event={event}
                             points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
+                            rankInfo={rankByUser.get(s.username.toLowerCase())}
                             conflicts={getSameWeekConflicts(event, allEvents, s.username)}
                             isOfficer={isOfficer}
                             busy={busy}
@@ -2008,8 +2043,14 @@ function EventWorkspace({
                                       className="py-2.5 pr-3 font-semibold"
                                       style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}
                                     >
-                                      <span className="inline-flex items-center gap-1.5">
+                                      <span className="inline-flex flex-wrap items-center gap-1.5">
                                         <span>{s.characterName}</span>
+                                        {(() => {
+                                          const rk = rankByUser.get(s.username.toLowerCase())
+                                          return rk ? (
+                                            <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                                          ) : null
+                                        })()}
                                         <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
                                       </span>
                                       <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
@@ -2102,6 +2143,7 @@ function SignupRowCard({
   signup,
   event,
   points,
+  rankInfo,
   conflicts,
   isOfficer,
   busy,
@@ -2110,6 +2152,7 @@ function SignupRowCard({
   signup: RaidEventSignup
   event: RaidEvent
   points: number
+  rankInfo?: { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }
   conflicts: SameWeekConflict[]
   isOfficer: boolean
   busy: boolean
@@ -2129,6 +2172,13 @@ function SignupRowCard({
           <span className="truncate font-semibold" style={{ color: CLASS_COLORS[signup.wowClass] || '#fff' }}>
             {signup.characterName}
           </span>
+          {rankInfo && (
+            <RankPill
+              label={rankInfo.label}
+              color={rankInfo.color}
+              armoryRankId={rankInfo.armoryRankId}
+            />
+          )}
           <PointsPill points={points} />
           <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">{signup.role}</span>
           {signup.level < 60 && (

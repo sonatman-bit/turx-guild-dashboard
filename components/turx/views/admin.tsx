@@ -39,6 +39,7 @@ import {
   Edit3,
 } from 'lucide-react'
 import { useAuth } from '../auth-provider'
+import { ArmoryRankMapperPanel } from '../armory-rank-mapper-panel'
 import { GmMemberProfileModal } from '../gm-member-profile-modal'
 import { WowArmoryLogo } from '../wow-armory-badge'
 import { authHeaders } from '@/lib/client-session'
@@ -1279,76 +1280,111 @@ interface PersistedArmoryAudit {
         </Panel>
       )}
 
-      <div className="flex flex-wrap gap-2 border-b border-border pb-4">
-        <button
-          onClick={() => setActiveTab('members')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'members' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Users className="size-4" /> Üye & Rütbe Yönetimi ({members.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('applications')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'applications' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <FileText className="size-4" /> Detaylı Başvurular ({applications.filter(a => a.status === 'PENDING').length} Bekleyen)
-        </button>
-        <button
-          onClick={() => setActiveTab('recruitment')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'recruitment' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Grid3x3 className="size-4" /> Alım İhtiyacı
-        </button>
-        <button
-          onClick={() => setActiveTab('staff')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'staff' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <ClipboardList className="size-4" /> Görevli Talipleri
-        </button>
-        <button
-          onClick={() => setActiveTab('poll')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'poll' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Vote className="size-4" /> Anket Sonuçları ({pollResults.total})
-        </button>
-        <button
-          onClick={() => setActiveTab('attendance')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'attendance' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Calendar className="size-4" /> Raid Müsaitlik Matrisi {attendanceMembers.length > 0 && `(${attendanceMembers.length})`}
-        </button>
-        <button
-          onClick={() => setActiveTab('messages')}
-          className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition cursor-pointer border',
-            activeTab === 'messages' ? 'border-gold bg-gold/15 text-gold shadow-md' : 'border-border bg-card text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <Mail className="size-4" /> Lonca Mesaj & Bildirim {adminMessages.length > 0 && `(${adminMessages.length})`}
-        </button>
-      </div>
+      {/* Compact, Sleek Segmented Tab Navigation Bar */}
+      <nav
+        aria-label="GM Kontrol Merkezi Sekmeleri"
+        className="overflow-x-auto rounded-2xl border border-border/80 bg-[#071422]/90 p-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.3)] backdrop-blur-sm"
+      >
+        <div className="grid min-w-[760px] grid-cols-7 gap-1">
+          {(
+            [
+              {
+                id: 'members' as const,
+                label: 'Üyeler & Rütbe',
+                icon: Users,
+                count: members.length,
+                highlight: false,
+              },
+              {
+                id: 'applications' as const,
+                label: 'Başvurular',
+                icon: FileText,
+                count: applications.filter((a) => a.status === 'PENDING').length,
+                highlight: applications.some((a) => a.status === 'PENDING'),
+              },
+              {
+                id: 'recruitment' as const,
+                label: 'Alım İhtiyacı',
+                icon: Grid3x3,
+                count: null,
+                highlight: false,
+              },
+              {
+                id: 'staff' as const,
+                label: 'Görevli Talipleri',
+                icon: ClipboardList,
+                count: null,
+                highlight: false,
+              },
+              {
+                id: 'poll' as const,
+                label: 'Anketler',
+                icon: Vote,
+                count: pollResults.total,
+                highlight: false,
+              },
+              {
+                id: 'attendance' as const,
+                label: 'Müsaitlik',
+                icon: Calendar,
+                count: attendanceMembers.length > 0 ? attendanceMembers.length : null,
+                highlight: false,
+              },
+              {
+                id: 'messages' as const,
+                label: 'Mesaj & Bildirim',
+                icon: Mail,
+                count: adminMessages.length > 0 ? adminMessages.length : null,
+                highlight: false,
+              },
+            ]
+          ).map((item) => {
+            const Icon = item.icon
+            const active = activeTab === item.id
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveTab(item.id)}
+                className={cn(
+                  'relative flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-semibold transition-all whitespace-nowrap',
+                  active
+                    ? 'bg-gradient-to-b from-gold/22 to-gold/10 text-gold shadow-[inset_0_0_0_1px_rgba(212,175,55,0.5),0_4px_14px_rgba(212,175,55,0.14)]'
+                    : 'text-silver/75 hover:bg-white/[0.04] hover:text-foreground',
+                )}
+              >
+                <Icon className={cn('size-3.5 shrink-0', active ? 'text-gold' : 'text-muted-foreground')} />
+                <span className="truncate">{item.label}</span>
+                {item.count !== null && (
+                  <span
+                    className={cn(
+                      'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 font-mono text-[10px] leading-none font-bold',
+                      item.highlight
+                        ? 'bg-amber-400/25 text-amber-200 ring-1 ring-amber-400/50'
+                        : active
+                          ? 'bg-gold/25 text-gold'
+                          : 'bg-white/[0.07] text-muted-foreground',
+                    )}
+                  >
+                    {item.count}
+                  </span>
+                )}
+                {active && (
+                  <span className="pointer-events-none absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-gold shadow-[0_0_8px_#d4af37]" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </nav>
 
       {/* SEKME 1: ÜYE & RÜTBE YÖNETİMİ (Hesap ve Ana Karakter Odaklı) */}
       {activeTab === 'members' && (
         <div className="flex flex-col gap-6">
-          {/* GÜNLÜK WOW ARMORY TARAMASI: SİLİNMESİ GEREKEN KULLANICILAR UYARISI (EN ÜSTTE) */}
+          {/* WOW ARMORY RANK EŞLEŞTİRME ŞABLONU (EN ÜSTTE) */}
+          <ArmoryRankMapperPanel isGm={isGm} />
+
+          {/* GÜNLÜK WOW ARMORY TARAMASI: SİLİNMESİ GEREKEN KULLANICILAR UYARISI */}
           <Panel
             className={cn(
               'flex flex-col gap-4',

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveArmoryDisplayRank } from '@/lib/armory-ranks'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { isGuildMasterEmail } from '@/lib/turx-identity'
@@ -9,7 +10,13 @@ import {
   matchDiscordMember,
 } from '@/lib/guild-presence'
 import { blobConfigured, loadGuildStore, publicAccount } from '@/lib/turx-store'
-import { emptyArmory, foreverArmorySlug, loadArmorySnapshots, type ArmorySnapshot } from '@/lib/wow-armory'
+import {
+  emptyArmory,
+  foreverArmorySlug,
+  loadArmorySnapshots,
+  loadTurxGuildRosterRanks,
+  type ArmorySnapshot,
+} from '@/lib/wow-armory'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +26,7 @@ type StoredCharacter = {
   wowClass?: string
   role?: string
   isMain?: boolean
+  armoryRankId?: number | null
 }
 
 function isWowClass(value: string | undefined): value is WowClass {
@@ -126,9 +134,10 @@ export async function GET(request: Request) {
       }
     }
 
-    const [armoryBySlug, widgetData] = await Promise.all([
+    const [armoryBySlug, widgetData, armoryRosterMap] = await Promise.all([
       loadArmorySnapshots(lookup),
       fetchDiscordWidgetData(),
+      loadTurxGuildRosterRanks(),
     ])
 
     const widgetMembers = widgetData.members
@@ -226,14 +235,25 @@ export async function GET(request: Request) {
           const firstName = character.firstName?.trim() || ''
           const lastName = character.lastName?.trim() || ''
           const wowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
+          const slug = firstName && lastName ? foreverArmorySlug(firstName, lastName) : ''
           const armory: ArmorySnapshot | null =
-            firstName && lastName
-              ? armoryBySlug.get(foreverArmorySlug(firstName, lastName)) ||
-                emptyArmory(firstName, lastName, wowClass)
+            slug
+              ? armoryBySlug.get(slug) || emptyArmory(firstName, lastName, wowClass)
               : null
+          const guildRosterMatch = slug ? armoryRosterMap.get(slug) : undefined
+          const rawRankId =
+            typeof guildRosterMatch?.rankId === 'number'
+              ? guildRosterMatch.rankId
+              : typeof character.armoryRankId === 'number'
+                ? character.armoryRankId
+                : null
+          const resolvedRank = resolveArmoryDisplayRank(rawRankId, store.armoryRankMappings, pub.role)
           return {
             ...character,
             armory,
+            armoryRankId: resolvedRank.armoryRankId,
+            armoryRankLabel: resolvedRank.label,
+            armoryRankColor: resolvedRank.color,
           }
         }),
       }

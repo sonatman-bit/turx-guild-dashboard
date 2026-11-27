@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { resolveArmoryDisplayRank } from '@/lib/armory-ranks'
 import { sessionFromRequest } from '@/lib/auth-email'
 import type { WowClass } from '@/lib/guild-data'
 import {
@@ -16,6 +17,7 @@ import {
   isGuildMeetingEvent,
   normalizePriorityTiers,
   normalizeRaidSystemStore,
+  normalizeRosterSlotsForSize,
   RAID_CATALOG,
   SPECIAL_EVENT_CATALOG,
   type AttendanceAdjustment,
@@ -47,7 +49,12 @@ import {
   resolveUserRole,
   type GuildStore,
 } from '@/lib/turx-store'
-import { loadArmorySnapshot } from '@/lib/wow-armory'
+import {
+  foreverArmorySlug,
+  loadArmorySnapshot,
+  loadTurxGuildRosterRanks,
+  type ArmoryGuildRosterMember,
+} from '@/lib/wow-armory'
 
 export const dynamic = 'force-dynamic'
 
@@ -60,6 +67,7 @@ type StoredCharacter = {
   role?: string
   level?: number
   armoryLevel?: number | null
+  armoryRankId?: number | null
   isMain?: boolean
 }
 
@@ -91,17 +99,34 @@ function normalizeRole(role?: string, spec?: string): RaidRoleType {
   return 'MELEE'
 }
 
-function extractGuildMainMembers(store: GuildStore) {
+function extractGuildMainMembers(
+  store: GuildStore,
+  armoryRosterMap?: Map<string, ArmoryGuildRosterMember>,
+) {
   return store.users.map((u) => {
     const chars = Array.isArray(u.characters) ? (u.characters as StoredCharacter[]) : []
     const main = chars.find((c) => c.isMain) || chars[0]
-    const charName = main
-      ? `${main.firstName || ''} ${main.lastName || ''}`.trim() || u.username
-      : u.username
+    const firstName = main?.firstName?.trim() || ''
+    const lastName = main?.lastName?.trim() || ''
+    const charName = main ? `${firstName} ${lastName}`.trim() || u.username : u.username
     const wowClass = (main?.wowClass || 'Warrior') as WowClass
     const spec = main?.spec || 'DPS'
     const role = normalizeRole(main?.role, spec)
-    const level = resolveStoredLevel(main)
+    const armoryMatch =
+      firstName && lastName && armoryRosterMap
+        ? armoryRosterMap.get(foreverArmorySlug(firstName, lastName))
+        : undefined
+    const level =
+      (typeof armoryMatch?.level === 'number' && armoryMatch.level > 0 ? armoryMatch.level : null) ??
+      resolveStoredLevel(main)
+    const siteRank = resolveUserRole(u)
+    const rawArmoryRankId =
+      typeof armoryMatch?.rankId === 'number'
+        ? armoryMatch.rankId
+        : typeof main?.armoryRankId === 'number'
+          ? main.armoryRankId
+          : null
+    const resolvedRank = resolveArmoryDisplayRank(rawArmoryRankId, store.armoryRankMappings, siteRank)
     return {
       username: u.username,
       characterId: main?.id || `${u.username}-main`,
@@ -110,15 +135,22 @@ function extractGuildMainMembers(store: GuildStore) {
       spec,
       role,
       level,
-      guildRank: resolveUserRole(u),
+      guildRank: siteRank,
+      armoryRankId: resolvedRank.armoryRankId,
+      armoryRankLabel: resolvedRank.label,
+      armoryRankColor: resolvedRank.color,
     }
   })
 }
 
-function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): MemberAttendanceRow[] {
+function computeAttendanceLeaderboard(
+  store: GuildStore,
+  phaseId: string,
+  armoryRosterMap?: Map<string, ArmoryGuildRosterMember>,
+): MemberAttendanceRow[] {
   const rs = normalizeRaidSystemStore(store.raidSystem)
   const rules = rs.settings.pointRules
-  const guildMains = extractGuildMainMembers(store)
+  const guildMains = extractGuildMainMembers(store, armoryRosterMap)
 
   const map = new Map<string, MemberAttendanceRow>()
   for (const m of guildMains) {
@@ -130,6 +162,9 @@ function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): Membe
       role: m.role,
       level: m.level,
       guildRank: m.guildRank,
+      armoryRankId: m.armoryRankId,
+      armoryRankLabel: m.armoryRankLabel,
+      armoryRankColor: m.armoryRankColor,
       totalPoints: 0,
       signupCount: 0,
       confirmCount: 0,
@@ -334,8 +369,9 @@ export async function GET(request: Request) {
     }
 
     const phaseId = requestedPhase || rs.settings.activePhaseId
-    const attendanceLeaderboard = computeAttendanceLeaderboard(store, phaseId)
-    const guildMembers = extractGuildMainMembers(store)
+    const armoryRosterMap = await loadTurxGuildRosterRanks().catch(() => new Map<string, ArmoryGuildRosterMember>())
+    const attendanceLeaderboard = computeAttendanceLeaderboard(store, phaseId, armoryRosterMap)
+    const guildMembers = extractGuildMainMembers(store, armoryRosterMap)
 
     // Ensure the logged-in member's own WoW Armory level is fresh if stored level is missing or < 60
     const callerChars = Array.isArray(caller.account.characters)
@@ -1047,26 +1083,24 @@ export async function POST(request: Request) {
             throw new Error('INVALID_SLOT')
           }
           const rawSlots = Array.isArray(body.slots) ? (body.slots as RosterTemplateSlot[]) : []
-          const cleaned: RosterTemplateSlot[] = rawSlots
-            .map((s, idx) => ({
-              id: typeof s.id === 'string' && s.id.trim() ? s.id.trim() : `rt-${sizeKey}-${Date.now()}-${idx}`,
-              role: normalizeRole(s.role, Array.isArray(s.options) ? s.options[0] : undefined),
-              options: [
-                ...new Set(
-                  (Array.isArray(s.options) ? s.options : [])
-                    .map((o) => canonicalizeSpecLabel(String(o || '')))
-                    .filter(Boolean),
-                ),
-              ],
-              count: Math.max(1, Math.min(20, Math.floor(Number(s.count) || 1))),
-              note: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 80) : undefined,
-            }))
-            .filter((s) => s.options.length > 0)
+          const cleaned: RosterTemplateSlot[] = rawSlots.map((s, idx) => ({
+            id: typeof s.id === 'string' && s.id.trim() ? s.id.trim() : `rt-${sizeKey}-s${idx + 1}`,
+            role: normalizeRole(s.role, Array.isArray(s.options) ? s.options[0] : undefined),
+            options: [
+              ...new Set(
+                (Array.isArray(s.options) ? s.options : [])
+                  .map((o) => canonicalizeSpecLabel(String(o || '')))
+                  .filter(Boolean),
+              ),
+            ],
+            count: 1,
+            note: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 80) : undefined,
+          }))
 
           if (!rs.settings.rosterTemplates) {
             rs.settings.rosterTemplates = cloneDefaultRosterTemplates()
           }
-          rs.settings.rosterTemplates[sizeKey] = cleaned
+          rs.settings.rosterTemplates[sizeKey] = normalizeRosterSlotsForSize(sizeKey, cleaned)
           break
         }
 

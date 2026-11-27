@@ -54,11 +54,125 @@ const CLASS_ICON_SLUG: Record<WowClass, string> = {
 }
 
 const CACHE_TTL_MS = 15 * 60 * 1000
+const GUILD_ROSTER_CACHE_TTL_MS = 10 * 60 * 1000
 const FETCH_TIMEOUT_MS = 8000
 const FETCH_CONCURRENCY = 4
+const FOREVER_GUILD_ROSTER_QUERY_HASH =
+  '5f32b85faa248d321a08645d470fb38b82be64b9abd8b5b5fd2816620546794b'
+
+export type ArmoryGuildRosterMember = {
+  slug: string
+  name: string
+  surname: string
+  level: number | null
+  rankId: number
+  className: string | null
+  raceName: string | null
+}
 
 type CacheEntry = { expires: number; snapshot: ArmorySnapshot | null }
 const memoryCache = new Map<string, CacheEntry>()
+
+type GuildRosterCacheEntry = {
+  expires: number
+  fetchedAt: number
+  members: Map<string, ArmoryGuildRosterMember>
+}
+let guildRosterCache: GuildRosterCacheEntry | null = null
+
+export async function loadTurxGuildRosterRanks(options?: {
+  bypassCache?: boolean
+}): Promise<Map<string, ArmoryGuildRosterMember>> {
+  const bypassCache = Boolean(options?.bypassCache)
+  if (!bypassCache && guildRosterCache && guildRosterCache.expires > Date.now()) {
+    return guildRosterCache.members
+  }
+
+  try {
+    const res = await fetch(`${FOREVER_ARMORY_ORIGIN}/graphql`, {
+      method: 'POST',
+      cache: 'no-store',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'x-wow-variant': 'forever',
+        Referer: `${FOREVER_ARMORY_ORIGIN}/en-us/forever/${FOREVER_ARMORY_REGION}/armory/guild/${TURX_GUILD_SLUG}`,
+        'User-Agent': 'TURX-Guild-Dashboard/1.0 (Forever Armory guild roster)',
+      },
+      body: JSON.stringify({
+        operationName: 'GetGuildRoster',
+        variables: {
+          guild: {
+            nameSlug: TURX_GUILD_SLUG,
+            region: FOREVER_ARMORY_REGION,
+          },
+          showMessageOfTheDay: false,
+          showRoles: false,
+        },
+        extensions: {
+          persistedQuery: {
+            version: 1,
+            sha256Hash: FOREVER_GUILD_ROSTER_QUERY_HASH,
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+
+    if (!res.ok) {
+      return guildRosterCache?.members || new Map()
+    }
+
+    const payload = (await res.json()) as {
+      data?: {
+        Guild?: {
+          roster?: Array<{
+            rank?: { rankId?: number | null } | null
+            character?: {
+              name?: string | null
+              surname?: string | null
+              level?: number | null
+              class?: { name?: string | null } | null
+              race?: { name?: string | null } | null
+            } | null
+          }>
+        }
+      }
+    }
+
+    const rosterList = payload?.data?.Guild?.roster
+    if (!Array.isArray(rosterList)) {
+      return guildRosterCache?.members || new Map()
+    }
+
+    const map = new Map<string, ArmoryGuildRosterMember>()
+    for (const entry of rosterList) {
+      const charName = (entry.character?.name || '').trim()
+      const charSurname = (entry.character?.surname || '').trim()
+      const rankId = typeof entry.rank?.rankId === 'number' ? entry.rank.rankId : null
+      if (!charName || !charSurname || rankId === null) continue
+      const slug = foreverArmorySlug(charName, charSurname)
+      map.set(slug, {
+        slug,
+        name: charName,
+        surname: charSurname,
+        level: typeof entry.character?.level === 'number' ? entry.character.level : null,
+        rankId,
+        className: entry.character?.class?.name || null,
+        raceName: entry.character?.race?.name || null,
+      })
+    }
+
+    guildRosterCache = {
+      expires: Date.now() + GUILD_ROSTER_CACHE_TTL_MS,
+      fetchedAt: Date.now(),
+      members: map,
+    }
+    return map
+  } catch {
+    return guildRosterCache?.members || new Map()
+  }
+}
 
 export function foreverArmorySlug(firstName: string, lastName: string) {
   return `${firstName.trim()}-${lastName.trim()}`.normalize('NFC').toLowerCase()

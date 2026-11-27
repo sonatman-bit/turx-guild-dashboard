@@ -2,6 +2,7 @@
 
 import { Crown, Search, Star, Wrench, Shield, Swords, Cross, Target } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import type { ArmoryRankColorId } from '@/lib/armory-ranks'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
@@ -9,7 +10,7 @@ import { classIconUrl, type ArmorySnapshot } from '@/lib/wow-armory'
 import { useToast } from '../toast'
 import { useAuth, type GuildRank } from '../auth-provider' // Auth entegrasyonu
 import { RosterSummarySection, type RosterSummaryStats } from '../roster-summary'
-import { Badge, Panel, PointsPill, SectionHeader, inputClass } from '../ui'
+import { Badge, Panel, PointsPill, RankPill, SectionHeader, inputClass } from '../ui'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 
@@ -30,7 +31,14 @@ interface StoredCharacter {
   }
 }
 
-type ServerCharacter = StoredCharacter & { firstName?: string; lastName?: string; armory?: ArmorySnapshot | null }
+type ServerCharacter = StoredCharacter & {
+  firstName?: string
+  lastName?: string
+  armory?: ArmorySnapshot | null
+  armoryRankId?: number | null
+  armoryRankLabel?: string
+  armoryRankColor?: ArmoryRankColorId
+}
 
 type ServerMember = {
   username: string
@@ -65,6 +73,9 @@ interface RosterMemberRow {
   offSpec: string
   role: ExtendedRole
   rank: GuildRank
+  armoryRankId?: number | null
+  armoryRankLabel?: string
+  armoryRankColor?: ArmoryRankColorId
   bnet?: {
     tag: string
     connected: boolean
@@ -127,6 +138,9 @@ function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
           offSpec: character.offSpec || 'Yok',
           role: character.role || 'MELEE',
           rank: account.role,
+          armoryRankId: character.armoryRankId ?? null,
+          armoryRankLabel: character.armoryRankLabel,
+          armoryRankColor: character.armoryRankColor,
           bnet: account.bnet,
           discord: account.discord,
           type: character.isMain ? 'Main' : 'Alt',
@@ -365,6 +379,11 @@ export function RosterView() {
                           ) : (
                             m.charName
                           )}
+                          <RankPill
+                            label={m.armoryRankLabel || m.rank}
+                            color={m.armoryRankColor}
+                            armoryRankId={m.armoryRankId}
+                          />
                           {pointsByUser && m.type === 'Main' && (
                             <PointsPill points={pointsByUser.get(m.username.toLowerCase()) ?? 0} />
                           )}
@@ -396,7 +415,16 @@ export function RosterView() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
+                    {m.armoryRankLabel ? (
+                      <RankPill
+                        label={m.armoryRankLabel}
+                        color={m.armoryRankColor}
+                        armoryRankId={m.armoryRankId}
+                        className="px-2 py-1 text-xs"
+                      />
+                    ) : (
+                      <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {m.bnet?.connected || m.bnet?.inGame ? (

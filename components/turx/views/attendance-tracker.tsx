@@ -41,6 +41,7 @@ import {
   Panel,
   PanelTitle,
   PointsPill,
+  RankPill,
   SectionHeader,
 } from '../ui'
 
@@ -355,6 +356,11 @@ export function AttendanceTrackerView() {
                               >
                                 {row.characterName}
                               </span>
+                              <RankPill
+                                label={row.armoryRankLabel || row.guildRank}
+                                color={row.armoryRankColor}
+                                armoryRankId={row.armoryRankId}
+                              />
                               <PointsPill points={row.totalPoints} />
                             </span>
                             <span className="ml-1.5 text-[11px] text-muted-foreground">
@@ -362,19 +368,12 @@ export function AttendanceTrackerView() {
                             </span>
                           </td>
                           <td className="py-3 pr-3">
-                            <Badge
-                              className={
-                                row.guildRank === 'Raider'
-                                  ? 'border-gold/50 bg-gold/15 text-gold'
-                                  : row.guildRank === 'Guild Master'
-                                    ? 'border-amber-400/50 bg-amber-500/15 text-amber-300'
-                                    : row.guildRank === 'Görevli'
-                                      ? 'border-neon/40 bg-neon/10 text-neon'
-                                      : 'border-border bg-white/5 text-silver'
-                              }
-                            >
-                              {row.guildRank}
-                            </Badge>
+                            <RankPill
+                              label={row.armoryRankLabel || row.guildRank}
+                              color={row.armoryRankColor}
+                              armoryRankId={row.armoryRankId}
+                              className="px-2 py-1 text-[11px]"
+                            />
                           </td>
                           <td className="py-3 pr-3 text-center font-mono text-cyan-300">
                             {row.signupCount ?? 0} / {row.confirmCount ?? 0}
@@ -613,10 +612,12 @@ export function AttendanceTrackerView() {
                                 <span className="truncate font-semibold" style={{ color: CLASS_COLORS[c.wowClass] }}>
                                   {c.characterName}
                                 </span>
+                                <RankPill
+                                  label={c.armoryRankLabel || c.guildRank}
+                                  color={c.armoryRankColor}
+                                  armoryRankId={c.armoryRankId}
+                                />
                                 <PointsPill points={c.totalPoints} />
-                                {isRaider && (
-                                  <Badge className="border-gold/40 bg-gold/15 text-[10px] text-gold">Raider</Badge>
-                                )}
                               </div>
                               <div className="flex items-center gap-2">
                                 {isGm && !isStaff && (

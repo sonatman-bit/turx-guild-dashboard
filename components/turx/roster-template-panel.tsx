@@ -2,71 +2,77 @@
 
 import {
   ChevronDown,
-  Cross,
-  Edit3,
+  Eraser,
   GripVertical,
-  Minus,
+  Pencil,
   Plus,
-  Shield,
-  Swords,
-  Target,
+  RotateCcw,
   Users,
   X,
 } from 'lucide-react'
 import { useState } from 'react'
 import {
-  canonicalizeSpecLabel,
   cloneDefaultRosterTemplates,
   getSpecColor,
+  normalizeRosterSlotsForSize,
   type RaidRoleType,
-  type RosterTemplatesBySize,
   type RosterTemplateSize,
   type RosterTemplateSlot,
+  type RosterTemplatesBySize,
 } from '@/lib/raid-loot-system'
 import { cn } from '@/lib/utils'
 import { SpecIconPicker, SpecMiniIcon } from './spec-icon-picker'
 import { Badge, Field, GhostButton, GoldButton, inputClass, Modal, Panel } from './ui'
 
-const SIZE_TABS: { size: RosterTemplateSize; label: string; raidHint: string; target: number }[] = [
-  { size: '10', label: '10-Man Roster', raidHint: 'Barrow Deeps', target: 10 },
-  { size: '20', label: '20-Man Roster', raidHint: 'Hyjal Summit', target: 20 },
-  { size: '40', label: '40-Man Roster', raidHint: "Onyxia's Lair / Core", target: 40 },
-]
-
 const ROLE_META: Record<
   RaidRoleType,
-  { label: string; badgeCls: string; borderCls: string; icon: React.ComponentType<{ className?: string }> }
+  { label: string; short: string; border: string; bg: string; text: string }
 > = {
   TANK: {
-    label: 'TANK',
-    badgeCls: 'border-sky-400/40 bg-sky-500/15 text-sky-300',
-    borderCls: 'border-sky-500/35',
-    icon: Shield,
+    label: 'Tank',
+    short: 'T',
+    border: 'border-sky-400/40',
+    bg: 'bg-sky-500/12',
+    text: 'text-sky-300',
   },
   HEALER: {
-    label: 'HEALER',
-    badgeCls: 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300',
-    borderCls: 'border-emerald-500/35',
-    icon: Cross,
+    label: 'Healer',
+    short: 'H',
+    border: 'border-emerald-400/40',
+    bg: 'bg-emerald-500/12',
+    text: 'text-emerald-300',
   },
   MELEE: {
-    label: 'MELEE DPS',
-    badgeCls: 'border-amber-400/40 bg-amber-500/15 text-amber-300',
-    borderCls: 'border-amber-500/30',
-    icon: Swords,
+    label: 'Melee DPS',
+    short: 'M',
+    border: 'border-amber-400/40',
+    bg: 'bg-amber-500/12',
+    text: 'text-amber-300',
   },
   RANGED: {
-    label: 'RANGED DPS',
-    badgeCls: 'border-purple-400/40 bg-purple-500/15 text-purple-300',
-    borderCls: 'border-purple-500/30',
-    icon: Target,
+    label: 'Ranged DPS',
+    short: 'R',
+    border: 'border-purple-400/40',
+    bg: 'bg-purple-500/12',
+    text: 'text-purple-300',
   },
 }
 
-function guessRoleFromSpec(specLabel: string): RaidRoleType {
-  const s = specLabel.toLowerCase()
-  if (s.includes('protection') || s.includes('tank')) return 'TANK'
-  if (s.includes('holy') || s.includes('restoration') || s.includes('resto') || s.includes('discipline')) {
+const GROUP_ACCENTS = [
+  '#d4af37', // Grup 1: Altın
+  '#00f2fe', // Grup 2: Turkuaz
+  '#34d399', // Grup 3: Zümrüt
+  '#a78bfa', // Grup 4: Mor
+  '#38bdf8', // Grup 5: Mavi
+  '#fbbf24', // Grup 6: Kehribar
+  '#fb7185', // Grup 7: Gül
+  '#fb923c', // Grup 8: Turuncu
+]
+
+function inferRoleFromSpec(spec: string): RaidRoleType {
+  const s = spec.toLowerCase()
+  if (s.includes('protection') || s.includes('feral tank') || s.includes('tank')) return 'TANK'
+  if (s.includes('holy') || s.includes('restoration') || s.includes('discipline') || s.includes('resto')) {
     return 'HEALER'
   }
   if (
@@ -93,465 +99,519 @@ export function RosterTemplatePanel({
   busy: boolean
   onSaveTemplate: (size: RosterTemplateSize, slots: RosterTemplateSlot[], successMsg: string) => Promise<boolean>
 }) {
-  const effectiveTemplates = templates || cloneDefaultRosterTemplates()
-  const [selectedSize, setSelectedSize] = useState<RosterTemplateSize>('10')
-  const [collapsed, setCollapsed] = useState(false)
-  const [dragFromIdx, setDragFromIdx] = useState<number | null>(null)
+  const [expanded, setExpanded] = useState(true)
+  const [activeSize, setActiveSize] = useState<RosterTemplateSize>('20')
+
+  // Drag-and-drop swap state
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
-  const [slotModal, setSlotModal] = useState<{
-    index: number | null
-    id: string
-    role: RaidRoleType
-    options: string[]
-    count: number
-    note: string
-  } | null>(null)
+  // Slot editor modal state
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [formOptions, setFormOptions] = useState<string[]>([])
+  const [formRole, setFormRole] = useState<RaidRoleType>('MELEE')
+  const [formNote, setFormNote] = useState('')
 
-  const slots = effectiveTemplates[selectedSize] || []
-  const targetTotal = Number(selectedSize)
-  const totalCount = slots.reduce((sum, s) => sum + s.count, 0)
-  const tankCount = slots.filter((s) => s.role === 'TANK').reduce((sum, s) => sum + s.count, 0)
-  const healerCount = slots.filter((s) => s.role === 'HEALER').reduce((sum, s) => sum + s.count, 0)
-  const dpsCount = slots
-    .filter((s) => s.role === 'MELEE' || s.role === 'RANGED')
-    .reduce((sum, s) => sum + s.count, 0)
+  const rawSlots = templates?.[activeSize] || cloneDefaultRosterTemplates()[activeSize]
+  const slots = normalizeRosterSlotsForSize(activeSize, rawSlots)
+  const targetSize = Number(activeSize)
+  const groupCount = targetSize / 5
 
-  const adjustSlotCount = (idx: number, delta: number) => {
-    const cur = slots[idx]
-    if (!cur) return
-    const nextCount = Math.max(1, Math.min(20, cur.count + delta))
-    if (nextCount === cur.count) return
-    const nextSlots = slots.map((s, i) => (i === idx ? { ...s, count: nextCount } : s))
-    void onSaveTemplate(selectedSize, nextSlots, `${selectedSize}-Man roster kontenjanı güncellendi.`)
+  const filledCount = slots.filter((s) => s.options.length > 0).length
+  const roleTotals = slots.reduce(
+    (acc, s) => {
+      if (s.options.length > 0) {
+        acc[s.role] = (acc[s.role] || 0) + 1
+      }
+      return acc
+    },
+    { TANK: 0, HEALER: 0, MELEE: 0, RANGED: 0 } as Record<RaidRoleType, number>,
+  )
+
+  const openEditSlotModal = (index: number) => {
+    const slot = slots[index]
+    setEditingIndex(index)
+    setFormOptions([...slot.options])
+    setFormRole(slot.role)
+    setFormNote(slot.note || '')
+    setModalOpen(true)
   }
 
-  const removeSlot = (idx: number) => {
-    const nextSlots = slots.filter((_, i) => i !== idx)
-    void onSaveTemplate(selectedSize, nextSlots, `${selectedSize}-Man roster kutusu kaldırıldı.`)
+  const toggleFormOption = (spec: string) => {
+    setFormOptions((prev) => {
+      const exists = prev.includes(spec)
+      const next = exists ? prev.filter((x) => x !== spec) : [...prev, spec]
+      if (!exists && prev.length === 0) {
+        setFormRole(inferRoleFromSpec(spec))
+      }
+      return next
+    })
   }
 
-  const handleDropSlot = (targetIdx: number) => {
-    if (dragFromIdx === null) return
-    const from = dragFromIdx
-    setDragFromIdx(null)
-    setDragOverIdx(null)
-    if (from === targetIdx) return
+  const handleSaveModal = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingIndex === null) return
     const nextSlots = [...slots]
-    const [moved] = nextSlots.splice(from, 1)
-    nextSlots.splice(targetIdx, 0, moved)
-    void onSaveTemplate(selectedSize, nextSlots, `${selectedSize}-Man roster sırası güncellendi.`)
+    nextSlots[editingIndex] = {
+      ...nextSlots[editingIndex],
+      role: formOptions.length > 0 ? formRole : nextSlots[editingIndex].role,
+      options: [...formOptions],
+      count: 1,
+      note: formNote.trim() || undefined,
+    }
+    const gNum = Math.floor(editingIndex / 5) + 1
+    const sNum = (editingIndex % 5) + 1
+    const ok = await onSaveTemplate(
+      activeSize,
+      nextSlots,
+      formOptions.length > 0
+        ? `Grup ${gNum} · Slot ${sNum} güncellendi.`
+        : `Grup ${gNum} · Slot ${sNum} boş bırakıldı.`,
+    )
+    if (ok) setModalOpen(false)
   }
 
-  const handleSaveSlotModal = async () => {
-    if (!slotModal || slotModal.options.length === 0) return
-    const nextSlot: RosterTemplateSlot = {
-      id: slotModal.id,
-      role: slotModal.role,
-      options: [...new Set(slotModal.options.map(canonicalizeSpecLabel))],
-      count: Math.max(1, Math.min(20, Math.floor(slotModal.count) || 1)),
-      note: slotModal.note.trim() || undefined,
+  const handleClearSlot = async (index: number) => {
+    const nextSlots = [...slots]
+    nextSlots[index] = {
+      ...nextSlots[index],
+      options: [],
+      note: undefined,
     }
-    const nextSlots =
-      slotModal.index === null
-        ? [...slots, nextSlot]
-        : slots.map((s, i) => (i === slotModal.index ? nextSlot : s))
-    const ok = await onSaveTemplate(
-      selectedSize,
-      nextSlots,
-      slotModal.index === null
-        ? `${selectedSize}-Man roster şablonuna yeni kutu eklendi.`
-        : `${selectedSize}-Man roster kutusu güncellendi.`,
-    )
-    if (ok) setSlotModal(null)
+    const gNum = Math.floor(index / 5) + 1
+    const sNum = (index % 5) + 1
+    await onSaveTemplate(activeSize, nextSlots, `Grup ${gNum} · Slot ${sNum} temizlendi.`)
+  }
+
+  const handleSwapSlots = async (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return
+    const nextSlots = [...slots]
+    const tmp = nextSlots[fromIdx]
+    nextSlots[fromIdx] = nextSlots[toIdx]
+    nextSlots[toIdx] = tmp
+    await onSaveTemplate(activeSize, nextSlots, 'Slotların yeri değiştirildi.')
+  }
+
+  const handleResetDefaults = async () => {
+    if (!confirm(`${activeSize}-Man raid grup şablonu varsayılan düzene sıfırlansın mı?`)) return
+    const defaults = cloneDefaultRosterTemplates()[activeSize]
+    await onSaveTemplate(activeSize, defaults, `${activeSize}-Man grup şablonu varsayılanlara sıfırlandı.`)
   }
 
   return (
-    <>
-      <Panel className="border-gold/35 bg-gradient-to-br from-[#0d2238] via-[#091829] to-[#071220]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-expanded={!collapsed}
-            className="group flex cursor-pointer items-center gap-2.5 text-left"
-          >
-            <span className="inline-flex size-8 items-center justify-center rounded-lg border border-gold/40 bg-gold/10 text-gold">
-              <Users className="size-4" />
-            </span>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h2 className="font-display text-base font-bold tracking-wide text-gold">
-                  İsimsiz Raid Roster Şablonları (10 / 20 / 40-Man)
-                </h2>
-                <ChevronDown
-                  className={cn(
-                    'size-4 text-gold/80 transition-transform duration-200 group-hover:text-gold',
-                    collapsed && '-rotate-90',
-                  )}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Raid davetleri bu isimsiz class/spec şablonu önceliğine göre yapılır; ikili/üçlü opsiyonlu kutular esnek kadro seçeneklerini gösterir.
-              </p>
+    <Panel className="border-neon/30 bg-gradient-to-br from-[#071829] via-[#091524] to-[#08121f]">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((prev) => !prev)}
+          className="flex cursor-pointer items-center gap-2.5 text-left"
+        >
+          <span className="flex size-8 items-center justify-center rounded-lg border border-neon/35 bg-neon/10 text-neon">
+            <Users className="size-4" />
+          </span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-display text-base font-bold text-gold sm:text-lg">
+                İsimsiz Raid Roster Şablonları
+              </h3>
+              <Badge className="border-neon/40 bg-neon/10 text-[11px] text-neon">
+                {groupCount} Grup · {filledCount} / {targetSize} Slot
+              </Badge>
             </div>
-          </button>
+            <p className="text-xs text-muted-foreground">
+              Her raid 5&apos;er kişilik gruplar halinde gösterilir. Her kutucukta tek spec veya 2&apos;li / 3&apos;lü alternatif seçenekler (veya) tanımlanabilir.
+            </p>
+          </div>
+          <ChevronDown
+            className={cn(
+              'ml-1 size-4 shrink-0 text-silver/70 transition-transform duration-200',
+              !expanded && '-rotate-90',
+            )}
+          />
+        </button>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-border bg-[#071422] p-1">
-              {SIZE_TABS.map((t) => {
-                const countForTab = (effectiveTemplates[t.size] || []).reduce((s, x) => s + x.count, 0)
-                const active = selectedSize === t.size
+        {/* Size Switcher + Reset */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center rounded-lg border border-border bg-[#071422] p-0.5">
+            {(['10', '20', '40'] as const).map((sz) => (
+              <button
+                key={sz}
+                type="button"
+                onClick={() => setActiveSize(sz)}
+                className={cn(
+                  'cursor-pointer rounded-md px-3 py-1 text-xs font-bold transition',
+                  activeSize === sz
+                    ? 'bg-gold/20 text-gold shadow-[inset_0_0_0_1px_rgba(212,175,55,0.45)]'
+                    : 'text-silver/75 hover:text-foreground',
+                )}
+              >
+                {sz}-Man
+              </button>
+            ))}
+          </div>
+
+          {isOfficer && (
+            <GhostButton
+              type="button"
+              disabled={busy}
+              onClick={() => void handleResetDefaults()}
+              className="px-2.5 py-1.5 text-xs"
+              title="Varsayılan grup şablonuna dön"
+            >
+              <RotateCcw className="size-3.5" />
+              Varsayılan
+            </GhostButton>
+          )}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="mt-4 space-y-4 border-t border-border/60 pt-4">
+          {/* Role Summary Chips */}
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex flex-wrap items-center gap-2">
+              {(['TANK', 'HEALER', 'MELEE', 'RANGED'] as RaidRoleType[]).map((role) => {
+                const rm = ROLE_META[role]
                 return (
-                  <button
-                    key={t.size}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSize(t.size)
-                      if (collapsed) setCollapsed(false)
-                    }}
+                  <span
+                    key={role}
                     className={cn(
-                      'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition',
-                      active
-                        ? 'bg-gold/15 text-gold shadow-[0_0_12px_rgb(212_175_55/0.15)]'
-                        : 'text-muted-foreground hover:text-foreground',
+                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-semibold',
+                      rm.border,
+                      rm.bg,
+                      rm.text,
                     )}
                   >
-                    {t.label}{' '}
-                    <span className="ml-1 font-mono text-[10px] opacity-80">
-                      ({countForTab}/{t.target})
-                    </span>
-                  </button>
+                    {rm.label}: <span className="font-mono font-bold">{roleTotals[role]}</span>
+                  </span>
                 )
               })}
             </div>
+            {isOfficer && (
+              <span className="text-[11px] text-muted-foreground">
+                İpucu: Herhangi bir kutucuğa tıklayarak 1&apos;li / 2&apos;li / 3&apos;lü spec seçin; sürükleyip bırakarak gruplar arası yer değiştirin.
+              </span>
+            )}
+          </div>
+
+          {/* 5-Player Raid Groups Grid (10m: 2 cols, 20m: 4 cols, 40m: 4 cols x 2 rows) */}
+          <div
+            className={cn(
+              'grid gap-3',
+              activeSize === '10'
+                ? 'grid-cols-1 md:grid-cols-2'
+                : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4',
+            )}
+          >
+            {Array.from({ length: groupCount }, (_, groupIdx) => {
+              const groupSlots = slots.slice(groupIdx * 5, groupIdx * 5 + 5)
+              const accent = GROUP_ACCENTS[groupIdx % GROUP_ACCENTS.length]
+              const groupFilled = groupSlots.filter((s) => s.options.length > 0).length
+
+              return (
+                <div
+                  key={`grp-${activeSize}-${groupIdx}`}
+                  className="relative flex flex-col overflow-hidden rounded-xl border bg-[#06111e]/95 shadow-sm"
+                  style={{ borderColor: `${accent}40` }}
+                >
+                  {/* Group Header Bar */}
+                  <div
+                    className="flex items-center justify-between border-b px-3 py-2"
+                    style={{
+                      borderColor: `${accent}28`,
+                      background: `linear-gradient(90deg, ${accent}18 0%, rgba(7,20,34,0.4) 100%)`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: accent, boxShadow: `0 0 8px ${accent}` }}
+                      />
+                      <span
+                        className="font-display text-xs font-bold tracking-wider uppercase"
+                        style={{ color: accent }}
+                      >
+                        Grup {groupIdx + 1}
+                      </span>
+                    </div>
+                    <span className="font-mono text-[10px] font-semibold text-silver/70">
+                      {groupFilled}/5
+                    </span>
+                  </div>
+
+                  {/* 5 Individual Player Boxes */}
+                  <div className="flex flex-1 flex-col gap-1.5 p-2">
+                    {groupSlots.map((slot, localIdx) => {
+                      const globalIdx = groupIdx * 5 + localIdx
+                      const hasOptions = slot.options.length > 0
+                      const rm = ROLE_META[slot.role] || ROLE_META.MELEE
+                      const primaryColor = hasOptions ? getSpecColor(slot.options[0]) : '#64748b'
+                      const isDragging = dragIdx === globalIdx
+                      const isDragOver = dragOverIdx === globalIdx && dragIdx !== null && dragIdx !== globalIdx
+
+                      return (
+                        <div
+                          key={`${slot.id}-${globalIdx}`}
+                          draggable={isOfficer && !busy}
+                          onDragStart={(e) => {
+                            if (!isOfficer) return
+                            setDragIdx(globalIdx)
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', String(globalIdx))
+                          }}
+                          onDragOver={(e) => {
+                            if (!isOfficer || dragIdx === null) return
+                            e.preventDefault()
+                            if (dragOverIdx !== globalIdx) setDragOverIdx(globalIdx)
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverIdx === globalIdx) setDragOverIdx(null)
+                          }}
+                          onDrop={(e) => {
+                            if (!isOfficer || dragIdx === null) return
+                            e.preventDefault()
+                            const from = dragIdx
+                            setDragIdx(null)
+                            setDragOverIdx(null)
+                            void handleSwapSlots(from, globalIdx)
+                          }}
+                          onDragEnd={() => {
+                            setDragIdx(null)
+                            setDragOverIdx(null)
+                          }}
+                          onClick={() => {
+                            if (isOfficer && !busy) openEditSlotModal(globalIdx)
+                          }}
+                          className={cn(
+                            'group relative flex min-h-[52px] flex-col justify-center rounded-lg border px-2.5 py-1.5 transition',
+                            isOfficer && 'cursor-pointer',
+                            hasOptions
+                              ? 'bg-[#0b1b2d]/95 hover:border-gold/50'
+                              : 'border-dashed border-border/60 bg-[#071422]/45 hover:border-neon/50 hover:bg-neon/[0.04]',
+                            isDragging && 'scale-[0.98] opacity-40',
+                            isDragOver && 'ring-2 ring-neon/80 border-neon bg-neon/10',
+                          )}
+                          style={
+                            hasOptions && !isDragOver
+                              ? {
+                                  borderColor: `${primaryColor}45`,
+                                  boxShadow: `inset 2.5px 0 0 ${primaryColor}`,
+                                }
+                              : undefined
+                          }
+                        >
+                          {hasOptions ? (
+                            <div className="flex items-start justify-between gap-1.5">
+                              <div className="min-w-0 flex-1 space-y-1">
+                                {slot.options.map((specLabel, optIdx) => (
+                                  <div key={specLabel} className="flex items-center gap-1.5">
+                                    {optIdx > 0 ? (
+                                      <span className="shrink-0 rounded bg-white/5 px-1 py-0.5 text-[9px] font-bold tracking-wider text-muted-foreground uppercase">
+                                        veya
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={cn(
+                                          'flex size-4 shrink-0 items-center justify-center rounded text-[9px] font-black',
+                                          rm.bg,
+                                          rm.text,
+                                        )}
+                                        title={rm.label}
+                                      >
+                                        {rm.short}
+                                      </span>
+                                    )}
+                                    <SpecMiniIcon specLabel={specLabel} size={16} />
+                                    <span
+                                      className="truncate text-[11px] font-bold leading-tight"
+                                      style={{ color: getSpecColor(specLabel) }}
+                                      title={specLabel}
+                                    >
+                                      {specLabel}
+                                    </span>
+                                  </div>
+                                ))}
+
+                                {slot.note && (
+                                  <p className="truncate pl-5 text-[10px] italic text-silver/70" title={slot.note}>
+                                    {slot.note}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Officer quick drag / edit / clear icons */}
+                              {isOfficer && (
+                                <div className="flex shrink-0 items-center gap-0.5 opacity-60 transition group-hover:opacity-100">
+                                  <span
+                                    className="cursor-grab p-0.5 text-muted-foreground hover:text-silver active:cursor-grabbing"
+                                    title="Sürükleyip başka slotla yer değiştir"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <GripVertical className="size-3" />
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openEditSlotModal(globalIdx)
+                                    }}
+                                    className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-white/10 hover:text-gold"
+                                    title="Slotu düzenle (1'li / 2'li / 3'lü opsiyon)"
+                                  >
+                                    <Pencil className="size-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void handleClearSlot(globalIdx)
+                                    }}
+                                    className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-rose-500/15 hover:text-rose-300"
+                                    title="Slotu boşalt"
+                                  >
+                                    <Eraser className="size-3" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground/70">
+                              <span className="flex items-center gap-1.5">
+                                <span className="font-mono text-[10px] text-muted-foreground/50">
+                                  #{localIdx + 1}
+                                </span>
+                                <span>{isOfficer ? 'Boş Slot — Spec Seç' : 'Açık Slot'}</span>
+                              </span>
+                              {isOfficer && <Plus className="size-3.5 text-neon/70 group-hover:text-neon" />}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
+      )}
 
-        {!collapsed && (
-          <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
-            {/* Role breakdown bar */}
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge
-                  className={
-                    totalCount === targetTotal
-                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                      : 'border-amber-500/40 bg-amber-500/15 text-amber-300'
-                  }
-                >
-                  Toplam Kadro: {totalCount} / {targetTotal}
-                </Badge>
-                <Badge className="border-sky-500/35 bg-sky-500/10 text-sky-300">Tank: {tankCount}</Badge>
-                <Badge className="border-emerald-500/35 bg-emerald-500/10 text-emerald-300">Healer: {healerCount}</Badge>
-                <Badge className="border-rose-500/35 bg-rose-500/10 text-rose-300">DPS: {dpsCount}</Badge>
-              </div>
-              {isOfficer && (
-                <span className="text-[11px] text-muted-foreground">
-                  Kutuları tutup sürükleyerek sırayı değiştirebilir, <strong className="text-gold">- / +</strong> ile kontenjanı ayarlayabilirsiniz.
-                </span>
-              )}
-            </div>
-
-            {/* Roster Boxes Grid */}
-            <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-              {slots.map((slot, idx) => {
-                const meta = ROLE_META[slot.role] || ROLE_META.MELEE
-                const RoleIcon = meta.icon
-                const canonicalOptions = slot.options.map(canonicalizeSpecLabel)
-                const isDragging = dragFromIdx === idx
-                const isDragOver = dragOverIdx === idx && dragFromIdx !== idx
-
-                return (
-                  <div
-                    key={slot.id}
-                    draggable={isOfficer && !busy}
-                    onDragStart={(e) => {
-                      if (!isOfficer || busy) return
-                      e.dataTransfer.effectAllowed = 'move'
-                      setDragFromIdx(idx)
-                    }}
-                    onDragOver={(e) => {
-                      if (dragFromIdx === null) return
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      if (dragOverIdx !== idx) setDragOverIdx(idx)
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverIdx === idx) setDragOverIdx(null)
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      handleDropSlot(idx)
-                    }}
-                    onDragEnd={() => {
-                      setDragFromIdx(null)
-                      setDragOverIdx(null)
-                    }}
-                    className={cn(
-                      'relative flex flex-col justify-between rounded-xl border bg-[#071422]/90 p-3 transition',
-                      isOfficer && !busy && 'cursor-grab active:cursor-grabbing',
-                      isDragging && 'scale-[0.97] opacity-45',
-                      isDragOver ? 'border-neon ring-2 ring-neon/50 bg-neon/10' : meta.borderCls,
-                    )}
-                  >
-                    <div className="space-y-2">
-                      {/* Box Top Bar */}
-                      <div className="flex items-center justify-between gap-1">
-                        <div className="flex items-center gap-1">
-                          {isOfficer && (
-                            <GripVertical className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
-                          )}
-                          <span className="font-mono text-[10px] font-bold text-muted-foreground">#{idx + 1}</span>
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[9px] font-bold tracking-wider uppercase',
-                              meta.badgeCls,
-                            )}
-                          >
-                            <RoleIcon className="size-2.5" />
-                            {meta.label}
-                          </span>
-                        </div>
-
-                        {isOfficer && (
-                          <div className="flex items-center gap-0.5">
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() =>
-                                setSlotModal({
-                                  index: idx,
-                                  id: slot.id,
-                                  role: slot.role,
-                                  options: canonicalOptions,
-                                  count: slot.count,
-                                  note: slot.note || '',
-                                })
-                              }
-                              className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-white/10 hover:text-neon"
-                              title="Opsiyonları ve kontenjanı düzenle"
-                            >
-                              <Edit3 className="size-3" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => removeSlot(idx)}
-                              className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/15 hover:text-rose-400"
-                              title="Kutuyu kaldır"
-                            >
-                              <X className="size-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* 1, 2, 3+ Spec Options */}
-                      <div className="space-y-1">
-                        {canonicalOptions.map((opt, optIdx) => (
-                          <div key={opt} className="space-y-1">
-                            {optIdx > 0 && (
-                              <div className="flex items-center gap-1.5 pl-1">
-                                <span className="h-px w-3 bg-border/80" />
-                                <span className="text-[9px] font-semibold tracking-wider text-muted-foreground/80 uppercase">
-                                  veya
-                                </span>
-                                <span className="h-px flex-1 bg-border/50" />
-                              </div>
-                            )}
-                            <div className="flex items-center gap-1.5 text-[11px] leading-tight font-bold">
-                              <SpecMiniIcon specLabel={opt} size={18} />
-                              <span className="truncate" style={{ color: getSpecColor(opt) }}>
-                                {opt}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Footer: Note + Spot Count Stepper */}
-                    <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/50 pt-2">
-                      <span className="truncate text-[10px] text-muted-foreground">
-                        {slot.note || (canonicalOptions.length > 1 ? `${canonicalOptions.length} opsiyonlu` : 'Sabit spot')}
-                      </span>
-                      <div className="inline-flex shrink-0 items-center gap-1">
-                        {isOfficer && (
-                          <button
-                            type="button"
-                            disabled={busy || slot.count <= 1}
-                            onClick={() => adjustSlotCount(idx, -1)}
-                            className="inline-flex size-4 cursor-pointer items-center justify-center rounded border border-border/70 bg-[#0b1b2d] text-silver hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
-                            title="Kontenjanı azalt"
-                          >
-                            <Minus className="size-2.5" />
-                          </button>
-                        )}
-                        <span className="rounded-md bg-gold/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gold">
-                          ×{slot.count}
-                        </span>
-                        {isOfficer && (
-                          <button
-                            type="button"
-                            disabled={busy || slot.count >= 20}
-                            onClick={() => adjustSlotCount(idx, 1)}
-                            className="inline-flex size-4 cursor-pointer items-center justify-center rounded border border-border/70 bg-[#0b1b2d] text-silver hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-30"
-                            title="Kontenjanı artır"
-                          >
-                            <Plus className="size-2.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-
-              {isOfficer && (
+      {/* Edit Single Player Box Modal (1 / 2 / 3+ Alternative Spec Options) */}
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={
+          editingIndex !== null
+            ? `${activeSize}-Man · Grup ${Math.floor(editingIndex / 5) + 1} / Slot ${(editingIndex % 5) + 1}`
+            : 'Roster Slotunu Düzenle'
+        }
+        description="Bu oyuncu kutusu için tek bir sınıf/spec seçebilir veya 2'li / 3'lü alternatif (veya) opsiyonlar ekleyebilirsiniz."
+        className="max-w-3xl"
+      >
+        <form onSubmit={handleSaveModal} className="space-y-4">
+          {/* Selected Options Preview */}
+          <div className="rounded-xl border border-border/80 bg-[#071422] p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-bold tracking-wide text-silver uppercase">
+                Bu Kutunun Opsiyonları ({formOptions.length} seçili)
+              </span>
+              {formOptions.length > 0 && (
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    setSlotModal({
-                      index: null,
-                      id: `rt-${selectedSize}-${Date.now()}`,
-                      role: 'MELEE',
-                      options: [],
-                      count: 1,
-                      note: '',
-                    })
-                  }
-                  className="flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-gold/35 bg-gold/[0.03] p-3 text-xs font-semibold text-gold/80 transition hover:border-gold hover:bg-gold/10 hover:text-gold disabled:opacity-50"
+                  onClick={() => setFormOptions([])}
+                  className="cursor-pointer text-[11px] text-rose-300 hover:underline"
                 >
-                  <Plus className="size-5" />
-                  <span>Roster Kutusu Ekle</span>
-                  <span className="text-[10px] font-normal text-muted-foreground">Tekli / İkili / Üçlü opsiyon</span>
+                  Tümünü Temizle
                 </button>
               )}
             </div>
-          </div>
-        )}
-      </Panel>
-
-      {/* Add / Edit Roster Slot Modal with WoW Class/Spec Icon Picker */}
-      <Modal
-        open={Boolean(slotModal)}
-        onClose={() => setSlotModal(null)}
-        title={
-          slotModal
-            ? slotModal.index === null
-              ? `${selectedSize}-Man Roster Kutusu Ekle`
-              : `${selectedSize}-Man Roster Kutusu Düzenle (#${slotModal.index + 1})`
-            : 'Roster Kutusu'
-        }
-        description="Bu roster kutusu için 1, 2 veya 3+ alternatif sınıf/spec ikonu seçebilirsiniz (ikili/üçlü opsiyon)."
-        className="max-w-3xl"
-      >
-        {slotModal && (
-          <div className="space-y-4">
-            <SpecIconPicker
-              selectedSpecs={slotModal.options}
-              onToggleSpec={(label) =>
-                setSlotModal((prev) => {
-                  if (!prev) return null
-                  const exists = prev.options.includes(label)
-                  const nextOptions = exists
-                    ? prev.options.filter((o) => o !== label)
-                    : [...prev.options, label]
-                  const nextRole =
-                    prev.options.length === 0 && nextOptions.length === 1
-                      ? guessRoleFromSpec(nextOptions[0])
-                      : prev.role
-                  return { ...prev, options: nextOptions, role: nextRole }
-                })
-              }
-            />
-
-            <div className="grid gap-3 border-t border-border/60 pt-3 sm:grid-cols-3">
-              <Field label="Rol Kategorisi">
-                <div className="grid grid-cols-2 gap-1">
-                  {(['TANK', 'HEALER', 'MELEE', 'RANGED'] as RaidRoleType[]).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setSlotModal((prev) => (prev ? { ...prev, role: r } : null))}
-                      className={cn(
-                        'cursor-pointer rounded-md border px-2 py-1 text-[10px] font-bold transition',
-                        slotModal.role === r
-                          ? ROLE_META[r].badgeCls
-                          : 'border-border bg-[#071422] text-muted-foreground hover:text-foreground',
-                      )}
+            {formOptions.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Aşağıdaki sınıf/spec ikonlarından 1, 2 veya 3+ seçenek tıklayın (boş bırakıp kaydederseniz slot açık kalır).
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {formOptions.map((sp, idx) => (
+                  <span key={sp} className="inline-flex items-center gap-1.5">
+                    {idx > 0 && (
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">veya</span>
+                    )}
+                    <span
+                      className="inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-semibold"
+                      style={{
+                        color: getSpecColor(sp),
+                        borderColor: `${getSpecColor(sp)}55`,
+                        backgroundColor: `${getSpecColor(sp)}18`,
+                      }}
                     >
-                      {ROLE_META[r].label}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-
-              <Field label="Kişi Sayısı (Kontenjan)">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSlotModal((prev) => (prev ? { ...prev, count: Math.max(1, prev.count - 1) } : null))
-                    }
-                    className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-border bg-[#071422] text-silver hover:border-gold/60 hover:text-gold"
-                  >
-                    <Minus className="size-3.5" />
-                  </button>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={slotModal.count}
-                    onChange={(e) =>
-                      setSlotModal((prev) =>
-                        prev ? { ...prev, count: Math.max(1, Math.min(20, Number(e.target.value) || 1)) } : null,
-                      )
-                    }
-                    className="w-14 rounded-lg border border-gold/40 bg-[#071422] px-2 py-1.5 text-center font-mono text-sm font-bold text-gold"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSlotModal((prev) => (prev ? { ...prev, count: Math.min(20, prev.count + 1) } : null))
-                    }
-                    className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-border bg-[#071422] text-silver hover:border-gold/60 hover:text-gold"
-                  >
-                    <Plus className="size-3.5" />
-                  </button>
-                </div>
-              </Field>
-
-              <Field label="Kısa Not (Opsiyonel)">
-                <input
-                  type="text"
-                  maxLength={80}
-                  className={cn(inputClass, 'text-xs')}
-                  placeholder="Örn: Main Tank, Buff/Utility..."
-                  value={slotModal.note}
-                  onChange={(e) => setSlotModal((prev) => (prev ? { ...prev, note: e.target.value } : null))}
-                />
-              </Field>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <GhostButton type="button" onClick={() => setSlotModal(null)}>
-                İptal
-              </GhostButton>
-              <GoldButton
-                type="button"
-                disabled={busy || slotModal.options.length === 0}
-                onClick={() => void handleSaveSlotModal()}
-              >
-                <Plus className="size-4" />
-                {slotModal.index === null ? 'Roster Kutusunu Ekle' : 'Kaydet'}
-              </GoldButton>
-            </div>
+                      <SpecMiniIcon specLabel={sp} size={16} />
+                      {sp}
+                      <button
+                        type="button"
+                        onClick={() => toggleFormOption(sp)}
+                        className="ml-0.5 cursor-pointer opacity-75 hover:opacity-100"
+                        title="Kaldır"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* WoW Class/Spec Icon Picker */}
+          <div className="space-y-1.5">
+            <SpecIconPicker
+              selectedSpecs={formOptions}
+              onToggleSpec={toggleFormOption}
+              compact
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Birden fazla ikona tıklayarak bu kutu için 2&apos;li veya 3&apos;lü alternatif opsiyon (veya) oluşturabilirsiniz.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Rol Kategorisi">
+              <select
+                className={inputClass}
+                value={formRole}
+                onChange={(e) => setFormRole(e.target.value as RaidRoleType)}
+              >
+                <option value="TANK">Tank</option>
+                <option value="HEALER">Healer</option>
+                <option value="MELEE">Melee DPS</option>
+                <option value="RANGED">Ranged DPS</option>
+              </select>
+            </Field>
+            <Field label="Kısa Not (Opsiyonel)">
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="Örn: Main Tank, Windfury, Imp. EA..."
+                value={formNote}
+                onChange={(e) => setFormNote(e.target.value)}
+                maxLength={80}
+              />
+            </Field>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <GhostButton type="button" onClick={() => setModalOpen(false)}>
+              İptal
+            </GhostButton>
+            <GoldButton type="submit" disabled={busy}>
+              {busy ? 'Kaydediliyor...' : 'Slotu Kaydet'}
+            </GoldButton>
+          </div>
+        </form>
       </Modal>
-    </>
+    </Panel>
   )
 }

@@ -3,6 +3,12 @@
 import { X } from 'lucide-react'
 import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import {
+  ARMORY_RANK_COLOR_STYLES,
+  fallbackColorForSiteRank,
+  formatArmoryRankKey,
+  type ArmoryRankColorId,
+} from '@/lib/armory-ranks'
 import { cn } from '@/lib/utils'
 
 export function Modal({
@@ -180,6 +186,43 @@ export function PointsPill({
       )}
     >
       {points > 0 ? `+${points}p` : `${points}p`}
+    </span>
+  )
+}
+
+export function RankPill({
+  label,
+  color,
+  armoryRankId,
+  className,
+  title,
+}: {
+  label?: string | null
+  color?: ArmoryRankColorId | null
+  armoryRankId?: number | null
+  className?: string
+  title?: string
+}) {
+  const cleanLabel = (label || '').trim()
+  if (!cleanLabel) return null
+  const colorKey: ArmoryRankColorId =
+    color && color in ARMORY_RANK_COLOR_STYLES ? color : fallbackColorForSiteRank(cleanLabel)
+  const tone = ARMORY_RANK_COLOR_STYLES[colorKey].badgeClass
+  const defaultTitle =
+    typeof armoryRankId === 'number'
+      ? `WoW Armory Rütbesi: ${cleanLabel} (${formatArmoryRankKey(armoryRankId)})`
+      : `Guild Rütbesi: ${cleanLabel}`
+
+  return (
+    <span
+      title={title ?? defaultTitle}
+      className={cn(
+        'inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none font-bold tracking-wide whitespace-nowrap',
+        tone,
+        className,
+      )}
+    >
+      {cleanLabel}
     </span>
   )
 }

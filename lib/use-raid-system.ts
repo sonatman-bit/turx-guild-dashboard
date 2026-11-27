@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import type { ArmoryRankColorId } from '@/lib/armory-ranks'
 import { authHeaders } from '@/lib/client-session'
 import type { WowClass } from '@/lib/guild-data'
 import type {
@@ -19,6 +20,9 @@ export type GuildMainMember = {
   role: RaidRoleType
   level: number
   guildRank: string
+  armoryRankId?: number | null
+  armoryRankLabel?: string
+  armoryRankColor?: ArmoryRankColorId
 }
 
 export type RaidSystemApiPayload = {

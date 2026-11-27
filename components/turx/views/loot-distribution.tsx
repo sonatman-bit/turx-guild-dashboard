@@ -27,6 +27,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import type { ArmoryRankColorId } from '@/lib/armory-ranks'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import {
   canonicalizeSpecLabel,
@@ -63,6 +64,7 @@ import {
   Panel,
   PanelTitle,
   PointsPill,
+  RankPill,
   SectionHeader,
 } from '../ui'
 import { WowItemHeaderWithTooltip, WowItemIcon } from '../wow-item-tooltip'
@@ -159,6 +161,18 @@ export function LootDistributionView() {
     }
     return map
   }, [leaderboard])
+
+  const rankByUser = useMemo(() => {
+    const map = new Map<string, { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }>()
+    for (const m of guildMembers) {
+      map.set(m.username.toLowerCase(), {
+        label: m.armoryRankLabel || m.guildRank,
+        color: m.armoryRankColor,
+        armoryRankId: m.armoryRankId,
+      })
+    }
+    return map
+  }, [guildMembers])
 
   const activeRaidEvents = useMemo(
     () => (rs?.events || []).filter((e) => e.status !== 'ARCHIVED'),
@@ -1164,7 +1178,7 @@ export function LootDistributionView() {
                                               className="flex items-center justify-between gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-2 py-1"
                                             >
                                               <div className="min-w-0">
-                                                <div className="flex items-center gap-1">
+                                                <div className="flex flex-wrap items-center gap-1">
                                                   <p
                                                     className="truncate text-xs font-bold"
                                                     style={{
@@ -1173,6 +1187,16 @@ export function LootDistributionView() {
                                                   >
                                                     {award.characterName}
                                                   </p>
+                                                  {(() => {
+                                                    const rk = rankByUser.get(award.username.toLowerCase())
+                                                    return rk ? (
+                                                      <RankPill
+                                                        label={rk.label}
+                                                        color={rk.color}
+                                                        armoryRankId={rk.armoryRankId}
+                                                      />
+                                                    ) : null
+                                                  })()}
                                                   <PointsPill points={pointsByUser.get(award.username.toLowerCase()) ?? 0} />
                                                 </div>
                                                 <p className="text-[10px] text-muted-foreground">
@@ -1550,6 +1574,12 @@ export function LootDistributionView() {
                         <span className="font-bold" style={{ color: CLASS_COLORS[c.wowClass] || '#fff' }}>
                           {c.characterName}
                         </span>
+                        {(() => {
+                          const rk = rankByUser.get(c.username.toLowerCase())
+                          return rk ? (
+                            <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                          ) : null
+                        })()}
                         <PointsPill points={c.points} />
                         <span className="text-[11px] text-muted-foreground">({c.spec})</span>
                         {c.matches && (

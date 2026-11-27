@@ -1,3 +1,4 @@
+import type { ArmoryRankColorId } from './armory-ranks'
 import { CLASS_COLORS, type WowClass } from './guild-data'
 
 export type RaidRoleType = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
@@ -1628,11 +1629,55 @@ export const DEFAULT_ROSTER_TEMPLATES: RosterTemplatesBySize = {
   ],
 }
 
+export function normalizeRosterSlotsForSize(
+  sizeKey: RosterTemplateSize,
+  rawSlots?: RosterTemplateSlot[] | null,
+): RosterTemplateSlot[] {
+  const targetLen = Number(sizeKey)
+  const expanded: RosterTemplateSlot[] = []
+
+  if (Array.isArray(rawSlots)) {
+    for (let i = 0; i < rawSlots.length; i += 1) {
+      const s = rawSlots[i]
+      if (!s) continue
+      const repeat = Math.max(1, Math.min(targetLen, Math.floor(Number(s.count) || 1)))
+      const opts = Array.isArray(s.options)
+        ? [...new Set(s.options.map((o) => canonicalizeSpecLabel(String(o || ''))).filter(Boolean))]
+        : []
+      for (let r = 0; r < repeat; r += 1) {
+        if (expanded.length >= targetLen) break
+        expanded.push({
+          id:
+            repeat === 1 && typeof s.id === 'string' && s.id.trim()
+              ? s.id.trim()
+              : `rt-${sizeKey}-s${expanded.length + 1}`,
+          role: s.role || 'MELEE',
+          options: [...opts],
+          count: 1,
+          note: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 80) : undefined,
+        })
+      }
+      if (expanded.length >= targetLen) break
+    }
+  }
+
+  while (expanded.length < targetLen) {
+    expanded.push({
+      id: `rt-${sizeKey}-s${expanded.length + 1}`,
+      role: 'MELEE',
+      options: [],
+      count: 1,
+    })
+  }
+
+  return expanded
+}
+
 export function cloneDefaultRosterTemplates(): RosterTemplatesBySize {
   return {
-    '10': DEFAULT_ROSTER_TEMPLATES['10'].map((s) => ({ ...s, options: [...s.options] })),
-    '20': DEFAULT_ROSTER_TEMPLATES['20'].map((s) => ({ ...s, options: [...s.options] })),
-    '40': DEFAULT_ROSTER_TEMPLATES['40'].map((s) => ({ ...s, options: [...s.options] })),
+    '10': normalizeRosterSlotsForSize('10', DEFAULT_ROSTER_TEMPLATES['10']),
+    '20': normalizeRosterSlotsForSize('20', DEFAULT_ROSTER_TEMPLATES['20']),
+    '40': normalizeRosterSlotsForSize('40', DEFAULT_ROSTER_TEMPLATES['40']),
   }
 }
 
@@ -1737,15 +1782,15 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
     rosterTemplates: {
       '10':
         Array.isArray(rawSettings.rosterTemplates?.['10']) && rawSettings.rosterTemplates['10'].length > 0
-          ? rawSettings.rosterTemplates['10']
+          ? normalizeRosterSlotsForSize('10', rawSettings.rosterTemplates['10'])
           : cloneDefaultRosterTemplates()['10'],
       '20':
         Array.isArray(rawSettings.rosterTemplates?.['20']) && rawSettings.rosterTemplates['20'].length > 0
-          ? rawSettings.rosterTemplates['20']
+          ? normalizeRosterSlotsForSize('20', rawSettings.rosterTemplates['20'])
           : cloneDefaultRosterTemplates()['20'],
       '40':
         Array.isArray(rawSettings.rosterTemplates?.['40']) && rawSettings.rosterTemplates['40'].length > 0
-          ? rawSettings.rosterTemplates['40']
+          ? normalizeRosterSlotsForSize('40', rawSettings.rosterTemplates['40'])
           : cloneDefaultRosterTemplates()['40'],
     },
   }
@@ -2133,6 +2178,9 @@ export type MemberAttendanceRow = {
   role: RaidRoleType
   level: number
   guildRank: string
+  armoryRankId?: number | null
+  armoryRankLabel?: string
+  armoryRankColor?: ArmoryRankColorId
   totalPoints: number
   signupCount: number
   confirmCount: number

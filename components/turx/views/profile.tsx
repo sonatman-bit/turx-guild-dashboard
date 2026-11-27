@@ -261,7 +261,8 @@ function ProfilePollSection() {
   const toast = useToast()
   const [choice, setChoice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [poll, setPoll] = useState<PollState>({
+  const [poll, setPoll] = useState<PollState & { active?: boolean }>({
+    active: ACTIVE_POLL.active,
     question: ACTIVE_POLL.question,
     endsIn: ACTIVE_POLL.endsIn,
     total: 0,
@@ -270,12 +271,19 @@ function ProfilePollSection() {
   })
 
   useEffect(() => {
+    if (!ACTIVE_POLL.active) return
     let cancelled = false
     fetch('/api/poll', { credentials: 'same-origin', headers: authHeaders() })
       .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as Partial<PollState>
-        if (!response.ok || cancelled || !Array.isArray(data.options)) return
+        const data = (await response.json().catch(() => ({}))) as Partial<PollState> & { active?: boolean }
+        if (!response.ok || cancelled) return
+        if (data.active === false) {
+          setPoll((prev) => ({ ...prev, active: false }))
+          return
+        }
+        if (!Array.isArray(data.options)) return
         setPoll({
+          active: true,
           pollId: data.pollId || ACTIVE_POLL.id,
           question: data.question || ACTIVE_POLL.question,
           endsIn: data.endsIn || ACTIVE_POLL.endsIn,
@@ -290,6 +298,30 @@ function ProfilePollSection() {
       cancelled = true
     }
   }, [user?.username])
+
+  if (!ACTIVE_POLL.active || poll.active === false) {
+    return (
+      <Panel className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+          <h3 className="font-display text-lg font-bold text-gold flex items-center gap-2">
+            <Vote className="size-4 text-gold" /> Lonca Karar Anketi
+          </h3>
+          <Badge className="border-border bg-white/5 text-muted-foreground text-xs">
+            Bekleyen Anket Yok
+          </Badge>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-dashed border-border/80 bg-background/40 px-4 py-5 text-xs text-muted-foreground">
+          <Vote className="size-5 shrink-0 text-muted-foreground/60" />
+          <div>
+            <p className="font-semibold text-silver">Şu anda bekleyen aktif bir lonca anketi bulunmamaktadır.</p>
+            <p className="mt-0.5">
+              Lonca yönetimi tarafından yeni bir karar oylaması açıldığında bu alanda yayınlanacaktır.
+            </p>
+          </div>
+        </div>
+      </Panel>
+    )
+  }
 
   const voted = poll.myVote
   const total = Math.max(poll.total, 1)
@@ -885,6 +917,7 @@ export function ProfileView() {
   const initialStepResolvedRef = useRef(false)
   const [showStep1Errors, setShowStep1Errors] = useState(false)
   const [showStep2Errors, setShowStep2Errors] = useState(false)
+  const [showAddCharForm, setShowAddCharForm] = useState(false)
   const [showStep3Errors, setShowStep3Errors] = useState(false)
   const [nicknameError, setNicknameError] = useState<string | null>(null)
   const [savingStep, setSavingStep] = useState(false)
@@ -1394,6 +1427,7 @@ export function ProfileView() {
           ? `${newChar.firstName} ${newChar.lastName} TURX üyesi olarak onaylandı. Adım 2'ye geçebilirsiniz.`
           : `${newChar.firstName} ${newChar.lastName} (${newChar.spec}) havuzunuza eklendi.`,
     })
+    setShowAddCharForm(false)
     if (isFirstOrMain && !profileComplete) {
       goToStep(2)
     }
@@ -2292,7 +2326,29 @@ export function ProfileView() {
             </div>
           )}
 
-          {/* Add New Character Form */}
+          {/* Add New Character Form — collapsed behind an on-demand button once user already has a character */}
+          {characters.length > 0 && !showAddCharForm ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/80 bg-background/35 px-4 py-3.5">
+              <div className="text-xs text-muted-foreground">
+                <p className="font-semibold text-silver">Ekstra bir alt karakteriniz mi var?</p>
+                <p className="mt-0.5">Yalnızca ihtiyaç halinde aşağıdaki düğmeden yeni alt karakter ekleyebilirsiniz.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <GhostButton
+                  type="button"
+                  onClick={() => setShowAddCharForm(true)}
+                  className="text-xs py-2 px-4 cursor-pointer"
+                >
+                  <Plus className="size-4" /> Yeni Karakter / Alt Karakter Ekle
+                </GhostButton>
+                {step1Done && (
+                  <GoldButton type="button" onClick={() => goToStep(2)} className="text-xs py-2 px-5 cursor-pointer">
+                    Adım 2&apos;ye Devam Et <ChevronRight className="size-4" />
+                  </GoldButton>
+                )}
+              </div>
+            </div>
+          ) : (
           <form
             onSubmit={handleAddCharacter}
             noValidate
@@ -2303,11 +2359,22 @@ export function ProfileView() {
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-display font-bold uppercase tracking-wider text-gold">
-                {characters.length === 0 ? 'Main Karakterini Ekle & Doğrula' : 'Yeni Karakter Ekle (Alt / Yedek)'}
+                {characters.length === 0 ? 'Main Karakterini Ekle & Doğrula' : 'Yeni Karakter / Alt Karakter Ekle'}
               </h4>
-              <span className="text-[11px] text-muted-foreground">
-                {characters.length === 0 ? 'İlk karakter otomatik Main olur' : 'Eklenen yeni karakter Alt olarak eklenir'}
-              </span>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-muted-foreground">
+                  {characters.length === 0 ? 'İlk karakter otomatik Main olur' : 'Eklenen yeni karakter Alt olarak eklenir'}
+                </span>
+                {characters.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCharForm(false)}
+                    className="cursor-pointer rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:border-silver/50 hover:text-foreground"
+                  >
+                    Vazgeç
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Requirement #13: WoW Armory logo + mandatory name/surname warning */}
@@ -2478,6 +2545,7 @@ export function ProfileView() {
               )}
             </div>
           </form>
+          )}
         </Panel>
       )}
 

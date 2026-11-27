@@ -34,12 +34,14 @@ import {
   characterMatchesTier,
   defaultQuotaForRaid,
   formatTierLabel,
+  formatTrShortDateTime,
   getActiveLootRoundState,
   getItemPriorityTiers,
   getRoundTierAwards,
   getSpecColor,
   getSpecWowClass,
   hasCharacterReceivedItem,
+  isGuildMeetingEvent,
   RAID_CATALOG,
   WOW_ITEM_ICON_PRESETS,
   type LootItem,
@@ -175,13 +177,23 @@ export function LootDistributionView() {
   }, [guildMembers])
 
   const activeRaidEvents = useMemo(
-    () => (rs?.events || []).filter((e) => e.status !== 'ARCHIVED'),
+    () => (rs?.events || []).filter((e) => e.status !== 'ARCHIVED' && !isGuildMeetingEvent(e.raidId)),
     [rs?.events],
   )
 
+  const startedLiveRaidEvents = useMemo(() => {
+    const now = Date.now()
+    return activeRaidEvents.filter((e) => new Date(e.scheduledAt).getTime() <= now)
+  }, [activeRaidEvents])
+
+  const upcomingRaidEvents = useMemo(() => {
+    const now = Date.now()
+    return activeRaidEvents.filter((e) => new Date(e.scheduledAt).getTime() > now)
+  }, [activeRaidEvents])
+
   const selectedLiveEvent = useMemo(
-    () => activeRaidEvents.find((e) => e.id === liveRaidEventId) || null,
-    [activeRaidEvents, liveRaidEventId],
+    () => startedLiveRaidEvents.find((e) => e.id === liveRaidEventId) || null,
+    [startedLiveRaidEvents, liveRaidEventId],
   )
 
   const phaseItems = useMemo(() => {
@@ -680,9 +692,14 @@ export function LootDistributionView() {
                     className="min-w-[220px] rounded-lg border border-neon/40 bg-[#071422] px-3 py-2 text-xs text-foreground focus:border-neon focus:outline-none"
                   >
                     <option value="">Tüm Guild Üyeleri (Genel Mod)</option>
-                    {activeRaidEvents.map((ev) => (
+                    {startedLiveRaidEvents.map((ev) => (
                       <option key={ev.id} value={ev.id}>
                         Canlı Raid: {ev.raidName} ({ev.signups.length} kayıt)
+                      </option>
+                    ))}
+                    {upcomingRaidEvents.map((ev) => (
+                      <option key={ev.id} value={ev.id} disabled>
+                        Henüz Başlamadı: {ev.raidName} · {formatTrShortDateTime(ev.scheduledAt)}
                       </option>
                     ))}
                   </select>
@@ -717,10 +734,10 @@ export function LootDistributionView() {
             </div>
             <div className="rounded-xl border border-neon/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
               <p className="flex items-center gap-1.5 font-display font-bold text-neon">
-                <Award className="size-3.5" /> Sabit Kota (10m:1 · 20m:2 · 40m:4)
+                <Award className="size-3.5" /> Varsayılan Kota (10m:1 · 20m:2 · 40m:4)
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Her öncelik kotası dolunca sıradaki önceliğe geçilir; o gün raidde olmayan sınıfın kalan kotası <em>Bekleyen Öncelik</em> olarak korunur.
+                Eşya bazında özelleştirilebilir. Her öncelik kotası dolunca sıradaki önceliğe geçilir; o gün raidde olmayan sınıfın kalan kotası <em>Bekleyen Öncelik</em> olarak korunur.
               </p>
             </div>
             <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">

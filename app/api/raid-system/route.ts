@@ -18,6 +18,7 @@ import {
   normalizePriorityTiers,
   normalizeRaidSystemStore,
   normalizeRosterSlotsForSize,
+  PHASE1_RAID_UNLOCK_ISO,
   RAID_CATALOG,
   SPECIAL_EVENT_CATALOG,
   type AttendanceAdjustment,
@@ -674,12 +675,26 @@ export async function POST(request: Request) {
           if (!scheduledAt) throw new Error('DATE_REQUIRED')
 
           const schedMs = new Date(scheduledAt).getTime()
+          if (!Number.isFinite(schedMs)) throw new Error('DATE_REQUIRED')
+
+          if (!isGuildMeetingEvent(raidId) && schedMs < new Date(PHASE1_RAID_UNLOCK_ISO).getTime()) {
+            throw new Error('RAID_NOT_UNLOCKED_YET')
+          }
+
           const signupDeadline = String(
             body.signupDeadline || new Date(schedMs - 3 * 86_400_000).toISOString(),
           )
           const confirmDeadline = String(
             body.confirmDeadline || new Date(schedMs - 1 * 86_400_000).toISOString(),
           )
+          const signupMs = new Date(signupDeadline).getTime()
+          const confirmMs = new Date(confirmDeadline).getTime()
+          if (!Number.isFinite(signupMs) || !Number.isFinite(confirmMs)) {
+            throw new Error('INVALID_DATE_ORDER')
+          }
+          if (!(signupMs < confirmMs && confirmMs < schedMs)) {
+            throw new Error('INVALID_DATE_ORDER')
+          }
 
           const ev: RaidEvent = {
             id: `evt-${raidId}-${Date.now()}`,
@@ -687,9 +702,9 @@ export async function POST(request: Request) {
             raidId,
             raidName,
             size,
-            scheduledAt: new Date(scheduledAt).toISOString(),
-            signupDeadline: new Date(signupDeadline).toISOString(),
-            confirmDeadline: new Date(confirmDeadline).toISOString(),
+            scheduledAt: new Date(schedMs).toISOString(),
+            signupDeadline: new Date(signupMs).toISOString(),
+            confirmDeadline: new Date(confirmMs).toISOString(),
             status: 'SIGNUP_OPEN',
             notes: typeof body.notes === 'string' ? body.notes.trim() : '',
             rosters: isGuildMeetingEvent(raidId)
@@ -846,6 +861,10 @@ export async function POST(request: Request) {
           const eventId = String(body.eventId || '')
           const ev = rs.events.find((e) => e.id === eventId)
           if (!ev) throw new Error('EVENT_NOT_FOUND')
+          if (ev.status === 'ARCHIVED') throw new Error('EVENT_ARCHIVED')
+          if (new Date(ev.scheduledAt).getTime() > Date.now()) {
+            throw new Error('EVENT_NOT_STARTED_YET')
+          }
           const updates = Array.isArray(body.updates)
             ? (body.updates as { signupId: string; outcome?: AttendanceOutcome; flags?: AttendanceFlags; note?: string }[])
             : [
@@ -882,20 +901,28 @@ export async function POST(request: Request) {
           const scored = Boolean(body.scored)
           const ev = rs.events.find((e) => e.id === eventId)
           if (!ev) throw new Error('EVENT_NOT_FOUND')
+          if (ev.status === 'ARCHIVED') throw new Error('EVENT_ARCHIVED')
+          if (scored && new Date(ev.scheduledAt).getTime() > Date.now()) {
+            throw new Error('EVENT_NOT_STARTED_YET')
+          }
 
           if (rosterId === 'BENCH') {
+            const benchMembers = ev.signups.filter((s) => s.assignment === 'BENCH')
             if (scored) {
-              for (const s of ev.signups) {
-                if (s.assignment !== 'BENCH') continue
-                if (!s.attendanceFlags && s.attendanceOutcome === 'NONE') {
-                  if (s.confirmStatus === 'DECLINED_EXCUSED') {
-                    s.attendanceFlags = { excused: true }
-                    s.attendanceOutcome = 'EXCUSED'
-                  } else if (s.confirmStatus === 'CONFIRMED') {
-                    s.attendanceFlags = { benchReady: true }
-                    s.attendanceOutcome = 'BENCH_READY'
-                  }
+              if (benchMembers.length === 0) {
+                throw new Error('EMPTY_GROUP')
+              }
+              for (const s of benchMembers) {
+                if (s.attendanceOutcome === 'NONE' && s.confirmStatus === 'DECLINED_EXCUSED') {
+                  s.attendanceFlags = { excused: true }
+                  s.attendanceOutcome = 'EXCUSED'
                 }
+              }
+              const hasUnscored = benchMembers.some((s) => s.attendanceOutcome === 'NONE')
+              if (hasUnscored) {
+                throw new Error('UNSCORED_MEMBERS_IN_GROUP')
+              }
+              for (const s of benchMembers) {
                 s.pointsBreakdown = calculateSignupPoints(s, ev.size, rs.settings.pointRules)
               }
               ev.benchScoredBy = session.username
@@ -909,18 +936,22 @@ export async function POST(request: Request) {
 
           const roster = ev.rosters.find((r) => r.id === rosterId)
           if (!roster) throw new Error('ROSTER_NOT_FOUND')
+          const rosterMembers = ev.signups.filter((s) => s.assignment === rosterId)
           if (scored) {
-            for (const s of ev.signups) {
-              if (s.assignment !== rosterId) continue
-              if (!s.attendanceFlags && s.attendanceOutcome === 'NONE') {
-                if (s.confirmStatus === 'DECLINED_EXCUSED') {
-                  s.attendanceFlags = { excused: true }
-                  s.attendanceOutcome = 'EXCUSED'
-                } else {
-                  s.attendanceFlags = { attended: true }
-                  s.attendanceOutcome = 'ATTENDED'
-                }
+            if (rosterMembers.length === 0) {
+              throw new Error('EMPTY_GROUP')
+            }
+            for (const s of rosterMembers) {
+              if (s.attendanceOutcome === 'NONE' && s.confirmStatus === 'DECLINED_EXCUSED') {
+                s.attendanceFlags = { excused: true }
+                s.attendanceOutcome = 'EXCUSED'
               }
+            }
+            const hasUnscored = rosterMembers.some((s) => s.attendanceOutcome === 'NONE')
+            if (hasUnscored) {
+              throw new Error('UNSCORED_MEMBERS_IN_GROUP')
+            }
+            for (const s of rosterMembers) {
               s.pointsBreakdown = calculateSignupPoints(s, ev.size, rs.settings.pointRules)
             }
             roster.scoredBy = session.username
@@ -938,17 +969,27 @@ export async function POST(request: Request) {
           const openNextWeek = Boolean(body.openNextWeek)
           const ev = rs.events.find((e) => e.id === eventId)
           if (!ev) throw new Error('EVENT_NOT_FOUND')
+          if (ev.status === 'ARCHIVED') throw new Error('EVENT_ARCHIVED')
+          if (new Date(ev.scheduledAt).getTime() > Date.now()) {
+            throw new Error('EVENT_NOT_STARTED_YET')
+          }
 
-          // Auto-fill any untouched assigned members before archiving
+          // Require every non-empty planned roster (and non-empty bench) to be approved first
+          const nonEmptyRosters = ev.rosters.filter((r) =>
+            ev.signups.some((s) => s.assignment === r.id),
+          )
+          const unscoredRosters = nonEmptyRosters.filter((r) => !r.scoredBy)
+          const hasBenchMembers = ev.signups.some((s) => s.assignment === 'BENCH')
+          const benchUnscored = hasBenchMembers && !ev.benchScoredBy
+          if (unscoredRosters.length > 0 || benchUnscored) {
+            throw new Error('ROSTERS_NOT_SCORED')
+          }
+
+          // Calculate final breakdown only for scored/excused members; never auto-award untouched NONE rows
           for (const s of ev.signups) {
-            if (s.attendanceOutcome === 'NONE') {
-              if (s.confirmStatus === 'DECLINED_EXCUSED') {
-                s.attendanceOutcome = 'EXCUSED'
-              } else if (s.assignment === 'BENCH') {
-                s.attendanceOutcome = s.confirmStatus === 'CONFIRMED' ? 'BENCH_READY' : 'BENCH_ABSENT'
-              } else if (s.assignment !== 'POOL') {
-                s.attendanceOutcome = 'ATTENDED'
-              }
+            if (s.attendanceOutcome === 'NONE' && s.confirmStatus === 'DECLINED_EXCUSED') {
+              s.attendanceFlags = { excused: true }
+              s.attendanceOutcome = 'EXCUSED'
             }
             s.pointsBreakdown = calculateSignupPoints(s, ev.size, rs.settings.pointRules)
           }
@@ -957,7 +998,7 @@ export async function POST(request: Request) {
           ev.archivedAt = nowIso
           ev.archivedBy = session.username
 
-          if (openNextWeek) {
+          if (openNextWeek && !isGuildMeetingEvent(ev.raidId)) {
             const nextSched = new Date(new Date(ev.scheduledAt).getTime() + 7 * 86_400_000)
             const nextEvent: RaidEvent = {
               id: `evt-${ev.raidId}-${Date.now()}`,
@@ -1143,6 +1184,17 @@ export async function POST(request: Request) {
 
           const awardCharName = awardInput.characterName.trim()
           const awardUsername = awardInput.username || awardCharName
+          if (awardInput.raidEventId) {
+            const linkedEv = rs.events.find((e) => e.id === awardInput.raidEventId)
+            if (linkedEv) {
+              if (isGuildMeetingEvent(linkedEv.raidId)) {
+                throw new Error('MEETING_CANNOT_AWARD_LOOT')
+              }
+              if (new Date(linkedEv.scheduledAt).getTime() > Date.now()) {
+                throw new Error('EVENT_NOT_STARTED_YET')
+              }
+            }
+          }
           if (hasCharacterReceivedItem(item, awardUsername, awardCharName)) {
             throw new Error('ALREADY_RECEIVED_ITEM')
           }
@@ -1450,6 +1502,13 @@ export async function POST(request: Request) {
       CANNOT_WITHDRAW_PUBLISHED: ['Roster yayınlandıktan sonra geri çekme yerine mazeretli iptal kullanın.', 400],
       CHAR_REQUIRED: ['Karakter bilgisi zorunludur.', 400],
       DATE_REQUIRED: ['Raid tarih ve saati zorunludur.', 400],
+      INVALID_DATE_ORDER: ['Tarih sırası geçersiz: İmza kapanışı < Konfirmasyon kapanışı < Etkinlik başlangıcı olmalıdır.', 400],
+      RAID_NOT_UNLOCKED_YET: ['Gerçek raidler Blizzard Phase 1 açılış tarihi olan 9 Aralık 2026 öncesine planlanamaz.', 400],
+      EVENT_NOT_STARTED_YET: ['Etkinlik başlangıç saati gelmeden puanlama, arşivleme veya canlı loot işlemi yapılamaz.', 400],
+      ROSTERS_NOT_SCORED: ['Arşivlemeden önce tüm dolu grupların (ve varsa Bench grubunun) puanlamasını onaylamalısınız.', 400],
+      UNSCORED_MEMBERS_IN_GROUP: ['Grubu onaylamadan önce bu gruptaki tüm oyuncuların katılım durumunu seçmelisiniz.', 400],
+      EMPTY_GROUP: ['Boş grup onaylanamaz.', 400],
+      MEETING_CANNOT_AWARD_LOOT: ['Guild toplantısı üzerinden canlı raid loot dağıtımı yapılamaz.', 400],
       LAST_ROSTER: ['En az bir roster grubu kalmalıdır.', 400],
       ROSTER_NOT_FOUND: ['Grup bulunamadı.', 404],
       SIGNUP_NOT_FOUND: ['Kayıtlı oyuncu bulunamadı.', 404],

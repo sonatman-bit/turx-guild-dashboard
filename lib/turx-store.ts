@@ -382,6 +382,59 @@ async function redisSetStore(creds: { url: string; token: string }, store: Guild
   }
 }
 
+const REDIS_LOCK_KEY = `${REDIS_KEY}:write-lock`
+
+async function acquireRedisLock(creds: { url: string; token: string }): Promise<string | null> {
+  const token = `${Date.now()}-${randomBytes(6).toString('hex')}`
+  const deadline = Date.now() + 3500
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(
+        `${creds.url}/set/${encodeURIComponent(REDIS_LOCK_KEY)}/${encodeURIComponent(token)}?NX=true&PX=8000`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${creds.token}` },
+          cache: 'no-store',
+        },
+      )
+      if (res.ok) {
+        const payload = (await res.json().catch(() => ({}))) as { result?: string | null }
+        if (payload.result === 'OK') return token
+      } else {
+        // If lock endpoint fails, don't block writes indefinitely
+        return null
+      }
+    } catch {
+      return null
+    }
+    await new Promise((r) => setTimeout(r, 80 + Math.floor(Math.random() * 60)))
+  }
+  return null
+}
+
+async function releaseRedisLock(creds: { url: string; token: string }, token: string | null): Promise<void> {
+  if (!token) return
+  try {
+    const checkRes = await fetch(`${creds.url}/get/${encodeURIComponent(REDIS_LOCK_KEY)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${creds.token}` },
+      cache: 'no-store',
+    })
+    if (checkRes.ok) {
+      const payload = (await checkRes.json().catch(() => ({}))) as { result?: string | null }
+      if (payload.result === token) {
+        await fetch(`${creds.url}/del/${encodeURIComponent(REDIS_LOCK_KEY)}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${creds.token}` },
+          cache: 'no-store',
+        })
+      }
+    }
+  } catch {
+    // Lock will auto-expire via PX=8000
+  }
+}
+
 async function readBlobStore(forceRefresh = false): Promise<{ store: GuildStore; etag?: string }> {
   const cached = globalForStore.__turxStoreCache
   const result = await get(PATH, {
@@ -821,13 +874,24 @@ export async function loadGuildStore(forceRefresh = false) {
 }
 
 export async function mutateGuildStore<T>(mutator: (store: GuildStore) => T | Promise<T>) {
-  // Always force a fresh backend read before mutating so a warm instance never overwrites newer writes
-  const warmCache = globalForStore.__turxStoreCache?.store
-  const fresh = await readStore(true)
-  const store = warmCache ? mergeGuildStores(fresh, warmCache) : fresh
-  const result = await mutator(store)
-  await writeStore(store)
-  return result
+  const redis = getRedisCredentials()
+  const lockToken = redis ? await acquireRedisLock(redis) : null
+  try {
+    // Always force a fresh backend read before mutating so a warm instance never overwrites newer writes
+    const warmCache = globalForStore.__turxStoreCache?.store
+    const fresh = await readStore(true)
+    const store =
+      warmCache && fresh.users.length === 0 && warmCache.users.length > 0
+        ? mergeGuildStores(fresh, warmCache)
+        : fresh
+    const result = await mutator(store)
+    await writeStore(store)
+    return result
+  } finally {
+    if (redis && lockToken) {
+      await releaseRedisLock(redis, lockToken)
+    }
+  }
 }
 
 function isHex(value: string, length: number) {

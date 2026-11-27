@@ -33,8 +33,11 @@ import {
   deriveOutcomeFromFlags,
   formatCountdown,
   formatTrDateTime,
+  formatTrShortDateTime,
   isGuildMeetingEvent,
+  PHASE1_RAID_UNLOCK_ISO,
   RAID_CATALOG,
+  raidBasePoints,
   resolveAttendanceFlags,
   ROSTER_COLOR_PRESETS,
   SPECIAL_EVENT_CATALOG,
@@ -185,11 +188,23 @@ function outcomeBadge(outcome: AttendanceOutcome, flags?: AttendanceFlags) {
   return <Badge className={found.tone}>{found.label}</Badge>
 }
 
-function defaultDateTimeLocal(daysAhead: number, hour = 21) {
-  const d = new Date(Date.now() + daysAhead * 86_400_000)
-  d.setHours(hour, 0, 0, 0)
+function toDateTimeLocal(ms: number) {
+  const d = new Date(ms)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function defaultRaidScheduleMs(raidId = 'barrow') {
+  const weekAhead = new Date(Date.now() + 7 * 86_400_000)
+  weekAhead.setHours(21, 0, 0, 0)
+  if (!isGuildMeetingEvent(raidId)) {
+    const unlock = new Date(PHASE1_RAID_UNLOCK_ISO)
+    unlock.setHours(21, 0, 0, 0)
+    if (weekAhead.getTime() < unlock.getTime()) {
+      return unlock.getTime()
+    }
+  }
+  return weekAhead.getTime()
 }
 
 export function RaidSignupView() {
@@ -208,9 +223,14 @@ export function RaidSignupView() {
 
   // Create Raid form state
   const [newRaidId, setNewRaidId] = useState('barrow')
-  const [newScheduledAt, setNewScheduledAt] = useState(() => defaultDateTimeLocal(7, 21))
-  const [newSignupDeadline, setNewSignupDeadline] = useState(() => defaultDateTimeLocal(4, 21))
-  const [newConfirmDeadline, setNewConfirmDeadline] = useState(() => defaultDateTimeLocal(6, 21))
+  const [newScheduledAt, setNewScheduledAt] = useState(() => toDateTimeLocal(defaultRaidScheduleMs('barrow')))
+  const [newSignupDeadline, setNewSignupDeadline] = useState(() =>
+    toDateTimeLocal(defaultRaidScheduleMs('barrow') - 3 * 86_400_000),
+  )
+  const [newConfirmDeadline, setNewConfirmDeadline] = useState(() =>
+    toDateTimeLocal(defaultRaidScheduleMs('barrow') - 1 * 86_400_000),
+  )
+  const [deadlinesAuto, setDeadlinesAuto] = useState(true)
   const [newNotes, setNewNotes] = useState('')
 
   // Confirm checklist state
@@ -298,20 +318,45 @@ export function RaidSignupView() {
 
   const handleScheduledChange = (val: string) => {
     setNewScheduledAt(val)
+    if (!deadlinesAuto) return
     const dt = new Date(val).getTime()
     if (Number.isFinite(dt)) {
-      const toLocal = (ms: number) => {
-        const d = new Date(ms)
-        const pad = (n: number) => String(n).padStart(2, '0')
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-      }
-      setNewSignupDeadline(toLocal(dt - 3 * 86_400_000))
-      setNewConfirmDeadline(toLocal(dt - 1 * 86_400_000))
+      setNewSignupDeadline(toDateTimeLocal(dt - 3 * 86_400_000))
+      setNewConfirmDeadline(toDateTimeLocal(dt - 1 * 86_400_000))
     }
   }
 
+  const resetDeadlinesToAuto = () => {
+    setDeadlinesAuto(true)
+    const dt = new Date(newScheduledAt).getTime()
+    if (Number.isFinite(dt)) {
+      setNewSignupDeadline(toDateTimeLocal(dt - 3 * 86_400_000))
+      setNewConfirmDeadline(toDateTimeLocal(dt - 1 * 86_400_000))
+    }
+  }
+
+  const createDateValidationError = useMemo(() => {
+    const schedMs = new Date(newScheduledAt).getTime()
+    const signupMs = new Date(newSignupDeadline).getTime()
+    const confirmMs = new Date(newConfirmDeadline).getTime()
+    if (!Number.isFinite(schedMs) || !Number.isFinite(signupMs) || !Number.isFinite(confirmMs)) {
+      return 'Lütfen geçerli tarih ve saat değerleri girin.'
+    }
+    if (!isGuildMeetingEvent(newRaidId) && schedMs < new Date(PHASE1_RAID_UNLOCK_ISO).getTime()) {
+      return 'Gerçek raidler Phase 1 açılış tarihi olan 9 Aralık 2026 öncesine planlanamaz.'
+    }
+    if (!(signupMs < confirmMs && confirmMs < schedMs)) {
+      return 'Tarih sırası geçersiz: İmza kapanışı < Konfirmasyon kapanışı < Etkinlik başlangıcı olmalıdır.'
+    }
+    return null
+  }, [newRaidId, newScheduledAt, newSignupDeadline, newConfirmDeadline])
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (createDateValidationError) {
+      toast({ title: 'Geçersiz Tarih', description: createDateValidationError, variant: 'error' })
+      return
+    }
     const def =
       RAID_CATALOG.find((r) => r.id === newRaidId) ||
       SPECIAL_EVENT_CATALOG.find((r) => r.id === newRaidId) ||
@@ -327,11 +372,12 @@ export function RaidSignupView() {
         confirmDeadline: new Date(newConfirmDeadline).toISOString(),
         notes: newNotes,
       },
-      `${def.name} (${def.size}-man) imza takvimine eklendi.`,
+      `${def.name} (${isGuildMeetingEvent(def.id) ? 'Tüm Guild' : `${def.size}-man`}) takvime eklendi.`,
     )
     if (ok) {
       setCreateOpen(false)
       setNewNotes('')
+      setDeadlinesAuto(true)
     }
   }
 
@@ -410,15 +456,16 @@ export function RaidSignupView() {
 
   const handleFinalizeArchive = async () => {
     if (!archiveModalEvent) return
+    const shouldOpenNext = !isGuildMeetingEvent(archiveModalEvent.raidId) && openNextWeekOnArchive
     const ok = await runAction(
       {
         action: 'finalize_and_archive',
         eventId: archiveModalEvent.id,
-        openNextWeek: openNextWeekOnArchive,
+        openNextWeek: shouldOpenNext,
       },
-      openNextWeekOnArchive
+      shouldOpenNext
         ? 'Raid arşivlendi, puanlar Devam Takibine işlendi ve gelecek haftanın raidi açıldı!'
-        : 'Raid arşivlendi ve puanlar Devam Takibine işlendi!',
+        : 'Etkinlik arşivlendi ve puanlar Devam Takibine işlendi!',
     )
     if (ok) {
       setArchiveModalEvent(null)
@@ -910,7 +957,14 @@ export function RaidSignupView() {
             </select>
           </Field>
 
-          <Field label="Raid Tarih ve Saati" hint="Varsayılan olarak imza kapanışı -3 gün, konfirmasyon kapanışı -1 gün ayarlanır.">
+          <Field
+            label="Raid Tarih ve Saati (TR · UTC+3)"
+            hint={
+              deadlinesAuto
+                ? 'Otomatik mod: İmza kapanışı -3 gün, konfirmasyon kapanışı -1 gün olarak otomatik güncellenir.'
+                : 'Manuel mod aktif: Kapanış tarihleri elle ayarlandı ve başlangıç değişince korunur.'
+            }
+          >
             <input
               type="datetime-local"
               required
@@ -920,26 +974,55 @@ export function RaidSignupView() {
             />
           </Field>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="İmza Kapanış (Geri Sayım)">
-              <input
-                type="datetime-local"
-                required
-                className={inputClass}
-                value={newSignupDeadline}
-                onChange={(e) => setNewSignupDeadline(e.target.value)}
-              />
-            </Field>
-            <Field label="Konfirmasyon Kapanış">
-              <input
-                type="datetime-local"
-                required
-                className={inputClass}
-                value={newConfirmDeadline}
-                onChange={(e) => setNewConfirmDeadline(e.target.value)}
-              />
-            </Field>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-semibold text-silver">
+                Son Tarihler ({deadlinesAuto ? 'Otomatik (-3g / -1g)' : 'Elle Ayarlandı'})
+              </span>
+              {!deadlinesAuto && (
+                <button
+                  type="button"
+                  onClick={resetDeadlinesToAuto}
+                  className="cursor-pointer font-semibold text-neon hover:underline"
+                >
+                  Otomatiğe Sıfırla (-3g / -1g)
+                </button>
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="İmza Kapanış (TR)">
+                <input
+                  type="datetime-local"
+                  required
+                  className={inputClass}
+                  value={newSignupDeadline}
+                  onChange={(e) => {
+                    setDeadlinesAuto(false)
+                    setNewSignupDeadline(e.target.value)
+                  }}
+                />
+              </Field>
+              <Field label="Konfirmasyon Kapanış (TR)">
+                <input
+                  type="datetime-local"
+                  required
+                  className={inputClass}
+                  value={newConfirmDeadline}
+                  onChange={(e) => {
+                    setDeadlinesAuto(false)
+                    setNewConfirmDeadline(e.target.value)
+                  }}
+                />
+              </Field>
+            </div>
           </div>
+
+          {createDateValidationError && (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-400" />
+              <span>{createDateValidationError}</span>
+            </div>
+          )}
 
           <Field label="Officer Notu (Opsiyonel)">
             <input
@@ -955,7 +1038,7 @@ export function RaidSignupView() {
             <GhostButton type="button" onClick={() => setCreateOpen(false)}>
               İptal
             </GhostButton>
-            <GoldButton type="submit" disabled={busy}>
+            <GoldButton type="submit" disabled={busy || Boolean(createDateValidationError)}>
               <CalendarPlus className="size-4" />
               Takvimi Aç
             </GoldButton>
@@ -1041,24 +1124,26 @@ export function RaidSignupView() {
       <Modal
         open={Boolean(archiveModalEvent)}
         onClose={() => setArchiveModalEvent(null)}
-        title="Raidi Tamamla, Puanları İşle & Arşivle"
-        description="Onayladığınızda bu raid arşive taşınır, tüm katılımcı ve bench puanları Devam Takibine kalıcı olarak eklenir."
+        title="Etkinliği Tamamla, Puanları İşle & Arşivle"
+        description="Onayladığınızda bu etkinlik arşive taşınır, işaretlenen tüm katılımcı ve bench puanları Devam Takibine kalıcı olarak eklenir."
       >
         <div className="space-y-4">
-          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs text-foreground">
-            <input
-              type="checkbox"
-              checked={openNextWeekOnArchive}
-              onChange={(e) => setOpenNextWeekOnArchive(e.target.checked)}
-              className="mt-0.5 size-4 accent-[#d4af37]"
-            />
-            <span>
-              <strong className="text-gold">Bir sonraki haftanın (+7 gün) raidini hemen aç</strong>
-              <span className="mt-0.5 block text-muted-foreground">
-                Aynı raid, aynı saat ve yeni geri sayımlarla bir sonraki haftanın imza havuzu otomatik oluşturulur.
+          {archiveModalEvent && !isGuildMeetingEvent(archiveModalEvent.raidId) && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={openNextWeekOnArchive}
+                onChange={(e) => setOpenNextWeekOnArchive(e.target.checked)}
+                className="mt-0.5 size-4 accent-[#d4af37]"
+              />
+              <span>
+                <strong className="text-gold">Bir sonraki haftanın (+7 gün) raidini hemen aç</strong>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Aynı raid, aynı saat ve yeni geri sayımlarla bir sonraki haftanın imza havuzu otomatik oluşturulur.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          )}
           <div className="flex justify-end gap-2">
             <GhostButton type="button" onClick={() => setArchiveModalEvent(null)}>
               İptal
@@ -1237,8 +1322,11 @@ function EventWorkspace({
     : myEntry.assignment === 'POOL'
       ? 'İmza Havuzunda (Roster bekleniyor)'
       : myEntry.assignment === 'BENCH'
-        ? 'Yedek (Bench) — Hazır beklersen tam raid puanı!'
+        ? `Yedek (Bench) — Hazır beklersen +${rules.benchReadyPoints ?? 6}p!`
         : event.rosters.find((r) => r.id === myEntry.assignment)?.name || myEntry.assignment
+
+  const baseRaidPts = raidBasePoints(event.size, rules)
+  const eventHasStarted = new Date(event.scheduledAt).getTime() <= Date.now()
 
   return (
     <div className="space-y-5">
@@ -1269,10 +1357,12 @@ function EventWorkspace({
             <div className="rounded-xl border border-neon/25 bg-[#071422] px-3.5 py-2 text-center">
               <p className="text-[10px] tracking-wider text-muted-foreground uppercase">İmza Kapanış</p>
               <CountdownValue targetIso={event.signupDeadline} accentClass="text-neon" className="text-sm font-bold" />
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{formatTrShortDateTime(event.signupDeadline)}</p>
             </div>
             <div className="rounded-xl border border-gold/25 bg-[#071422] px-3.5 py-2 text-center">
               <p className="text-[10px] tracking-wider text-muted-foreground uppercase">Konfirme Kapanış</p>
               <CountdownValue targetIso={event.confirmDeadline} accentClass="text-gold" className="text-sm font-bold" />
+              <p className="mt-0.5 text-[10px] text-muted-foreground">{formatTrShortDateTime(event.confirmDeadline)}</p>
             </div>
           </div>
         </div>
@@ -1686,8 +1776,15 @@ function EventWorkspace({
 
       {/* Mode 2: Post-Raid Attendance Processing & Archiving (Officer/GM) — Grouped by Roster */}
       {viewMode === 'postraid' && isOfficer && (() => {
-        const scoredRostersCount = event.rosters.filter((r) => Boolean(r.scoredBy)).length
-        const allRostersScored = event.rosters.length > 0 && scoredRostersCount === event.rosters.length
+        const nonEmptyRosters = event.rosters.filter((r) =>
+          event.signups.some((s) => s.assignment === r.id),
+        )
+        const scoredRostersCount = nonEmptyRosters.filter((r) => Boolean(r.scoredBy)).length
+        const benchRequired = benchSignups.length > 0
+        const totalRequiredGroups = nonEmptyRosters.length + (benchRequired ? 1 : 0)
+        const totalApprovedGroups = scoredRostersCount + (benchRequired && event.benchScoredBy ? 1 : 0)
+        const allGroupsScored = totalRequiredGroups > 0 && totalApprovedGroups === totalRequiredGroups
+        const canArchiveNow = eventHasStarted && allGroupsScored
 
         const postraidSections: {
           id: string
@@ -1705,14 +1802,18 @@ function EventWorkspace({
             scoredBy: r.scoredBy,
             members: event.signups.filter((s) => s.assignment === r.id),
           })),
-          {
-            id: 'BENCH',
-            kind: 'bench' as const,
-            name: 'Yedek / Bench',
-            color: '#22d3ee',
-            scoredBy: event.benchScoredBy,
-            members: benchSignups,
-          },
+          ...(benchSignups.length > 0
+            ? [
+                {
+                  id: 'BENCH',
+                  kind: 'bench' as const,
+                  name: 'Yedek / Bench',
+                  color: '#22d3ee',
+                  scoredBy: event.benchScoredBy,
+                  members: benchSignups,
+                },
+              ]
+            : []),
           ...(poolSignups.length > 0
             ? [
                 {
@@ -1740,14 +1841,24 @@ function EventWorkspace({
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       className={
-                        allRostersScored
+                        allGroupsScored
                           ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
                           : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
                       }
                     >
-                      Onaylanan Gruplar: {scoredRostersCount} / {event.rosters.length}
+                      Onaylanan Gruplar: {totalApprovedGroups} / {totalRequiredGroups}
                     </Badge>
-                    <GoldButton disabled={busy} onClick={onOpenArchive}>
+                    <GoldButton
+                      disabled={busy || !canArchiveNow}
+                      onClick={onOpenArchive}
+                      title={
+                        !eventHasStarted
+                          ? 'Etkinlik başlangıç saati gelmeden arşivleme yapılamaz.'
+                          : !allGroupsScored
+                            ? 'Arşivlemeden önce tüm dolu grupların puanlamasını onaylamalısınız.'
+                            : 'Etkinliği arşivle ve puanları Devam Takibine işle'
+                      }
+                    >
                       <Archive className="size-4" />
                       Tamamla, Puanları İşle &amp; Arşivle
                     </GoldButton>
@@ -1756,9 +1867,19 @@ function EventWorkspace({
               >
                 Raid Sonu Katılım İşleme — {event.raidName}
               </PanelTitle>
+
+              {!eventHasStarted && (
+                <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-200">
+                  <Lock className="mt-0.5 size-4 shrink-0 text-amber-300" />
+                  <span>
+                    <strong>Etkinlik henüz başlamadı ({formatTrDateTime(event.scheduledAt)}).</strong> Puanlama, grup onayı ve arşivleme işlemleri etkinlik saati geldiğinde otomatik olarak açılır.
+                  </span>
+                </div>
+              )}
+
               <p className="mb-3 text-xs text-muted-foreground">
-                Her officer aşağıdan kendi grubunu seçip oyuncuların puanlamasını ayrı ayrı yapabilir ve{' '}
-                <strong className="text-emerald-300">&quot;Grubu Onayla&quot;</strong> ile tamamlayabilir. Tüm gruplar hazır olduğunda raid arşivlenir ve puanlar Devam Takibine işlenir.
+                Her satır başlangıçta <strong className="text-silver">&quot;İncelenmedi&quot;</strong> olarak açılır. Etkinlik bitince officer kendi grubundaki oyuncuların fiilî durumunu işaretleyip{' '}
+                <strong className="text-emerald-300">&quot;Grubu Onayla&quot;</strong> düğmesine basar. Tüm dolu gruplar onaylandığında arşivleme açılır.
               </p>
 
               {/* Quick Group Filter Bar */}
@@ -1807,6 +1928,9 @@ function EventWorkspace({
             {visibleSections.map((sec) => {
               const isCollapsed = Boolean(collapsedPostraidGroups[sec.id])
               const isScored = Boolean(sec.scoredBy)
+              const unscoredInSec = sec.members.filter(
+                (m) => m.attendanceOutcome === 'NONE' && m.confirmStatus !== 'DECLINED_EXCUSED',
+              ).length
 
               return (
                 <Panel
@@ -1847,13 +1971,18 @@ function EventWorkspace({
                           Onaylandı · {sec.scoredBy}
                         </Badge>
                       )}
+                      {!isScored && unscoredInSec > 0 && sec.kind !== 'pool' && (
+                        <Badge className="border-amber-500/35 bg-amber-500/10 text-[10px] text-amber-300">
+                          {unscoredInSec} İncelenmedi
+                        </Badge>
+                      )}
                     </button>
 
                     <div className="flex flex-wrap items-center gap-2">
                       {sec.kind === 'roster' && sec.members.length > 0 && (
                         <GhostButton
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !eventHasStarted}
                           onClick={() =>
                             onBatchSetOutcome(
                               sec.members.map((m) => ({
@@ -1863,19 +1992,19 @@ function EventWorkspace({
                                     ? { excused: true }
                                     : { attended: true },
                               })),
-                              `${sec.name} üyeleri "Katıldı (+${rules.raid10}p)" olarak işaretlendi.`,
+                              `${sec.name} üyeleri "Katıldı (+${baseRaidPts}p)" olarak işaretlendi.`,
                             )
                           }
                           className="px-2.5 py-1.5 text-[11px]"
                         >
                           <Check className="size-3.5" />
-                          Tümünü Katıldı (+{rules.raid10}p)
+                          Tümünü Katıldı (+{baseRaidPts}p)
                         </GhostButton>
                       )}
                       {sec.kind === 'bench' && sec.members.length > 0 && (
                         <GhostButton
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !eventHasStarted}
                           onClick={() =>
                             onBatchSetOutcome(
                               sec.members.map((m) => ({
@@ -1894,13 +2023,20 @@ function EventWorkspace({
                           Tümünü Yedek (+{rules.benchReadyPoints ?? 6}p)
                         </GhostButton>
                       )}
-                      {(sec.kind === 'roster' || sec.kind === 'bench') && (
+                      {(sec.kind === 'roster' || sec.kind === 'bench') && sec.members.length > 0 && (
                         <button
                           type="button"
-                          disabled={busy}
+                          disabled={busy || !eventHasStarted || (!isScored && unscoredInSec > 0)}
                           onClick={() => onMarkRosterScored(sec.id, !isScored)}
+                          title={
+                            !eventHasStarted
+                              ? 'Etkinlik başlamadan onaylanamaz'
+                              : !isScored && unscoredInSec > 0
+                                ? `Önce incelenmemiş ${unscoredInSec} oyuncunun durumunu işaretleyin`
+                                : undefined
+                          }
                           className={cn(
-                            'inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50',
+                            'inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45',
                             isScored
                               ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
                               : 'border-gold/50 bg-gold/15 text-gold hover:bg-gold/25',
@@ -1926,7 +2062,7 @@ function EventWorkspace({
                               <tr className="border-b border-border/60 text-muted-foreground uppercase">
                                 <th className="py-2 pr-3">Karakter</th>
                                 <th className="py-2 pr-3">Konfirmasyon</th>
-                                <th className="py-2 pr-3">Raid Sonu Durumu (Tik ile Seçin)</th>
+                                <th className="py-2 pr-3">Ana Durum (Tek Seçim) &amp; Cezalar</th>
                                 <th className="py-2 text-right">Hesaplanan Puan</th>
                               </tr>
                             </thead>
@@ -1937,16 +2073,11 @@ function EventWorkspace({
                                     ? s.attendanceOutcome
                                     : s.confirmStatus === 'DECLINED_EXCUSED'
                                       ? 'EXCUSED'
-                                      : s.assignment === 'BENCH'
-                                        ? s.confirmStatus === 'CONFIRMED'
-                                          ? 'BENCH_READY'
-                                          : 'BENCH_ABSENT'
-                                        : s.assignment !== 'POOL'
-                                          ? 'ATTENDED'
-                                          : 'NONE'
+                                      : 'NONE'
                                 const activeFlags: AttendanceFlags = s.attendanceFlags
                                   ? s.attendanceFlags
                                   : resolveAttendanceFlags({ attendanceOutcome: defaultOutcome })
+                                const isUnscored = deriveOutcomeFromFlags(activeFlags) === 'NONE'
                                 const previewBreakdown = calculateSignupPoints(
                                   {
                                     ...s,
@@ -1958,6 +2089,7 @@ function EventWorkspace({
                                 )
 
                                 const toggleFlag = (key: keyof AttendanceFlags) => {
+                                  if (!eventHasStarted) return
                                   const nextVal = !activeFlags[key]
                                   let next: AttendanceFlags = { ...activeFlags }
                                   if (key === 'attended') {
@@ -1986,27 +2118,45 @@ function EventWorkspace({
                                   onSetOutcome(s.id, next)
                                 }
 
-                                const checkItems: {
+                                const primaryItems: {
                                   key: keyof AttendanceFlags
                                   label: string
                                   pts: string
                                   activeCls: string
-                                  accentCls: string
                                 }[] = [
                                   {
                                     key: 'attended',
                                     label: 'Katıldı',
-                                    pts: `+${rules.raid10}p`,
+                                    pts: `+${baseRaidPts}p`,
                                     activeCls: 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200',
-                                    accentCls: 'accent-emerald-400',
                                   },
                                   {
                                     key: 'benchReady',
                                     label: 'Yedek',
                                     pts: `+${rules.benchReadyPoints ?? 6}p`,
                                     activeCls: 'border-gold/60 bg-gold/15 text-gold',
-                                    accentCls: 'accent-amber-400',
                                   },
+                                  {
+                                    key: 'excused',
+                                    label: 'Mazeret',
+                                    pts: '0p',
+                                    activeCls: 'border-slate-400/60 bg-slate-500/20 text-slate-200',
+                                  },
+                                  {
+                                    key: 'noShow',
+                                    label: 'No-Show',
+                                    pts: `${rules.noShowPenalty}p`,
+                                    activeCls: 'border-rose-500/60 bg-rose-500/15 text-rose-200',
+                                  },
+                                ]
+
+                                const penaltyItems: {
+                                  key: keyof AttendanceFlags
+                                  label: string
+                                  pts: string
+                                  activeCls: string
+                                  accentCls: string
+                                }[] = [
                                   {
                                     key: 'late',
                                     label: 'Geç',
@@ -2021,21 +2171,10 @@ function EventWorkspace({
                                     activeCls: 'border-orange-500/60 bg-orange-500/15 text-orange-200',
                                     accentCls: 'accent-orange-400',
                                   },
-                                  {
-                                    key: 'excused',
-                                    label: 'Mazeret',
-                                    pts: '0p',
-                                    activeCls: 'border-slate-400/60 bg-slate-500/20 text-slate-200',
-                                    accentCls: 'accent-slate-400',
-                                  },
-                                  {
-                                    key: 'noShow',
-                                    label: 'No-Show',
-                                    pts: `${rules.noShowPenalty}p`,
-                                    activeCls: 'border-rose-500/60 bg-rose-500/15 text-rose-200',
-                                    accentCls: 'accent-rose-500',
-                                  },
                                 ]
+
+                                const penaltiesDisabled =
+                                  busy || !eventHasStarted || Boolean(activeFlags.excused || activeFlags.noShow || activeFlags.benchReady)
 
                                 return (
                                   <tr key={s.id} className="hover:bg-white/[0.02]">
@@ -2068,57 +2207,93 @@ function EventWorkspace({
                                         }
                                       >
                                         {s.confirmStatus === 'CONFIRMED'
-                                          ? 'Konfirme'
+                                          ? 'Onaylı'
                                           : s.confirmStatus === 'DECLINED_EXCUSED'
                                             ? 'Mazeretli İptal'
-                                            : 'Konfirme Yok'}
+                                            : 'Onay Bekliyor'}
                                       </Badge>
                                     </td>
                                     <td className="py-2.5 pr-3">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        {checkItems.map((item) => {
-                                          const checked = Boolean(activeFlags[item.key])
-                                          return (
-                                            <label
-                                              key={item.key}
-                                              className={cn(
-                                                'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold transition select-none',
-                                                busy && 'pointer-events-none opacity-50',
-                                                checked
-                                                  ? item.activeCls
-                                                  : 'border-border/60 bg-[#071422]/80 text-muted-foreground hover:border-border hover:text-silver',
-                                              )}
-                                            >
-                                              <input
-                                                type="checkbox"
-                                                disabled={busy}
-                                                checked={checked}
-                                                onChange={() => toggleFlag(item.key)}
-                                                className={cn('size-3.5 cursor-pointer', item.accentCls)}
-                                              />
-                                              <span>{item.label}</span>
-                                              <span className="font-mono text-[10px] opacity-80">{item.pts}</span>
-                                            </label>
-                                          )
-                                        })}
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <div className="inline-flex flex-wrap items-center gap-1">
+                                          {primaryItems.map((item) => {
+                                            const selected = Boolean(activeFlags[item.key])
+                                            return (
+                                              <button
+                                                key={item.key}
+                                                type="button"
+                                                disabled={busy || !eventHasStarted}
+                                                onClick={() => toggleFlag(item.key)}
+                                                className={cn(
+                                                  'inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition select-none disabled:cursor-not-allowed disabled:opacity-45',
+                                                  selected
+                                                    ? item.activeCls
+                                                    : 'border-border/60 bg-[#071422]/80 text-muted-foreground hover:border-border hover:text-silver',
+                                                )}
+                                              >
+                                                <span>{item.label}</span>
+                                                <span className="font-mono text-[10px] opacity-80">{item.pts}</span>
+                                              </button>
+                                            )
+                                          })}
+                                        </div>
+
+                                        <span className="hidden h-4 w-px bg-border/70 sm:inline-block" aria-hidden />
+
+                                        <div className="inline-flex flex-wrap items-center gap-1">
+                                          {penaltyItems.map((item) => {
+                                            const checked = Boolean(activeFlags[item.key])
+                                            return (
+                                              <label
+                                                key={item.key}
+                                                className={cn(
+                                                  'inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold transition select-none',
+                                                  penaltiesDisabled && 'pointer-events-none opacity-40',
+                                                  checked
+                                                    ? item.activeCls
+                                                    : 'border-border/60 bg-[#071422]/80 text-muted-foreground hover:border-border hover:text-silver',
+                                                )}
+                                              >
+                                                <input
+                                                  type="checkbox"
+                                                  disabled={penaltiesDisabled}
+                                                  checked={checked}
+                                                  onChange={() => toggleFlag(item.key)}
+                                                  className={cn('size-3 cursor-pointer', item.accentCls)}
+                                                />
+                                                <span>{item.label}</span>
+                                                <span className="font-mono text-[10px] opacity-80">{item.pts}</span>
+                                              </label>
+                                            )
+                                          })}
+                                        </div>
                                       </div>
                                     </td>
                                     <td className="py-2.5 text-right font-mono font-bold">
-                                      <span
-                                        className={
-                                          previewBreakdown.total > 0
-                                            ? 'text-emerald-300'
-                                            : previewBreakdown.total < 0
-                                              ? 'text-rose-400'
-                                              : 'text-muted-foreground'
-                                        }
-                                      >
-                                        {previewBreakdown.total > 0 ? `+${previewBreakdown.total}` : previewBreakdown.total}p
-                                      </span>
-                                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                                        (İmza/K:{previewBreakdown.signup + previewBreakdown.confirm}, Raid:{previewBreakdown.raid}
-                                        {previewBreakdown.penalty < 0 ? `, Ceza:${previewBreakdown.penalty}` : ''})
-                                      </span>
+                                      {isUnscored ? (
+                                        <span className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-sans text-[11px] font-semibold text-amber-300">
+                                          İncelenmedi
+                                        </span>
+                                      ) : (
+                                        <>
+                                          <span
+                                            className={
+                                              previewBreakdown.total > 0
+                                                ? 'text-emerald-300'
+                                                : previewBreakdown.total < 0
+                                                  ? 'text-rose-400'
+                                                  : 'text-muted-foreground'
+                                            }
+                                          >
+                                            {previewBreakdown.total > 0 ? `+${previewBreakdown.total}` : previewBreakdown.total}p
+                                          </span>
+                                          <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                                            (İmza:{previewBreakdown.signup}, Onay:{previewBreakdown.confirm},{' '}
+                                            {activeFlags.benchReady ? 'Yedek' : 'Raid'}:{previewBreakdown.raid}
+                                            {previewBreakdown.penalty < 0 ? `, Ceza:${previewBreakdown.penalty}` : ''})
+                                          </span>
+                                        </>
+                                      )}
                                     </td>
                                   </tr>
                                 )

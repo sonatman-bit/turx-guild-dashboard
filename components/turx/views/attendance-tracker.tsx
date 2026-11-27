@@ -63,7 +63,7 @@ export function AttendanceTrackerView() {
 
   const [subTab, setSubTab] = useState<'leaderboard' | 'raider40' | 'gm-settings'>('leaderboard')
   const [search, setSearch] = useState('')
-  const [onlyLvl60, setOnlyLvl60] = useState(true)
+  const [onlyLvl60, setOnlyLvl60] = useState(false)
   const [expandedUser, setExpandedUser] = useState<string | null>(null)
 
   // Manual adjustment modal (Officer/GM)
@@ -141,8 +141,8 @@ export function AttendanceTrackerView() {
     <div className="space-y-6">
       <SectionHeader
         eyebrow={`${currentPhase?.name || 'Phase 1'} · ŞEFFAF PUAN TAKİBİ`}
-        title="Devam Takibi & 1 Ocak 2027 Raider Sıralaması"
-        description="LvL 60 Main karakterlerin faz bazlı raid puanları, hazır bekleyen bench puanları ve ceza kayıtları tarihsel detaylarıyla 7/24 online takip edilir."
+        title="Devam Takibi & 1 Ocak 2027 İlk 50 Raider Sıralaması"
+        description="Faz bazlı raid puanları, hazır bekleyen bench puanları, 2 Aralık toplantı bonus puanları (seviyeden bağımsız) ve ceza kayıtları tarihsel detaylarıyla 7/24 online takip edilir."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -173,7 +173,7 @@ export function AttendanceTrackerView() {
                   subTab === 'raider40' ? 'bg-gold/15 text-gold' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                1 Ocak 40-Man Raider
+                1 Ocak İlk 50 Raider
               </button>
               {isGm && (
                 <button
@@ -230,7 +230,7 @@ export function AttendanceTrackerView() {
                 Yedek Bekleme (Bench){' '}
                 <span className="ml-1 font-mono text-gold">+{rs.settings.pointRules.benchReadyPoints ?? 6} puan</span>
               </p>
-              <p className="text-muted-foreground">Raid katılımından</p>
+              <p className="text-muted-foreground">Raid boyunca hazır bekleme (gönüllü maks. 2 üst üste)</p>
             </div>
           </div>
         </div>
@@ -252,17 +252,44 @@ export function AttendanceTrackerView() {
                 Eksik Hazırlık{' '}
                 <span className="ml-1 font-mono text-orange-300">{rs.settings.pointRules.missingPrepPenalty} ceza</span>
               </p>
-              <p className="text-muted-foreground">Consumable, taktik vb. · Log takibi ile izlenir (min. %75)</p>
+              <p className="text-muted-foreground">Boss savaşlarında zorunlu flask/elixir/buff kullanımı min. %75 (WarcraftLogs)</p>
             </div>
           </div>
           <div className="panel flex items-center gap-3 border-rose-500/30 p-3.5">
             <Ban className="size-5 shrink-0 text-rose-400" />
             <div className="min-w-0 text-xs">
               <p className="font-semibold text-foreground">
-                No-Show <span className="ml-1 font-mono text-rose-300">{rs.settings.pointRules.noShowPenalty} ceza</span>
+                No-Show <span className="ml-1 font-mono text-rose-300">{rs.settings.pointRules.noShowPenalty} net</span>
               </p>
-              <p className="text-muted-foreground">Sistem ceza puanı (habersiz gelmeme)</p>
+              <p className="text-muted-foreground">Habersiz gelmeme (imza/onay puanı silinir, net ceza işlenir)</p>
             </div>
+          </div>
+        </div>
+
+        {/* Örnek Net Toplamlar Şeridi */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neon/25 bg-[#071422]/85 px-4 py-2.5 text-[11px] text-silver">
+          <span className="font-semibold text-neon">Örnek Net Puanlar:</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono">
+            <span>
+              Tam Katılım:{' '}
+              <strong className="text-emerald-300">
+                +{rs.settings.pointRules.signup + rs.settings.pointRules.confirm + rs.settings.pointRules.raid10}p
+              </strong>{' '}
+              <span className="font-sans text-muted-foreground">(1+1+{rs.settings.pointRules.raid10})</span>
+            </span>
+            <span>
+              Hazır Bench:{' '}
+              <strong className="text-gold">
+                +{rs.settings.pointRules.signup + rs.settings.pointRules.confirm + (rs.settings.pointRules.benchReadyPoints ?? 6)}p
+              </strong>{' '}
+              <span className="font-sans text-muted-foreground">(1+1+{rs.settings.pointRules.benchReadyPoints ?? 6})</span>
+            </span>
+            <span>
+              Mazeretli İptal: <strong className="text-slate-300">0p</strong>
+            </span>
+            <span>
+              No-Show: <strong className="text-rose-400">{rs.settings.pointRules.noShowPenalty}p</strong>
+            </span>
           </div>
         </div>
       </div>
@@ -488,7 +515,7 @@ export function AttendanceTrackerView() {
         </Panel>
       )}
 
-      {/* SUB-TAB 2: 1 OCAK 2027 40-MAN RAIDER SELECTION */}
+      {/* SUB-TAB 2: 1 OCAK 2027 TOP 50 RAIDER SELECTION */}
       {subTab === 'raider40' && (
         <div className="space-y-5">
           <Panel className="border-gold/35 bg-gradient-to-br from-gold/10 via-[#0a1c30] to-transparent">
@@ -497,16 +524,19 @@ export function AttendanceTrackerView() {
                 <div className="flex items-center gap-2">
                   <Crown className="size-5 text-gold" />
                   <h2 className="font-display text-lg font-bold text-gold">
-                    1 Ocak 2027 — İsimsiz 40-Man Core Roster & Raider Ataması
+                    1 Ocak 2027 — En Yüksek Puanlı İlk 50 Raider Sıralaması
                   </h2>
                 </div>
                 <p className="mt-1 max-w-3xl text-xs text-silver">
-                  1 Ocak 2027 tarihine kadar tüm LvL 60 karakterler <strong className="text-neon">TURX</strong> rütbesiyle devam puanı biriktirir. Aşağıdaki isimsiz sınıf/spec kontenjanına göre her sınıftan <strong>en yüksek devam puanına sahip</strong> oyunculara GM tarafından <strong className="text-gold">Raider</strong> rütbesi verilir.
+                  1 Ocak 2027 tarihine kadar tüm üyeler <strong className="text-neon">TURX</strong> rütbesiyle devam puanı (2 Aralık toplantı bonusu dahil) biriktirir. 40-Man çekirdek kadro + yedek rotasyonu için en yüksek devam puanına sahip <strong className="text-gold">ilk 50 oyuncu RAIDER</strong> rütbesine yükseltilir. Aşağıda genel İlk 50 sıralamasını ve 40-Man sınıf/spec referans dağılımını görebilirsiniz.
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Badge className="border-gold/40 bg-gold/15 px-3 py-1 text-sm font-bold text-gold">
-                  Hedef Kadro: {total40Slots} / 40
+                  Raider Kontenjanı: İlk 50
+                </Badge>
+                <Badge className="border-neon/35 bg-neon/10 px-2.5 py-1 text-xs font-semibold text-neon">
+                  40-Man Şablon: {total40Slots} / 40
                 </Badge>
                 {isGm && (
                   <GhostButton
@@ -516,7 +546,7 @@ export function AttendanceTrackerView() {
                     className="text-xs"
                   >
                     <Sliders className="size-3.5" />
-                    {targetsDraft ? 'Düzenlemeyi Kapat' : 'GM Kontenjan Düzenle'}
+                    {targetsDraft ? 'Düzenlemeyi Kapat' : 'GM 40-Man Referans Düzenle'}
                   </GhostButton>
                 )}
               </div>
@@ -565,6 +595,81 @@ export function AttendanceTrackerView() {
                     Kontenjanı Kaydet ({total40Slots} Kişi)
                   </GoldButton>
                 </div>
+              </div>
+            )}
+          </Panel>
+
+          {/* Genel İlk 50 Raider Sıralaması */}
+          <Panel className="border-gold/30">
+            <PanelTitle
+              icon={Crown}
+              action={
+                <Badge className="border-gold/35 bg-gold/10 text-gold">
+                  İlk 50 Barajı ({Math.min(50, leaderboard.length)} / 50)
+                </Badge>
+              }
+            >
+              Genel Devam Puanı Sıralaması — İlk 50 Raider Adayı
+            </PanelTitle>
+            {leaderboard.length === 0 ? (
+              <p className="py-4 text-xs text-muted-foreground">Henüz kayıtlı üye bulunamadı.</p>
+            ) : (
+              <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                {leaderboard.slice(0, 60).map((c, ci) => {
+                  const insideTop50 = ci < 50
+                  const isRaider = c.guildRank === 'Raider'
+                  const isStaff = c.guildRank === 'Guild Master' || c.guildRank === 'Görevli'
+                  return (
+                    <div
+                      key={`top50-${c.username}`}
+                      className={cn(
+                        'flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs',
+                        insideTop50
+                          ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
+                          : 'border-border/50 bg-[#071422]/60 opacity-70',
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="w-6 shrink-0 font-mono text-[10px] font-bold text-muted-foreground">
+                          #{ci + 1}
+                        </span>
+                        <span className="truncate font-semibold" style={{ color: CLASS_COLORS[c.wowClass] }}>
+                          {c.characterName}
+                        </span>
+                        <RankPill
+                          label={c.armoryRankLabel || c.guildRank}
+                          color={c.armoryRankColor}
+                          armoryRankId={c.armoryRankId}
+                        />
+                        <PointsPill points={c.totalPoints} />
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground">Lv{c.level || '?'}</span>
+                        {isGm && !isStaff && (
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void runAction(
+                                { action: 'assign_raider_rank', username: c.username, grant: !isRaider },
+                                isRaider
+                                  ? `${c.characterName} Raider rütbesi kaldırıldı (Turx).`
+                                  : `${c.characterName} artık Raider rütbesinde!`,
+                              )
+                            }
+                            className={cn(
+                              'cursor-pointer rounded px-2 py-0.5 text-[10px] font-semibold transition',
+                              isRaider
+                                ? 'border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+                                : 'border border-gold/40 bg-gold/15 text-gold hover:bg-gold/25',
+                            )}
+                          >
+                            {isRaider ? 'Al' : 'Raider Yap'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </Panel>

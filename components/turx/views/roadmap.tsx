@@ -108,11 +108,15 @@ const DEMO_STEPS: DemoStep[] = [
 const FAQ_ITEMS = [
   {
     q: 'Officer kararıyla Bench (Yedek) kalırsam puan kaybeder miyim? Gönüllü bench sınırı var mı?',
-    a: 'Hayır! Officer kararıyla veya kendi kararınızla Bench bekleyen ve raid saatinde oyunda/Discord\'da hazır bulunan oyuncular, Officer takibiyle raid katılımından +6 puan alır. Ancak suistimali önlemek adına aynı oyuncu kendi isteğiyle üst üste 2 kez benche yazılamaz (Officer kararıyla yapılan rotasyon bu sınıra dahil değildir). Raid saatinde çağrıldığında ulaşılamayan yedek oyunculara ceza puanı uygulanır.',
+    a: 'Hayır! Officer kararıyla veya kendi kararınızla Bench bekleyen ve raid saatinde oyunda/Discord\'da hazır bulunan oyuncular +6p yedek puanı (imza +1 ve onay +1 ile toplam +8p) alır. Suistimali önlemek adına aynı oyuncu kendi isteğiyle üst üste en fazla 2 kez benche yazılabilir; 3. kez üst üste gönüllü bench yazılamaz (Officer kararıyla yapılan rotasyon bu sınıra dahil değildir). Raid saatinde çağrıldığında ulaşılamayan yedek oyunculara ceza puanı uygulanır.',
   },
   {
     q: 'Raide imza attım ama işim çıktı, -6 ceza yer miyim?',
-    a: 'Konfirmasyon kapanış süresinden (raidten 24 saat öncesinden) ÖNCE sistemden "Mazeretli İptal" bildirirseniz ceza puanı (0p) uygulanmaz. -6 puan cezası yalnızca konfirmasyon verip gelmeyen veya haber vermeden kaybolan (No-Show) oyunculara uygulanır.',
+    a: 'Konfirmasyon kapanış süresinden (raidten 24 saat öncesinden) ÖNCE sistemden "Mazeretli İptal" bildirirseniz ceza puanı (net 0p) uygulanmaz. Net -6 puan cezası yalnızca konfirmasyon verip gelmeyen veya haber vermeden kaybolan (No-Show) oyunculara uygulanır.',
+  },
+  {
+    q: '2 Aralık Guild Toplantısı puanları nasıl işlenir? Level 60 olmayanlar da puan alır mı?',
+    a: 'Evet! 2 Aralık 22:30 Guild Toplantısı yeni sistemi canlı deneyimlemek ve katılımcılara bonus ödül vermek amacıyla tüm seviyelere açıktır. Toplantıdan kazanılan puanlar seviyeden bağımsız olarak doğrudan oyuncuların Phase 1 devam puanlarına ve 1 Ocak 2027 sıralamasına işlenir.',
   },
   {
     q: 'Loot sırasında benim sınıfım var ama ben o gün raidde değildim, hakkım yanar mı?',
@@ -241,18 +245,18 @@ export function RoadmapView() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-neon/35 bg-[#071422]/90 p-4">
-          <Badge className="border-neon/40 bg-neon/10 text-neon">9 Aralık 2026</Badge>
+          <Badge className="border-neon/40 bg-neon/10 text-neon">2 Aralık Demo → 9 Aralık Phase 1</Badge>
           <h3 className="mt-2 font-display text-lg font-bold text-foreground">Phase 1 & Puan Yarışı</h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Barrow Deeps (10m), Hyjal Summit (20m) ve Onyxia&apos;s Lair (40m) açılır. Tüm LvL 60 Main karakterler{' '}
-            <strong className="text-neon">TURX</strong> rütbesiyle eşit şartlarda devam puanı biriktirmeye başlar.
+            İlk bonus puanlar <strong>2 Aralık Guild Toplantısı</strong> ile (seviyeden bağımsız) başlar. 9 Aralık&apos;ta Barrow Deeps (10m), Hyjal Summit (20m) ve Onyxia&apos;s Lair (40m) açılır ve tüm LvL 60 Main karakterler{' '}
+            <strong className="text-neon">TURX</strong> rütbesiyle eşit şartlarda puan biriktirir.
           </p>
         </div>
         <div className="rounded-xl border border-gold/50 bg-gold/[0.07] p-4 shadow-[0_0_25px_rgb(212_175_55/0.12)]">
           <Badge className="border-gold/50 bg-gold/15 text-gold">1 Ocak 2027</Badge>
-          <h3 className="mt-2 font-display text-lg font-bold text-gold">Roster Şablonu & Raider Rütbesi</h3>
+          <h3 className="mt-2 font-display text-lg font-bold text-gold">Roster Şablonu & İlk 50 Raider</h3>
           <p className="mt-1 text-xs leading-relaxed text-silver">
-            10-20 ve 40-man rosterlar isimsiz olarak class/spec şablonu olarak yayınlanır. Raidlere bu önceliğe göre invite yapılır. En yüksek devam puanına sahip <strong>ilk 50 oyuncu</strong> 1 Ocak 2027 tarihinde <strong className="text-gold">RAIDER</strong> rütbesine yükseltilir.
+            10-20 ve 40-man rosterlar isimsiz class/spec şablonu olarak yayınlanır. 40-Man çekirdek kadro + yedek rotasyonu için en yüksek devam puanına sahip <strong>ilk 50 oyuncu</strong> 1 Ocak 2027 tarihinde <strong className="text-gold">RAIDER</strong> rütbesine yükseltilir.
           </p>
         </div>
         <div className="rounded-xl border border-purple-400/35 bg-[#071422]/90 p-4">
@@ -311,7 +315,7 @@ export function RoadmapView() {
           </div>
           <span className="flex items-center gap-1.5 text-xs text-silver">
             <Dices className="size-4 text-amber-300" />
-            Aynı Spec: Önce Devam Puanı → Eşitse Zar!
+            Aynı Öncelik Sırası: Önce Devam Puanı → Eşitse Zar!
           </span>
         </div>
 
@@ -391,11 +395,11 @@ export function RoadmapView() {
         <div className="rounded-xl border border-emerald-500/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-emerald-300">
             <Users className="size-4" />
-            Ortak Liste &amp; Sabit Kota (10m:1 · 20m:2 · 40m:4)
+            Ortak Liste &amp; Varsayılan Kota (10m:1 · 20m:2 · 40m:4)
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Tüm raid grupları tek ortak listeyi kullanır: her öncelik sırası <strong>10-man&apos;de 1</strong>,{' '}
-            <strong>20-man&apos;de 2</strong>, <strong>40-man&apos;de 4 kota</strong> (item bazında özelleştirilebilir ve birden fazla spec eşit paylaşabilir) ile döner. Aynı oyuncu kendi isteğiyle <strong>üst üste 2 kez benche yazılamaz</strong> (Officer kararı hariç).
+            Tüm raid grupları tek ortak listeyi kullanır: her öncelik sırası varsayılan olarak <strong>10-man&apos;de 1</strong>,{' '}
+            <strong>20-man&apos;de 2</strong>, <strong>40-man&apos;de 4 kota</strong> (item bazında özelleştirilebilir ve birden fazla spec eşit paylaşabilir) ile döner. Aynı oyuncu kendi isteğiyle <strong>üst üste en fazla 2 kez benche yazılabilir</strong>; 3. kez üst üste gönüllü bench yazılamaz (Officer kararı hariç).
           </p>
         </div>
       </div>

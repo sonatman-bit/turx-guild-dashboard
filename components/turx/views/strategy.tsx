@@ -1,7 +1,7 @@
 'use client'
 
-import { Check, Copy, KeyRound, Puzzle, Skull } from 'lucide-react'
-import { useState } from 'react'
+import { Check, CheckCircle2, Copy, KeyRound, Puzzle, Skull } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { ADDONS, ATTUNEMENTS, BOSS_TACTICS, WEAKAURAS } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
 import { useToast } from '../toast'
@@ -46,7 +46,27 @@ function CopyBox({ title, type, code }: { title: string; type: string; code: str
 
 export function StrategyView() {
   const [active, setActive] = useState(0)
+  const [onyxiaLive, setOnyxiaLive] = useState<{ done: number; total: number } | null>(null)
   const boss = BOSS_TACTICS[active]
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/progress', { cache: 'no-store' })
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as {
+          progress?: { onyxiaAttunedCount?: number; onyxiaAttunedTarget?: number }
+        }
+        if (!res.ok || cancelled || !data.progress) return
+        setOnyxiaLive({
+          done: Number(data.progress.onyxiaAttunedCount) || 0,
+          total: Math.max(1, Number(data.progress.onyxiaAttunedTarget) || 40),
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div>
@@ -92,25 +112,38 @@ export function StrategyView() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel>
-          <PanelTitle icon={KeyRound}>Attunement Tracker</PanelTitle>
+          <PanelTitle icon={KeyRound}>Attunement Tracker (Phase 1)</PanelTitle>
           <ul className="flex flex-col gap-4">
             {ATTUNEMENTS.map((a) => {
-              const pct = Math.round((a.done / a.total) * 100)
+              const done = a.id === 'onyxia' && onyxiaLive ? onyxiaLive.done : a.done
+              const total = a.id === 'onyxia' && onyxiaLive ? onyxiaLive.total : a.total
+              const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100))
               return (
                 <li key={a.name}>
                   <div className="mb-1.5 flex justify-between gap-2 text-sm">
-                    <span className="text-silver">{a.name}</span>
+                    <span className="font-medium text-silver">{a.name}</span>
                     <span className="text-neon tabular-nums">
-                      {a.done}/{a.total} Raider
+                      {done}/{total} Oyuncu
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={a.name}>
-                    <div className="h-full rounded-full bg-gradient-to-r from-gold to-neon" style={{ width: `${pct}%` }} />
+                    <div className="h-full rounded-full bg-gradient-to-r from-gold to-neon transition-all" style={{ width: `${pct}%` }} />
                   </div>
+                  {a.note && <p className="mt-2 text-xs text-muted-foreground">{a.note}</p>}
                 </li>
               )
             })}
           </ul>
+          <div className="mt-4 space-y-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+            <p className="flex items-center gap-2 text-emerald-300">
+              <CheckCircle2 className="size-3.5 shrink-0" />
+              <span><strong>Barrow Deeps (10-Man):</strong> Attunement gerektirmez (Level 60 yeterli).</span>
+            </p>
+            <p className="flex items-center gap-2 text-emerald-300">
+              <CheckCircle2 className="size-3.5 shrink-0" />
+              <span><strong>Hyjal Summit (20-Man):</strong> Attunement gerektirmez (Level 60 yeterli).</span>
+            </p>
+          </div>
         </Panel>
         <Panel>
           <PanelTitle icon={Puzzle}>Zorunlu Addon Listesi</PanelTitle>

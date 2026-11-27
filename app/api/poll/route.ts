@@ -12,11 +12,14 @@ function json(data: unknown, status = 200) {
 
 export async function GET(request: Request) {
   try {
+    if (!ACTIVE_POLL.active) {
+      return json({ active: false, pollId: null, question: '', endsIn: '', total: 0, myVote: null, options: [] })
+    }
     if (!blobConfigured()) return json({ error: 'Anket deposu henüz bağlı değil.' }, 503)
     const session = sessionFromRequest(request)
     const store = await loadGuildStore()
     const votes = votesForPoll(store.polls)
-    return json(publicPollSummary(votes, session?.username))
+    return json({ active: true, ...publicPollSummary(votes, session?.username) })
   } catch (err) {
     console.error('poll GET', err)
     return json({ error: 'Anket okunamadı.' }, 500)
@@ -25,6 +28,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    if (!ACTIVE_POLL.active) {
+      return json({ error: 'Şu anda aktif bir lonca anketi bulunmamaktadır.' }, 400)
+    }
     if (!blobConfigured()) return json({ error: 'Anket deposu henüz bağlı değil.' }, 503)
     const session = sessionFromRequest(request)
     if (!session) return json({ error: 'Oy vermek için giriş yap.' }, 401)

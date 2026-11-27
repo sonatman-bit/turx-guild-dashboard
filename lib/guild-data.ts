@@ -143,29 +143,49 @@ export const CONSUMABLES = [
 
 export const BOSS_TACTICS = [
   {
-    raid: 'Barrow Deeps',
-    boss: 'Thane Korrgrim',
-    summary: 'İki tank sırayla Frost Armor stack’ini sıfırlar. Spirit Totem’leri DPS hızlıca indirmeli; 3. totemde raid merkezde toplanır.',
-    tips: ['Tank swap: 4 stack', 'Totem önceliği: Spirit > Frost', 'Healer’lar Frost Nova sonrası dispel'],
+    raid: 'Barrow Deeps (10-Man)',
+    boss: 'Deepscar Matriarch → Sonya Darkhallow (8 Boss)',
+    summary:
+      'WoW: Forever Phase 1 10 kişilik giriş raidi. Attunement gerektirmez; 2 Tank, 2 Healer ve 6 DPS dizilimiyle temizlenir. Kesin boss mekanikleri 9 Aralık açılış haftasında canlı loglarla güncellenecektir.',
+    tips: [
+      'Giriş koşulu: Attunement gerekmez (Level 60)',
+      'Önerilen kadro: 2 Tank · 2 Healer · 6 DPS',
+      '20:45 alanda toplanma, Full Consumables & Repair',
+    ],
   },
   {
-    raid: 'Hyjal Summit',
-    boss: 'Archimonde’un Gölgesi',
-    summary: 'Air Burst geldiğinde Tears of the Goddess kullanılır. Doomfire hattından uzak durun; Fear sırasında Tremor yerine Fear Ward rotasyonu.',
-    tips: ['Fear Ward rotasyonu: 3 Priest', 'Doomfire: kenara kaçın', 'Burst faz: %25 altı'],
+    raid: 'Hyjal Summit (20-Man)',
+    boss: 'Bandalar → The Wild King (13 Boss)',
+    summary:
+      'WoW: Forever Phase 1 20 kişilik ana progress raidi. Attunement gerektirmez; 3 Tank, 5 Healer ve 12 DPS kadrosuyla ilerlenir. Detaylı boss taktikleri 9 Aralık açılışında canlı keşiflerle eklenecektir.',
+    tips: [
+      'Giriş koşulu: Attunement gerekmez (Level 60)',
+      'Önerilen kadro: 3 Tank · 5 Healer · 12 DPS',
+      'DBM, WeakAuras 2 ve RCLootCouncil güncel olmalı',
+    ],
   },
   {
-    raid: "Onyxia's Lair",
+    raid: "Onyxia's Lair (40-Man)",
     boss: 'Onyxia',
-    summary: 'Phase 2’de Fireball ve Whelp kontrolü kritik. Phase 3’te Deep Breath için Fire Resistance ve Fear Ward şart.',
-    tips: ['Phase 2: Ranged dağınık', 'Whelp’ler: AoE grubu', 'Phase 3: Tank önünde Fear Ward'],
+    summary:
+      'Phase 1 40 kişilik ejderha raidi. Giriş için Drakefire Amulet (Onyxia Attunement) zorunludur. Phase 2’de Fireball ve Whelp kontrolü, Phase 3’te Deep Breath için Fire Resistance ve Fear Ward rotasyonu kritik önem taşır.',
+    tips: [
+      'Giriş koşulu: Drakefire Amulet (Zorunlu)',
+      'Phase 2: Ranged dağınık, Whelp’ler AoE grubunda',
+      'Phase 3: Tank önünde kesintisiz Fear Ward rotasyonu',
+    ],
   },
 ]
 
 export const ATTUNEMENTS = [
-  { name: 'Onyxia Attunement (Drakefire Amulet)', done: 0, total: 25 },
-  { name: 'Hyjal Summit — Vault Anahtarı', done: 0, total: 25 },
-  { name: 'Barrow Deeps — Mührü', done: 0, total: 25 },
+  {
+    id: 'onyxia',
+    name: "Onyxia's Lair — Drakefire Amulet",
+    required: true,
+    note: 'Phase 1’de attunement gerektiren tek raid. Barrow Deeps ve Hyjal Summit attunement gerektirmez.',
+    done: 0,
+    total: 40,
+  },
 ]
 
 export const WEAKAURAS = [
@@ -186,8 +206,9 @@ export const ADDONS = [
 
 export const ACTIVE_POLL = {
   id: 'phase1-loot',
+  active: false,
   question: 'Phase 1 için ana loot sistemimiz ne olsun?',
-  endsIn: '9 Aralık 2026 (İlk Raid Günü)',
+  endsIn: 'Tamamlandı',
   options: [
     { id: 'lc', label: 'Loot Council' },
     { id: 'epgp', label: 'EPGP' },

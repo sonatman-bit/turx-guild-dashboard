@@ -80,8 +80,8 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
         desc: 'Sıradaki spec o gün raidde yoksa sonraki uygun spec kendi sırasını alır; eksik spec’in hakkı "Bekleyen Öncelik" olarak açık kalır ve bir sonraki dropta sıra tekrar ona gelir.',
       },
       {
-        title: 'Aynı Spec İçinde: Devam Puanı → Zar',
-        desc: 'Sırası gelen spec’ten raidde birden fazla oyuncu varsa en yüksek devam puanlı oyuncu eşyayı alır; puan eşitliğinde zar atılır.',
+        title: 'Aynı Öncelik Sırasında: Devam Puanı → Zar',
+        desc: 'Sırası gelen öncelik kutusunda (tek spec veya eşit paylaşımlı spec’ler) raidde birden fazla uygun oyuncu varsa en yüksek devam puanlı oyuncu eşyayı alır; puan eşitliğinde zar atılır.',
       },
     ],
   },
@@ -89,23 +89,23 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
     id: 'attendance',
     name: 'Devam Puanı & Bench',
     summary:
-      'Sert yüzde uçurumları yerine 10 / 20 / 40 kişilik raid ağırlıklarına göre şeffaf puan birikir. Düzenli katılım, hazırlık ve raid disiplini doğrudan ödüllendirilir.',
+      'Sert yüzde uçurumları yerine tüm raid boyutlarında eşit katılım puanı (+4p), zamanında imza/onay ödülü ve yedek (bench) teşvikiyle şeffaf puan birikir. 2 Aralık toplantı demo puanları seviyeden bağımsız bonus olarak işlenir.',
     bullets: [
       {
-        title: 'Raid & Kayıt Puanları',
-        desc: 'Tüm raidlerde eşit tam katılım (+4p) puanına ek olarak zamanında imza (+1p) ve konfirmasyon (+1p) puanı kazanılır.',
+        title: 'Raid & Kayıt Puanları (Tam Katılım Net +6p)',
+        desc: '10 / 20 / 40 kişilik tüm raidlerde eşit tam katılım (+4p) puanına ek olarak zamanında imza (+1p) ve katılım onayı (+1p) kazanılır (net +6p).',
       },
       {
-        title: 'Bench (Yedek) +6p & Üst Üste 2 Sınırı',
-        desc: 'Raid saatinde oyunda/Discord’da hazır bekleyen yedek oyuncular raid katılımından +6 puan alır. Suistimali önlemek için kendi isteğiyle üst üste en fazla 2 kez benche yazılınabilir (Officer rotasyonu hariç).',
+        title: 'Hazır Bench (+6p · Net +8p) & Üst Üste 2 Sınırı',
+        desc: 'Raid saatinde oyunda/Discord’da hazır bekleyen yedek oyuncular +6p (imza ve onayla net +8p) alır. Suistimali önlemek için kendi isteğiyle üst üste en fazla 2 kez benche yazılabilir, 3. kez üst üste gönüllü bench yazılamaz (Officer rotasyonu hariç).',
       },
       {
         title: 'Mazeretli Erken İptal (0p Ceza)',
-        desc: 'Raidten 24 saat öncesine kadar sistemden mazeretli iptal bildiren oyuncular ceza puanı almaz.',
+        desc: 'Raidten 24 saat öncesine kadar sistemden mazeretli iptal bildiren oyuncular ceza puanı almaz (net 0p).',
       },
       {
         title: 'Disiplin Cezaları',
-        desc: 'Konfirmasyon verip habersiz gelmeme (No-Show) -6p, geç kalma -2p ve eksik hazırlık (consumable, taktik vb. · min. %75 log takibi) -2p olarak yansıtılır.',
+        desc: 'Konfirmasyon verip habersiz gelmeme (No-Show) net -6p, geç kalma -2p ve eksik hazırlık (boss savaşlarında zorunlu flask/elixir/buff kullanımı min. %75 · WarcraftLogs kontrolü) -2p olarak yansıtılır.',
       },
     ],
   },
@@ -413,7 +413,7 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
         </PanelTitle>
 
         <p className="mb-4 max-w-3xl text-xs leading-relaxed text-silver">
-          Başvurmadan önce sistemimizi 30 saniyede tanıyın: TURX’ta <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> hibrit Öncelik Rotasyonu + Ağırlıklı Devam Puanı sistemi uygulanır.
+          Başvurmadan önce sistemimizi 30 saniyede tanıyın: TURX’ta <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> hibrit Öncelik Rotasyonu + Şeffaf Devam Puanı sistemi uygulanır.
         </p>
 
         {/* 4 Kartlık Hızlı Bakış Özeti */}
@@ -433,7 +433,7 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
               Öncelik Rotasyonu &amp; Puan
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Spec’ler öncelik sırasıyla loot alır; aynı spec içinde yüksek devam puanı (eşitse zar) kazanır.
+              Öncelik sıraları sırayla loot alır; aynı öncelik kutusunda yüksek devam puanı (eşitse zar) kazanır.
             </p>
           </div>
           <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 p-3.5">
@@ -451,7 +451,7 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
               Bench, BoE &amp; BoP Netliği
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Hazır Bench tam puan alır; BoE’ler Guild Bankasına, ilk BoP tarifler Meslek Sorumlusuna gider.
+              Hazır Bench +6p (net +8p) kazanır; BoE’ler Guild Bankasına, ilk BoP tarifler Meslek Sorumlusuna gider.
             </p>
           </div>
         </div>

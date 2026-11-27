@@ -681,6 +681,9 @@ export function isGuildMeetingEvent(raidId?: string | null): boolean {
   return (raidId || '').trim().toLowerCase() === 'guild-meeting'
 }
 
+/** Blizzard WoW: Forever Phase 1 raid unlock date (9 Aralık 2026 00:00 TR UTC+3) */
+export const PHASE1_RAID_UNLOCK_ISO = '2026-12-09T00:00:00+03:00'
+
 export const DEFAULT_POINT_RULES: PointRules = {
   raid10: 4,
   raid20: 4,
@@ -2222,7 +2225,7 @@ export function formatCountdown(targetIso: string, nowMs: number): {
 
   const parts: string[] = []
   if (days > 0) parts.push(`${days}g`)
-  parts.push(`${String(hours).padStart(2, '0')}s`)
+  if (hours > 0 || days === 0) parts.push(`${days > 0 ? hours : String(hours).padStart(2, '0')}s`)
   parts.push(`${String(mins).padStart(2, '0')}dk`)
   if (days === 0) parts.push(`${String(secs).padStart(2, '0')}sn`)
 
@@ -2235,7 +2238,8 @@ export function formatCountdown(targetIso: string, nowMs: number): {
 
 export function formatTrDateTime(iso: string): string {
   try {
-    return new Intl.DateTimeFormat('tr-TR', {
+    const formatted = new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul',
       day: '2-digit',
       month: 'long',
       year: 'numeric',
@@ -2243,6 +2247,22 @@ export function formatTrDateTime(iso: string): string {
       minute: '2-digit',
       weekday: 'short',
     }).format(new Date(iso))
+    return `${formatted} (TR)`
+  } catch {
+    return iso
+  }
+}
+
+export function formatTrShortDateTime(iso: string): string {
+  try {
+    const formatted = new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul',
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(iso))
+    return `${formatted} TR`
   } catch {
     return iso
   }

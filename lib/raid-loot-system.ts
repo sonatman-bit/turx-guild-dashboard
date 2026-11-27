@@ -312,6 +312,20 @@ export type RoadmapAck = {
   acknowledgedAt: string
 }
 
+export type RosterTemplateSize = '10' | '20' | '40'
+
+export type RosterTemplateSlot = {
+  id: string
+  role: RaidRoleType
+  /** 1, 2, 3+ alternative class/spec options for this roster box */
+  options: string[]
+  /** Number of player spots for this box */
+  count: number
+  note?: string
+}
+
+export type RosterTemplatesBySize = Record<RosterTemplateSize, RosterTemplateSlot[]>
+
 export type RaidSystemSettings = {
   publicModules: PublicModuleFlags
   activePhaseId: string
@@ -320,6 +334,7 @@ export type RaidSystemSettings = {
   raiderCutoffDate: string
   raiderTarget40: RaiderTargetSlot[]
   professionLeads: ProfessionLead[]
+  rosterTemplates?: RosterTemplatesBySize
 }
 
 export type RaidSystemStore = {
@@ -646,6 +661,24 @@ export const RAID_CATALOG: {
     bosses: ['Onyxia'],
   },
 ]
+
+export const SPECIAL_EVENT_CATALOG: {
+  id: string
+  name: string
+  size: 10 | 20 | 40
+  bosses: string[]
+}[] = [
+  {
+    id: 'guild-meeting',
+    name: 'TURX Guild Toplantısı',
+    size: 40,
+    bosses: [],
+  },
+]
+
+export function isGuildMeetingEvent(raidId?: string | null): boolean {
+  return (raidId || '').trim().toLowerCase() === 'guild-meeting'
+}
 
 export const DEFAULT_POINT_RULES: PointRules = {
   raid10: 4,
@@ -1553,6 +1586,56 @@ function shouldAutoUpgradeLegacySeed(items?: LootItem[]): boolean {
   return !anyAwarded
 }
 
+export const DEFAULT_ROSTER_TEMPLATES: RosterTemplatesBySize = {
+  '10': [
+    { id: 'rt10-1', role: 'TANK', options: ['Warrior (Protection)', 'Paladin (Protection)'], count: 1, note: 'Main Tank' },
+    { id: 'rt10-2', role: 'TANK', options: ['Druid (Feral Tank)', 'Warrior (Protection)', 'Paladin (Protection)'], count: 1, note: 'Off-Tank' },
+    { id: 'rt10-3', role: 'HEALER', options: ['Priest (Holy)', 'Paladin (Holy)'], count: 1 },
+    { id: 'rt10-4', role: 'HEALER', options: ['Druid (Restoration)', 'Shaman (Restoration)', 'Priest (Discipline)'], count: 1 },
+    { id: 'rt10-5', role: 'MELEE', options: ['Rogue (Combat)', 'Rogue (Assassination)'], count: 1 },
+    { id: 'rt10-6', role: 'MELEE', options: ['Warrior (Fury)', 'Paladin (Retribution)', 'Druid (Feral DPS)'], count: 2 },
+    { id: 'rt10-7', role: 'RANGED', options: ['Hunter (Marksman)', 'Hunter (Survival)'], count: 1 },
+    { id: 'rt10-8', role: 'RANGED', options: ['Mage (Frost)', 'Mage (Fire)'], count: 1 },
+    { id: 'rt10-9', role: 'RANGED', options: ['Warlock (Destruction)', 'Priest (Shadow)', 'Druid (Balance)'], count: 1 },
+  ],
+  '20': [
+    { id: 'rt20-1', role: 'TANK', options: ['Warrior (Protection)'], count: 1, note: 'Main Tank' },
+    { id: 'rt20-2', role: 'TANK', options: ['Paladin (Protection)', 'Druid (Feral Tank)'], count: 2, note: 'Off-Tank' },
+    { id: 'rt20-3', role: 'HEALER', options: ['Priest (Holy)', 'Priest (Discipline)'], count: 2 },
+    { id: 'rt20-4', role: 'HEALER', options: ['Paladin (Holy)'], count: 1 },
+    { id: 'rt20-5', role: 'HEALER', options: ['Druid (Restoration)', 'Shaman (Restoration)'], count: 2 },
+    { id: 'rt20-6', role: 'MELEE', options: ['Rogue (Combat)', 'Rogue (Assassination)'], count: 2 },
+    { id: 'rt20-7', role: 'MELEE', options: ['Warrior (Fury)', 'Warrior (Arms)'], count: 2 },
+    { id: 'rt20-8', role: 'MELEE', options: ['Paladin (Retribution)', 'Druid (Feral DPS)', 'Shaman (Enhancement)'], count: 1 },
+    { id: 'rt20-9', role: 'RANGED', options: ['Hunter (Marksman)', 'Hunter (Beast Mastery)'], count: 2 },
+    { id: 'rt20-10', role: 'RANGED', options: ['Mage (Frost)', 'Mage (Fire)'], count: 2 },
+    { id: 'rt20-11', role: 'RANGED', options: ['Warlock (Destruction)', 'Warlock (Affliction)'], count: 2 },
+    { id: 'rt20-12', role: 'RANGED', options: ['Priest (Shadow)', 'Druid (Balance)', 'Shaman (Elemental)'], count: 1 },
+  ],
+  '40': [
+    { id: 'rt40-1', role: 'TANK', options: ['Warrior (Protection)'], count: 2, note: 'Main Tank' },
+    { id: 'rt40-2', role: 'TANK', options: ['Paladin (Protection)', 'Druid (Feral Tank)'], count: 2, note: 'Off-Tank' },
+    { id: 'rt40-3', role: 'HEALER', options: ['Priest (Holy)', 'Priest (Discipline)'], count: 4 },
+    { id: 'rt40-4', role: 'HEALER', options: ['Paladin (Holy)'], count: 3 },
+    { id: 'rt40-5', role: 'HEALER', options: ['Druid (Restoration)', 'Shaman (Restoration)'], count: 3 },
+    { id: 'rt40-6', role: 'MELEE', options: ['Warrior (Fury)', 'Warrior (Arms)'], count: 5 },
+    { id: 'rt40-7', role: 'MELEE', options: ['Rogue (Combat)', 'Rogue (Assassination)'], count: 4 },
+    { id: 'rt40-8', role: 'MELEE', options: ['Paladin (Retribution)', 'Druid (Feral DPS)', 'Shaman (Enhancement)'], count: 2 },
+    { id: 'rt40-9', role: 'RANGED', options: ['Hunter (Marksman)', 'Hunter (Survival)'], count: 4 },
+    { id: 'rt40-10', role: 'RANGED', options: ['Mage (Frost)', 'Mage (Fire)', 'Mage (Arcane)'], count: 5 },
+    { id: 'rt40-11', role: 'RANGED', options: ['Warlock (Destruction)', 'Warlock (Affliction)'], count: 4 },
+    { id: 'rt40-12', role: 'RANGED', options: ['Priest (Shadow)', 'Druid (Balance)', 'Shaman (Elemental)'], count: 2 },
+  ],
+}
+
+export function cloneDefaultRosterTemplates(): RosterTemplatesBySize {
+  return {
+    '10': DEFAULT_ROSTER_TEMPLATES['10'].map((s) => ({ ...s, options: [...s.options] })),
+    '20': DEFAULT_ROSTER_TEMPLATES['20'].map((s) => ({ ...s, options: [...s.options] })),
+    '40': DEFAULT_ROSTER_TEMPLATES['40'].map((s) => ({ ...s, options: [...s.options] })),
+  }
+}
+
 export function defaultRaidSystemStore(): RaidSystemStore {
   return {
     settings: {
@@ -1569,6 +1652,7 @@ export function defaultRaidSystemStore(): RaidSystemStore {
       raiderCutoffDate: '2027-01-01',
       raiderTarget40: DEFAULT_RAIDER_TARGET_40.map((s) => ({ ...s })),
       professionLeads: DEFAULT_PROFESSION_LEADS.map((p) => ({ ...p })),
+      rosterTemplates: cloneDefaultRosterTemplates(),
     },
     phases: DEFAULT_PHASES.map((p) => ({ ...p, raidIds: [...p.raidIds] })),
     events: [],
@@ -1650,6 +1734,20 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
       Array.isArray(rawSettings.professionLeads) && rawSettings.professionLeads.length > 0
         ? rawSettings.professionLeads
         : defaults.settings.professionLeads,
+    rosterTemplates: {
+      '10':
+        Array.isArray(rawSettings.rosterTemplates?.['10']) && rawSettings.rosterTemplates['10'].length > 0
+          ? rawSettings.rosterTemplates['10']
+          : cloneDefaultRosterTemplates()['10'],
+      '20':
+        Array.isArray(rawSettings.rosterTemplates?.['20']) && rawSettings.rosterTemplates['20'].length > 0
+          ? rawSettings.rosterTemplates['20']
+          : cloneDefaultRosterTemplates()['20'],
+      '40':
+        Array.isArray(rawSettings.rosterTemplates?.['40']) && rawSettings.rosterTemplates['40'].length > 0
+          ? rawSettings.rosterTemplates['40']
+          : cloneDefaultRosterTemplates()['40'],
+    },
   }
 
   return {

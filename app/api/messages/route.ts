@@ -6,6 +6,8 @@ import {
   getUserVisibleMessages,
   loadGuildStore,
   mutateGuildStore,
+  personalizeMessageText,
+  resolveUserCharacterName,
   resolveUserRole,
   type GuildMessageAttachment,
   type GuildMessageCategory,
@@ -32,11 +34,17 @@ export async function GET(request: Request) {
     if (!user) return json({ error: 'Kullanıcı bulunamadı.' }, 404)
 
     const role = resolveUserRole(user)
+    const charName = resolveUserCharacterName(user)
     const result = getUserVisibleMessages(store, user.username, role)
+    const personalizedMessages = result.messages.map((m) => ({
+      ...m,
+      title: personalizeMessageText(m.title, charName),
+      content: personalizeMessageText(m.content, charName),
+    }))
 
     return json({
       ok: true,
-      messages: result.messages,
+      messages: personalizedMessages,
       unreadCount: result.unreadCount,
     })
   } catch (err) {
@@ -92,6 +100,11 @@ export async function POST(request: Request) {
     const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const nowIso = new Date().toISOString()
 
+    const isSelfTargetedDemo =
+      targetType === 'USER' &&
+      Boolean(targetUsername) &&
+      targetUsername!.toLowerCase() === sender.username.toLowerCase()
+
     const newMessage: StoredGuildMessage = {
       id: messageId,
       title,
@@ -106,31 +119,47 @@ export async function POST(request: Request) {
       imageUrl,
       attachments,
       createdAt: nowIso,
-      readBy: {
-        // Automatically mark as read for the sender
-        [sender.username.toLowerCase()]: nowIso,
-      },
+      readBy: isSelfTargetedDemo
+        ? {}
+        : {
+            // Automatically mark as read for the sender
+            [sender.username.toLowerCase()]: nowIso,
+          },
     }
 
     // Determine target recipient emails for notification
-    let targetRecipients: Array<{ email: string; username: string }> = []
+    let targetRecipients: Array<{ email: string; username: string; characterName: string }> = []
 
     await mutateGuildStore((store) => {
       if (!store.messages) store.messages = []
       store.messages.unshift(newMessage)
 
       if (targetType === 'ALL') {
-        targetRecipients = store.users.map((u) => ({ email: u.email, username: u.username }))
+        targetRecipients = store.users.map((u) => ({
+          email: u.email,
+          username: u.username,
+          characterName: resolveUserCharacterName(u),
+        }))
       } else if (targetType === 'RANK' && targetRank) {
         targetRecipients = store.users
           .filter((u) => resolveUserRole(u).toLowerCase() === targetRank.toLowerCase())
-          .map((u) => ({ email: u.email, username: u.username }))
+          .map((u) => ({
+            email: u.email,
+            username: u.username,
+            characterName: resolveUserCharacterName(u),
+          }))
       } else if (targetType === 'USER' && targetUsername) {
         const found = store.users.find(
           (u) => u.username.toLowerCase() === targetUsername.toLowerCase(),
         )
         if (found) {
-          targetRecipients = [{ email: found.email, username: found.username }]
+          targetRecipients = [
+            {
+              email: found.email,
+              username: found.username,
+              characterName: resolveUserCharacterName(found),
+            },
+          ]
         }
       }
     })
@@ -147,6 +176,7 @@ export async function POST(request: Request) {
         senderRole,
         hasImage: Boolean(imageUrl),
         hasAttachments: attachments.length > 0,
+        attachments: attachments.map((a) => ({ name: a.name, url: a.url })),
       })
     }
 

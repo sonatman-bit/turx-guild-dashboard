@@ -685,8 +685,29 @@ function ProfileMessagesInbox() {
               </span>
             </div>
 
-            <div className="rounded-xl border border-border bg-background/70 p-4 leading-relaxed whitespace-pre-line text-silver">
-              {selectedMessage.content}
+            <div className="rounded-xl border border-border bg-background/70 p-4 leading-relaxed text-silver space-y-2">
+              {selectedMessage.content.split('\n').map((line, lineIdx) => {
+                if (line.trim() === '---') {
+                  return <hr key={lineIdx} className="my-2 border-gold/25" />
+                }
+                if (!line.trim()) {
+                  return <div key={lineIdx} className="h-1" />
+                }
+                const parts = line.split(/(\*\*[^*]+\*\*)/g)
+                return (
+                  <p key={lineIdx} className="text-sm leading-relaxed">
+                    {parts.map((part, pIdx) =>
+                      part.startsWith('**') && part.endsWith('**') ? (
+                        <strong key={pIdx} className="font-semibold text-foreground">
+                          {part.slice(2, -2)}
+                        </strong>
+                      ) : (
+                        <span key={pIdx}>{part}</span>
+                      ),
+                    )}
+                  </p>
+                )
+              })}
             </div>
 
             {selectedMessage.imageUrl && (

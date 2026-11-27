@@ -50,6 +50,7 @@ import {
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { LootPhilosophyBanner } from '../loot-philosophy-banner'
+import { RosterTemplatePanel } from '../roster-template-panel'
 import { SpecIconPicker, SpecMiniIcon } from '../spec-icon-picker'
 import { useToast } from '../toast'
 import {
@@ -733,6 +734,16 @@ export function LootDistributionView() {
               <strong className="text-gold">WoW: Forever Beta Önizleme:</strong> Barrow Deeps ve Hyjal Summit resmi drop tabloları açılışa kadar gizli olduğu için, sistemin nasıl işleyeceğini görmek amacıyla WoW: Forever dungeon Pre-BiS itemları 3 raid ve bosslarına örnek olarak yerleştirilmiştir. Yeni itemlar keşfedildikçe yetkililer anında güncelleyebilir.
             </p>
           </div>
+
+          {/* Anonymous 10 / 20 / 40-Man Roster Templates Publisher */}
+          <RosterTemplatePanel
+            templates={rs.settings.rosterTemplates}
+            isOfficer={isOfficer}
+            busy={busy}
+            onSaveTemplate={(size, slots, msg) =>
+              runAction({ action: 'update_roster_template', size, slots }, msg)
+            }
+          />
 
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center gap-3">

@@ -3,6 +3,8 @@ import { sessionFromRequest } from '@/lib/auth-email'
 import type { WowClass } from '@/lib/guild-data'
 import {
   calculateSignupPoints,
+  canonicalizeSpecLabel,
+  cloneDefaultRosterTemplates,
   cloneStarterLootItems,
   defaultQuotaForRaid,
   deriveOutcomeFromFlags,
@@ -11,9 +13,11 @@ import {
   getItemPriorityTiers,
   getRoundTierAwards,
   hasCharacterReceivedItem,
+  isGuildMeetingEvent,
   normalizePriorityTiers,
   normalizeRaidSystemStore,
   RAID_CATALOG,
+  SPECIAL_EVENT_CATALOG,
   type AttendanceAdjustment,
   type AttendanceFlags,
   type AttendanceOutcome,
@@ -31,6 +35,8 @@ import {
   type RaidEventSignup,
   type RaiderTargetSlot,
   type RaidRoleType,
+  type RosterTemplateSize,
+  type RosterTemplateSlot,
   type WowItemTooltipData,
 } from '@/lib/raid-loot-system'
 import { isGuildMasterEmail } from '@/lib/turx-identity'
@@ -435,21 +441,27 @@ export async function POST(request: Request) {
       const effectiveLevel = verifiedArmoryLevel ?? (storedLevel > 0 ? storedLevel : null)
 
       if (action === 'signup') {
-        if (effectiveLevel === null) {
-          return NextResponse.json(
-            {
-              error: `WoW Armory üzerinden "${charDisplayName}" karakterinin seviyesi doğrulanamadı. Raidlere imza atabilmek için Level 60 olduğunuzun WoW Armory'de görünmesi gerekir.`,
-            },
-            { status: 403 },
-          )
-        }
-        if (effectiveLevel < 60) {
-          return NextResponse.json(
-            {
-              error: `Raidlere yalnızca Level 60 karakterler imza atabilir. WoW Armory verisine göre "${charDisplayName}" şu an Level ${effectiveLevel}.`,
-            },
-            { status: 403 },
-          )
+        const preRs = normalizeRaidSystemStore(preStore.raidSystem)
+        const targetEv = preRs.events.find((e) => e.id === String(body.eventId || ''))
+        const bypassLevel60 = isGuildMeetingEvent(targetEv?.raidId)
+
+        if (!bypassLevel60) {
+          if (effectiveLevel === null) {
+            return NextResponse.json(
+              {
+                error: `WoW Armory üzerinden "${charDisplayName}" karakterinin seviyesi doğrulanamadı. Raidlere imza atabilmek için Level 60 olduğunuzun WoW Armory'de görünmesi gerekir.`,
+              },
+              { status: 403 },
+            )
+          }
+          if (effectiveLevel < 60) {
+            return NextResponse.json(
+              {
+                error: `Raidlere yalnızca Level 60 karakterler imza atabilir. WoW Armory verisine göre "${charDisplayName}" şu an Level ${effectiveLevel}.`,
+              },
+              { status: 403 },
+            )
+          }
         }
         verifiedArmoryLevel = effectiveLevel
       }
@@ -617,7 +629,9 @@ export async function POST(request: Request) {
         case 'create_event': {
           requireOfficer()
           const raidId = String(body.raidId || 'barrow')
-          const catalog = RAID_CATALOG.find((r) => r.id === raidId)
+          const catalog =
+            RAID_CATALOG.find((r) => r.id === raidId) ||
+            SPECIAL_EVENT_CATALOG.find((r) => r.id === raidId)
           const raidName = String(body.raidName || catalog?.name || raidId)
           const size = (Number(body.size) === 40 ? 40 : Number(body.size) === 20 ? 20 : 10) as 10 | 20 | 40
           const scheduledAt = String(body.scheduledAt || '')
@@ -642,7 +656,9 @@ export async function POST(request: Request) {
             confirmDeadline: new Date(confirmDeadline).toISOString(),
             status: 'SIGNUP_OPEN',
             notes: typeof body.notes === 'string' ? body.notes.trim() : '',
-            rosters: [{ id: 'roster-1', name: 'Grup 1' }],
+            rosters: isGuildMeetingEvent(raidId)
+              ? [{ id: 'roster-1', name: 'Tüm Guild — Toplantı Katılımcıları', color: '#d4af37' }]
+              : [{ id: 'roster-1', name: 'Grup 1' }],
             signups: [],
             createdBy: session.username,
             createdAt: nowIso,
@@ -1021,6 +1037,36 @@ export async function POST(request: Request) {
               })
             }
           }
+          break
+        }
+
+        case 'update_roster_template': {
+          requireOfficer()
+          const sizeKey = String(body.size || '') as RosterTemplateSize
+          if (sizeKey !== '10' && sizeKey !== '20' && sizeKey !== '40') {
+            throw new Error('INVALID_SLOT')
+          }
+          const rawSlots = Array.isArray(body.slots) ? (body.slots as RosterTemplateSlot[]) : []
+          const cleaned: RosterTemplateSlot[] = rawSlots
+            .map((s, idx) => ({
+              id: typeof s.id === 'string' && s.id.trim() ? s.id.trim() : `rt-${sizeKey}-${Date.now()}-${idx}`,
+              role: normalizeRole(s.role, Array.isArray(s.options) ? s.options[0] : undefined),
+              options: [
+                ...new Set(
+                  (Array.isArray(s.options) ? s.options : [])
+                    .map((o) => canonicalizeSpecLabel(String(o || '')))
+                    .filter(Boolean),
+                ),
+              ],
+              count: Math.max(1, Math.min(20, Math.floor(Number(s.count) || 1))),
+              note: typeof s.note === 'string' && s.note.trim() ? s.note.trim().slice(0, 80) : undefined,
+            }))
+            .filter((s) => s.options.length > 0)
+
+          if (!rs.settings.rosterTemplates) {
+            rs.settings.rosterTemplates = cloneDefaultRosterTemplates()
+          }
+          rs.settings.rosterTemplates[sizeKey] = cleaned
           break
         }
 

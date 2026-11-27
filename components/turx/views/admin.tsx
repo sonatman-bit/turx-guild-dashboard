@@ -25,6 +25,9 @@ import {
   Mail,
   Send,
   Eye,
+  EyeOff,
+  Lock,
+  Unlock,
   CheckCheck,
   Paperclip,
   ExternalLink,
@@ -40,6 +43,15 @@ import { GmMemberProfileModal } from '../gm-member-profile-modal'
 import { WowArmoryLogo } from '../wow-armory-badge'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
+import {
+  buildLaunchCampaignAttachments,
+  LAUNCH_CAMPAIGN_CATEGORY,
+  LAUNCH_CAMPAIGN_CONTENT,
+  LAUNCH_CAMPAIGN_ICON,
+  LAUNCH_CAMPAIGN_TITLE,
+  LAUNCH_MEETING_EVENT_CONFIG,
+} from '@/lib/launch-campaign'
+import type { PublicModuleFlags } from '@/lib/raid-loot-system'
 import { DEFAULT_RECRUITMENT_MATRIX, RECRUIT_NEEDS, type RecruitClassNeed, type RecruitNeed } from '@/lib/recruitment'
 import { STAFF_ROLES, type StaffRoleId } from '@/lib/staff-roles'
 import type { GuildRank } from '@/lib/turx-identity'
@@ -189,6 +201,223 @@ export function AdminDashboardView() {
   const toast = useToast()
   const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance' | 'messages'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
+
+  // Deneme Yayını (Beta) -> Canlıya Alma Kontrolleri (Sadece GM)
+  const [publicModules, setPublicModules] = useState<PublicModuleFlags | null>(null)
+  const [modulesBusy, setModulesBusy] = useState(false)
+  const [launchBusy, setLaunchBusy] = useState(false)
+  const [meetingExists, setMeetingExists] = useState(false)
+
+  const checkLaunchMeetingExists = async () => {
+    try {
+      const res = await fetch('/api/raid-system', {
+        credentials: 'same-origin',
+        headers: authHeaders(),
+        cache: 'no-store',
+      })
+      if (!res.ok) return
+      const json = (await res.json()) as {
+        raidSystem?: { events?: Array<{ raidId?: string; scheduledAt?: string; status?: string }> }
+      }
+      const found = (json.raidSystem?.events || []).some(
+        (ev) => ev.raidId === 'guild-meeting' && ev.status !== 'ARCHIVED',
+      )
+      setMeetingExists(found)
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    if (!isGm) return
+    void checkLaunchMeetingExists()
+  }, [isGm])
+
+  const handleCreateLaunchMeeting = async () => {
+    setLaunchBusy(true)
+    try {
+      if (meetingExists) {
+        toast({
+          title: 'Zaten Açık',
+          description: '2 Aralık 22:30 TURX Guild Toplantısı zaten Raid Kayıt takviminde aktif.',
+        })
+        return true
+      }
+      const res = await fetch('/api/raid-system', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          action: 'create_event',
+          ...LAUNCH_MEETING_EVENT_CONFIG,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        toast({ title: 'Toplantı Açılamadı', description: json.error || 'İşlem başarısız.' })
+        return false
+      }
+      setMeetingExists(true)
+      toast({
+        title: 'Guild Toplantısı Açıldı',
+        description: '2 Aralık 22:30 TURX Guild Toplantısı Raid Kayıt takvimine eklendi!',
+      })
+      return true
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Toplantı oluşturulurken hata oluştu.' })
+      return false
+    } finally {
+      setLaunchBusy(false)
+    }
+  }
+
+  const handleSendLaunchCampaign = async (mode: 'demo' | 'all') => {
+    if (!user?.username) return
+    if (
+      mode === 'all' &&
+      !confirm(
+        'Yeni sistem rehberi & 2 Aralık 22:30 Guild Toplantısı bildirimi TÜM GUİLD ÜYELERİNE (kişiselleştirilmiş karakter adıyla + e-posta) gönderilecek. Onaylıyor musunuz?',
+      )
+    ) {
+      return
+    }
+    setLaunchBusy(true)
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://turxforever.com'
+      const attachments = buildLaunchCampaignAttachments(origin)
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          title: mode === 'demo' ? `[DEMO ÖNİZLEME] ${LAUNCH_CAMPAIGN_TITLE}` : LAUNCH_CAMPAIGN_TITLE,
+          content: LAUNCH_CAMPAIGN_CONTENT,
+          category: LAUNCH_CAMPAIGN_CATEGORY,
+          icon: LAUNCH_CAMPAIGN_ICON,
+          targetType: mode === 'demo' ? 'USER' : 'ALL',
+          targetUsername: mode === 'demo' ? user.username : undefined,
+          attachments,
+          sendEmail: true,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string; emailSentCount?: number }
+      if (!res.ok) {
+        toast({ title: 'Gönderilemedi', description: json.error || 'Bildirim gönderilirken hata oluştu.' })
+        return
+      }
+      window.dispatchEvent(new CustomEvent('turx:messages-updated'))
+      if (activeTab === 'messages') {
+        loadAdminMessages()
+      }
+      toast({
+        title: mode === 'demo' ? 'Demo Bildirim & Mail Gönderildi' : 'Tüm Guilde Yayınlandı!',
+        description:
+          mode === 'demo'
+            ? 'Kendi profilindeki Bildirim Kutusundan ve e-postandan önizlemeyi hemen kontrol edebilirsin.'
+            : `Tüm guild üyelerine kişiselleştirilmiş bildirim ve ${json.emailSentCount || 0} e-posta gönderildi!`,
+      })
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Bildirim gönderilemedi.' })
+    } finally {
+      setLaunchBusy(false)
+    }
+  }
+
+  const handleLoadLaunchIntoComposer = () => {
+    setActiveTab('messages')
+    setMsgTargetType('ALL')
+    setMsgCategory(LAUNCH_CAMPAIGN_CATEGORY)
+    setMsgIcon(LAUNCH_CAMPAIGN_ICON)
+    setMsgTitle(LAUNCH_CAMPAIGN_TITLE)
+    setMsgContent(LAUNCH_CAMPAIGN_CONTENT)
+    setMsgAttachmentName('📅 2 Aralık 22:30 Guild Toplantısına İmza At (Raid Kayıt)')
+    setMsgAttachmentUrl('https://turxforever.com/?tab=raid-signup')
+    setMsgSendEmail(true)
+    toast({
+      title: 'Şablon Forma Yüklendi',
+      description: 'Metni istediğin gibi düzenleyip Demo (Kişiye Özel) veya Tüm Lonca olarak gönderebilirsin.',
+    })
+  }
+
+  useEffect(() => {
+    if (!isGm) return
+    let active = true
+    ;(async () => {
+      try {
+        const res = await fetch('/api/raid-system?meta=1', {
+          credentials: 'same-origin',
+          headers: authHeaders(),
+          cache: 'no-store',
+        })
+        if (!res.ok) return
+        const json = (await res.json()) as { publicModules?: PublicModuleFlags }
+        if (active && json.publicModules) {
+          setPublicModules(json.publicModules)
+        }
+      } catch {
+        // sessizce yoksay
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [isGm])
+
+  const updatePublicModules = async (patch: Partial<PublicModuleFlags>, successMsg: string) => {
+    setModulesBusy(true)
+    try {
+      const res = await fetch('/api/raid-system', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          action: 'update_settings',
+          publicModules: patch,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        raidSystem?: { settings?: { publicModules?: PublicModuleFlags } }
+      }
+      if (!res.ok) {
+        toast({ title: 'Hata', description: json.error || 'Modül görünürlüğü güncellenemedi.' })
+        return
+      }
+      if (json.raidSystem?.settings?.publicModules) {
+        setPublicModules(json.raidSystem.settings.publicModules)
+      } else {
+        setPublicModules((prev) => (prev ? { ...prev, ...patch } : prev))
+      }
+      window.dispatchEvent(new CustomEvent('turx:modules-updated'))
+      toast({ title: 'Kaydedildi', description: successMsg })
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Modül görünürlüğü güncellenemedi.' })
+    } finally {
+      setModulesBusy(false)
+    }
+  }
+
+  const togglePublicModule = async (key: keyof PublicModuleFlags) => {
+    if (!publicModules) return
+    const nextVal = !publicModules[key]
+    await updatePublicModules(
+      { [key]: nextVal },
+      nextVal ? 'Modül tüm guild üyelerine açıldı!' : 'Modül tekrar Beta (sadece GM & Officer) moduna alındı.',
+    )
+  }
+
+  const toggleAllPublic = async (openAll: boolean) => {
+    await updatePublicModules(
+      {
+        raidSignup: openAll,
+        loot: openAll,
+        attendance: openAll,
+        roadmap: openAll,
+        bank: openAll,
+      },
+      openAll ? 'Tüm yeni Raid & Loot modülleri canlıya alındı!' : 'Tüm modüller Beta (GM & Officer) moduna alındı.',
+    )
+  }
 
   // 4. Lonca Mesaj & Bildirim Merkezi
   const [adminMessages, setAdminMessages] = useState<AdminMessageDto[]>([])
@@ -978,6 +1207,77 @@ interface PersistedArmoryAudit {
           <strong>Güvenlik Notu:</strong> Bu panel yalnızca <strong>Guild Master</strong> ve <strong>Görevli</strong> rütbesine sahip yetkililer tarafından görüntülenebilir. Yetkiler site hesaplarına (profil isimlerine) verilmiştir.
         </div>
       </div>
+
+      {isGm && publicModules && (
+        <Panel className="border-purple-500/35">
+          <PanelTitle
+            icon={ShieldCheck}
+            action={
+              <div className="flex flex-wrap gap-2">
+                <GhostButton disabled={modulesBusy} onClick={() => void toggleAllPublic(false)} className="px-3 py-1.5 text-xs">
+                  <Lock className="size-3.5" />
+                  Hepsini Beta Yap
+                </GhostButton>
+                <GoldButton disabled={modulesBusy} onClick={() => void toggleAllPublic(true)} className="px-3 py-1.5 text-xs">
+                  <Unlock className="size-3.5" />
+                  Hepsini Tüm Guilde Aç
+                </GoldButton>
+              </div>
+            }
+          >
+            Deneme Yayını (Beta) → Canlıya Alma Kontrolleri (Sadece GM)
+          </PanelTitle>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Kapalı olan üye modülleri sol menüde yalnızca <strong>GM ve Officerlar</strong> tarafından görülür. Açtığınız modüller yalnızca giriş yapmış TURX guild üyelerine görünür (Road Map herkese açıktır).
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                ['raidSignup', 'Raid Kayıt', 'İmza takvimi, çoklu roster ve konfirmasyon'],
+                ['loot', 'Loot Sistemi', 'Şeffaf öncelik sıraları, BoE ve BoP tarifler'],
+                ['attendance', 'Devam Takibi', 'Puan sıralaması ve 1 Ocak 40-Man hedefi'],
+                ['bank', 'Guild Bank', 'Malzeme talebi ve lonca banka defteri'],
+              ] as const
+            ).map(([key, title, desc]) => {
+              const isPublic = publicModules[key]
+              return (
+                <button
+                  key={key}
+                  disabled={modulesBusy}
+                  onClick={() => void togglePublicModule(key)}
+                  className={cn(
+                    'cursor-pointer rounded-xl border p-4 text-left transition',
+                    isPublic
+                      ? 'border-emerald-500/50 bg-emerald-500/10'
+                      : 'border-border bg-[#071422] hover:border-purple-400/50',
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-display text-sm font-bold text-foreground">{title}</span>
+                    {isPublic ? (
+                      <Eye className="size-4 text-emerald-400" />
+                    ) : (
+                      <EyeOff className="size-4 text-muted-foreground" />
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{desc}</p>
+                  <Badge
+                    className={cn(
+                      'mt-3',
+                      isPublic
+                        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                        : 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+                    )}
+                  >
+                    {isPublic ? 'CANLI (Tüm Guild Görür)' : 'BETA (Sadece GM & Officer)'}
+                  </Badge>
+                </button>
+              )
+            })}
+          </div>
+        </Panel>
+      )}
 
       <div className="flex flex-wrap gap-2 border-b border-border pb-4">
         <button
@@ -1886,6 +2186,92 @@ interface PersistedArmoryAudit {
       {/* SEKME 7: LONCA MESAJ & BILDIRIM MERKEZİ */}
       {activeTab === 'messages' && (
         <div className="flex flex-col gap-8">
+          {isGm && (
+            <Panel className="border-neon/40 bg-gradient-to-br from-[#07192b] via-card to-[#0b1726] shadow-xl">
+              <PanelTitle
+                icon={Sparkles}
+                action={
+                  <Badge className={meetingExists ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300' : 'border-amber-500/40 bg-amber-500/15 text-amber-200'}>
+                    {meetingExists ? '2 Aralık Toplantısı Açık ✓' : '2 Aralık Toplantısı Henüz Açılmadı'}
+                  </Badge>
+                }
+              >
+                Yeni Sistem Lansmanı & 2 Aralık 22:30 Guild Toplantısı (Sadece GM)
+              </PanelTitle>
+              <p className="mb-4 text-xs leading-relaxed text-silver">
+                Her oyuncuya kendi ana karakter adıyla (örn. <strong className="text-gold">Merhaba Waffle Küçükenişte,</strong>) kişiselleştirilmiş kullanıcı rehberi, to-do list, Anonim Mesaj Kutusu yönlendirmesi ve <strong>2 Aralık 22:30 Guild Toplantısı</strong> davetiyesi gönderin.
+              </p>
+
+              <div className="mb-4 grid gap-2.5 sm:grid-cols-3 text-xs">
+                <div className="rounded-xl border border-border/80 bg-[#071422]/85 p-3">
+                  <p className="font-semibold text-gold">1. 2 Aralık 22:30 Toplantısı</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Raid Kayıt ekranında tüm seviyelere açık, imza (+1p), konfirmasyon (+1p) ve katılım (+4p) puanlamalı demo toplantı açar.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/80 bg-[#071422]/85 p-3">
+                  <p className="font-semibold text-neon">2. Önce Kendi Profilinde Gör</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Sadece senin hesabına okunmamış bildirim + gerçek Resend e-postası gönderir; inceleyip onayladıktan sonra herkese açarsın.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/80 bg-[#071422]/85 p-3">
+                  <p className="font-semibold text-emerald-300">3. Tüm Guilde Yayınla</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Onayladığında tüm TURX üyelerine kendi karakter isimleriyle kişiselleştirilmiş rehber + e-posta anında iletilir.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2.5">
+                <GhostButton
+                  type="button"
+                  disabled={launchBusy || meetingExists}
+                  onClick={() => void handleCreateLaunchMeeting()}
+                  className="border-neon/40 text-neon hover:bg-neon/10 px-3.5 py-2 text-xs"
+                >
+                  <Calendar className="size-3.5" />
+                  {meetingExists ? '2 Aralık 22:30 Toplantısı Açıldı ✓' : '1. 2 Aralık 22:30 Toplantısını Aç'}
+                </GhostButton>
+
+                <GoldButton
+                  type="button"
+                  disabled={launchBusy}
+                  onClick={async () => {
+                    if (!meetingExists) {
+                      await handleCreateLaunchMeeting()
+                    }
+                    await handleSendLaunchCampaign('demo')
+                  }}
+                  className="px-4 py-2 text-xs"
+                >
+                  <Eye className="size-3.5" />
+                  {launchBusy ? 'İşleniyor...' : '2. Toplantıyı Aç & Bana Demo Gönder (Profil + Mail)'}
+                </GoldButton>
+
+                <GhostButton
+                  type="button"
+                  disabled={launchBusy}
+                  onClick={handleLoadLaunchIntoComposer}
+                  className="px-3.5 py-2 text-xs"
+                >
+                  <Edit3 className="size-3.5" />
+                  Metni Aşağıda Düzenle
+                </GhostButton>
+
+                <button
+                  type="button"
+                  disabled={launchBusy}
+                  onClick={() => void handleSendLaunchCampaign('all')}
+                  className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/15 px-4 py-2 text-xs font-bold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50"
+                >
+                  <Send className="size-3.5" />
+                  3. Onayladım — Tüm Guilde Gönder
+                </button>
+              </div>
+            </Panel>
+          )}
+
           {/* A: Yeni Mesaj / Bildirim Gönder (Rich Composer) */}
           <Panel className="flex flex-col gap-6 border-gold/40 bg-gradient-to-r from-card via-[#071321] to-card shadow-xl">
             <div className="flex items-center justify-between border-b border-border pb-3">
@@ -2022,7 +2408,15 @@ interface PersistedArmoryAudit {
               <div className="flex flex-col gap-1.5 md:col-span-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-silver">Mesaj Metni & Detayları *</label>
-                  <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => setMsgContent((prev) => `${prev ? `${prev} ` : ''}Merhaba {karakter},\n\n`)}
+                      className="mr-1 rounded border border-gold/40 bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-gold hover:bg-gold/20 transition cursor-pointer"
+                      title="Her oyuncunun kendi ana karakter adıyla otomatik kişiselleştirilir"
+                    >
+                      + {'{karakter}'} Ekle
+                    </button>
                     <span>Hızlı Emoji:</span>
                     {['👍', '🎉', '⚔️', '🔥', '✅', '❌'].map((emo) => (
                       <button

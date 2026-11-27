@@ -281,8 +281,33 @@ export function rateLimit(key: string, limit = 5, windowMs = 10 * 60 * 1000) {
   return true
 }
 
+function formatBroadcastEmailContent(raw: string): string {
+  const escaped = escapeHtml(raw)
+  const withBold = escaped.replace(/\*\*([^*\n]+)\*\*/g, '<strong style="color:#f4e7c3">$1</strong>')
+  const withLinks = withBold.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" style="color:#00f2fe;text-decoration:underline;word-break:break-all">$1</a>',
+  )
+  return withLinks
+    .split('\n')
+    .map((line) => {
+      if (line.trim() === '---') {
+        return '<hr style="border:none;border-top:1px solid #d4af3735;margin:14px 0" />'
+      }
+      return line
+    })
+    .join('<br>')
+}
+
+function replaceCharacterPlaceholder(text: string, characterName?: string): string {
+  const name = (characterName || '').trim()
+  if (!name) return text
+  return text.replace(/\{\{\s*karakter\s*\}\}|\{\s*karakter\s*\}/gi, name)
+}
+
 export function guildBroadcastEmailHtml(options: {
   username: string
+  characterName?: string
   title: string
   content: string
   category: string
@@ -291,45 +316,74 @@ export function guildBroadcastEmailHtml(options: {
   senderRole: string
   hasImage?: boolean
   hasAttachments?: boolean
+  attachments?: Array<{ name: string; url: string }>
 }) {
   const icon = options.icon || '📢'
   const categoryLabel = options.category || 'DUYURU'
-  const cleanContent = escapeHtml(options.content).replace(/\n/g, '<br>')
-  const profileUrl = `${configuredAppOrigin() || 'https://turxforever.com'}/?tab=profile`
+  const recipientDisplay = (options.characterName || '').trim() || options.username
+  const resolvedTitle = replaceCharacterPlaceholder(options.title, recipientDisplay)
+  const resolvedContent = replaceCharacterPlaceholder(options.content, recipientDisplay)
+  const cleanContent = formatBroadcastEmailContent(resolvedContent)
+  const origin = configuredAppOrigin() || 'https://turxforever.com'
+  const profileUrl = `${origin}/?tab=profile`
+  const attachments = Array.isArray(options.attachments) ? options.attachments : []
 
-  return wrapEmail(`
+  const attachmentLinksHtml =
+    attachments.length > 0
+      ? `<div style="margin:0 0 18px;padding:14px;border:1px solid #d4af3740;border-radius:12px;background:#081626">
+          <p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#d4af37;letter-spacing:1px;text-transform:uppercase">Hızlı Erişim Bağlantıları</p>
+          ${attachments
+            .map(
+              (a, idx) =>
+                `<div style="margin:${idx > 0 ? '8px' : '0'} 0 0">
+                  <a href="${escapeHtml(a.url)}" style="display:block;padding:10px 14px;border-radius:8px;border:1px solid ${idx === 0 ? '#d4af3780' : '#00f2fe40'};background:${idx === 0 ? 'linear-gradient(135deg,#d4af37,#b89628)' : '#0b2036'};color:${idx === 0 ? '#1a1305' : '#7fd7ff'};text-decoration:none;font-weight:700;font-size:13px;text-align:center">
+                    ${escapeHtml(a.name)} →
+                  </a>
+                </div>`,
+            )
+            .join('')}
+        </div>`
+      : ''
+
+  return `<div style="background:#08121e;color:#d7e2ee;font-family:Arial,sans-serif;padding:24px 16px">
+  <div style="max-width:580px;margin:0 auto;border:1px solid #d4af3740;border-radius:16px;padding:28px;background:#0b1b2d">
+    <p style="margin:0 0 6px;letter-spacing:4px;color:#d4af37;font-weight:700;font-size:16px">TURX</p>
+    <p style="margin:0 0 18px;color:#7fd7ff;font-size:11px;letter-spacing:2px">TURX FOREVER · ALLIANCE GUILD</p>
     <div style="border-bottom:1px solid #d4af3740;padding-bottom:16px;margin-bottom:16px">
       <span style="display:inline-block;padding:4px 10px;background:#d4af3720;border:1px solid #d4af3760;border-radius:6px;font-size:11px;font-weight:700;color:#d4af37;letter-spacing:1px">
         ${escapeHtml(categoryLabel)}
       </span>
       <h1 style="margin:12px 0 6px;font-size:20px;color:#f4e7c3;line-height:1.4">
-        ${icon} ${escapeHtml(options.title)}
+        ${icon} ${escapeHtml(resolvedTitle)}
       </h1>
       <p style="margin:0;font-size:12px;color:#8aa0b5">
-        Gönderen: <strong style="color:#7fd7ff">${escapeHtml(options.senderUsername)}</strong> (${escapeHtml(options.senderRole)}) • Kime: <span style="color:#d7e2ee">${escapeHtml(options.username)}</span>
+        Gönderen: <strong style="color:#7fd7ff">${escapeHtml(options.senderUsername)}</strong> (${escapeHtml(options.senderRole)}) • Kime: <strong style="color:#f4e7c3">${escapeHtml(recipientDisplay)}</strong>
       </p>
     </div>
 
-    <div style="margin:0 0 20px;padding:16px;border:1px solid #00f2fe30;border-radius:12px;background:#071422;line-height:1.6;color:#d7e2ee;font-size:14px">
+    <div style="margin:0 0 20px;padding:18px;border:1px solid #00f2fe30;border-radius:12px;background:#071422;line-height:1.7;color:#d7e2ee;font-size:14px">
       ${cleanContent}
     </div>
 
     ${options.hasImage ? '<p style="margin:0 0 12px;font-size:12px;color:#00f2fe">📷 Mesaja bir görsel iliştirilmiştir. Dashboard üzerinde tam boyut görüntüleyebilirsiniz.</p>' : ''}
-    ${options.hasAttachments ? '<p style="margin:0 0 16px;font-size:12px;color:#00f2fe">📎 Mesajda dosya/bağlantı ekleri bulunmaktadır.</p>' : ''}
+    ${attachmentLinksHtml}
+    ${!attachmentLinksHtml && options.hasAttachments ? '<p style="margin:0 0 16px;font-size:12px;color:#00f2fe">📎 Mesajda dosya/bağlantı ekleri bulunmaktadır.</p>' : ''}
 
-    <div style="margin:20px 0 10px;text-align:center">
+    <div style="margin:18px 0 10px;text-align:center">
       <a href="${profileUrl}" style="display:inline-block;background:linear-gradient(135deg,#d4af37,#b89628);color:#1a1305;text-decoration:none;font-weight:bold;font-size:14px;padding:12px 24px;border-radius:8px;box-shadow:0 0 15px rgba(212,175,55,0.35)">
-        Mesajı Oku & Detayları Gör →
+        TURX Panelini Aç & Mesajı Görüntüle →
       </a>
     </div>
     <p style="margin:12px 0 0;font-size:11px;color:#64748b;text-align:center">
-      Mesajı okuduğunuzda lonca sistemine otomatik "Okundu" bilgisi işlenir.
+      Mesajı panelde okuduğunuzda lonca sistemine otomatik "Okundu" bilgisi işlenir.
     </p>
-  `)
+    <p style="margin:18px 0 0;font-size:11px;color:#8aa0b5;text-align:center">Bu e-posta TURX lonca paneli hesabın için gönderildi.</p>
+  </div>
+</div>`
 }
 
 export async function sendGuildBroadcastNotificationEmails(options: {
-  recipients: Array<{ email: string; username: string }>
+  recipients: Array<{ email: string; username: string; characterName?: string }>
   title: string
   content: string
   category: string
@@ -338,6 +392,7 @@ export async function sendGuildBroadcastNotificationEmails(options: {
   senderRole: string
   hasImage?: boolean
   hasAttachments?: boolean
+  attachments?: Array<{ name: string; url: string }>
 }) {
   const apiKey = process.env.RESEND_API_KEY?.trim()
   if (!apiKey || options.recipients.length === 0) return { sentCount: 0 }
@@ -348,9 +403,12 @@ export async function sendGuildBroadcastNotificationEmails(options: {
   for (const r of options.recipients) {
     if (!r.email || !isValidEmail(r.email) || isDisposableEmail(r.email)) continue
     try {
+      const displayChar = (r.characterName || '').trim() || r.username
+      const resolvedTitle = replaceCharacterPlaceholder(options.title, displayChar)
       const html = guildBroadcastEmailHtml({
         username: r.username,
-        title: options.title,
+        characterName: displayChar,
+        title: resolvedTitle,
         content: options.content,
         category: options.category,
         icon: options.icon,
@@ -358,11 +416,12 @@ export async function sendGuildBroadcastNotificationEmails(options: {
         senderRole: options.senderRole,
         hasImage: options.hasImage,
         hasAttachments: options.hasAttachments,
+        attachments: options.attachments,
       })
       await resend.emails.send({
         from,
         to: r.email,
-        subject: `[TURX Bildirim] ${options.icon || '📢'} ${options.title}`,
+        subject: `[TURX] ${options.icon || '📢'} ${resolvedTitle}`,
         html,
         text: htmlToText(html),
       })

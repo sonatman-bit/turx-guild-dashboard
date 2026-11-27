@@ -837,6 +837,28 @@ export function upsertMissingAccount(store: GuildStore, incoming: ImportableAcco
   return 'added'
 }
 
+export function resolveUserCharacterName(user: Pick<StoredAccount, 'username' | 'characters' | 'profile'>): string {
+  const chars = Array.isArray(user.characters)
+    ? (user.characters as Array<{ firstName?: string; lastName?: string; isMain?: boolean }>)
+    : []
+  const main = chars.find((c) => c?.isMain) || chars[0]
+  if (main) {
+    const full = `${main.firstName || ''} ${main.lastName || ''}`.trim()
+    if (full) return full
+  }
+  const prof = user.profile as { fullName?: string } | null | undefined
+  if (prof?.fullName && typeof prof.fullName === 'string' && prof.fullName.trim()) {
+    return prof.fullName.trim()
+  }
+  return user.username
+}
+
+export function personalizeMessageText(text: string, characterName: string): string {
+  const safeName = (characterName || '').trim()
+  if (!safeName) return text
+  return text.replace(/\{\{\s*karakter\s*\}\}|\{\s*karakter\s*\}/gi, safeName)
+}
+
 export function getUserVisibleMessages(
   store: GuildStore,
   username: string,

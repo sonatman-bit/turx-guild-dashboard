@@ -98,6 +98,15 @@ function DashboardShellInner() {
     void fetchPublicFlags()
   }, [mounted, user?.username, tab, fetchPublicFlags])
 
+  useEffect(() => {
+    if (!mounted) return
+    const onModulesUpdated = () => {
+      void fetchPublicFlags()
+    }
+    window.addEventListener('turx:modules-updated', onModulesUpdated)
+    return () => window.removeEventListener('turx:modules-updated', onModulesUpdated)
+  }, [mounted, fetchPublicFlags])
+
   const canAccessTab = useCallback(
     (id: TabId) => {
       if (id === 'admin') return canOpenAdmin

@@ -8,20 +8,15 @@ import {
   ChevronRight,
   Clock,
   Crown,
-  Eye,
-  EyeOff,
-  Lock,
   PenLine,
   Plus,
   Search,
   Settings,
-  ShieldCheck,
   Sliders,
   Sparkles,
   Swords,
   Trash2,
   Trophy,
-  Unlock,
   Video,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -31,7 +26,6 @@ import {
   formatTrDateTime,
   type AttendanceOutcome,
   type PointRules,
-  type PublicModuleFlags,
   type RaiderTargetSlot,
 } from '@/lib/raid-loot-system'
 import { useRaidSystem } from '@/lib/use-raid-system'
@@ -141,33 +135,6 @@ export function AttendanceTrackerView() {
   const total40Slots = activeTargets.reduce((sum, s) => sum + s.count, 0)
   const effectiveRules = rulesDraft || rs.settings.pointRules
   const effectiveVideo = videoDraft !== null ? videoDraft : rs.settings.roadmapVideoUrl
-
-  const togglePublicModule = async (key: keyof PublicModuleFlags) => {
-    const nextVal = !rs.settings.publicModules[key]
-    await runAction(
-      {
-        action: 'update_settings',
-        publicModules: { [key]: nextVal },
-      },
-      nextVal ? 'Modül tüm guild üyelerine açıldı!' : 'Modül tekrar Beta (sadece GM & Officer) moduna alındı.',
-    )
-  }
-
-  const toggleAllPublic = async (openAll: boolean) => {
-    await runAction(
-      {
-        action: 'update_settings',
-        publicModules: {
-          raidSignup: openAll,
-          loot: openAll,
-          attendance: openAll,
-          roadmap: openAll,
-          bank: openAll,
-        },
-      },
-      openAll ? 'Tüm yeni Raid & Loot modülleri canlıya alındı!' : 'Tüm modüller Beta (GM & Officer) moduna alındı.',
-    )
-  }
 
   return (
     <div className="space-y-6">
@@ -689,76 +656,6 @@ export function AttendanceTrackerView() {
       {/* SUB-TAB 3: GM-ONLY SYSTEM SETTINGS */}
       {subTab === 'gm-settings' && isGm && (
         <div className="space-y-6">
-          {/* Beta / Live Visibility Switches */}
-          <Panel className="border-purple-500/35">
-            <PanelTitle
-              icon={ShieldCheck}
-              action={
-                <div className="flex gap-2">
-                  <GhostButton disabled={busy} onClick={() => void toggleAllPublic(false)} className="px-3 py-1.5 text-xs">
-                    <Lock className="size-3.5" />
-                    Hepsini Beta Yap
-                  </GhostButton>
-                  <GoldButton disabled={busy} onClick={() => void toggleAllPublic(true)} className="px-3 py-1.5 text-xs">
-                    <Unlock className="size-3.5" />
-                    Hepsini Tüm Guilde Aç
-                  </GoldButton>
-                </div>
-              }
-            >
-              Deneme Yayını (Beta) → Canlıya Alma Kontrolleri (Sadece GM)
-            </PanelTitle>
-            <p className="mb-4 text-xs text-muted-foreground">
-              Kapalı olan üye modülleri sol menüde yalnızca <strong>GM ve Officerlar</strong> tarafından görülür. Açtığınız modüller yalnızca giriş yapmış TURX guild üyelerine görünür (Road Map herkese açıktır).
-            </p>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {(
-                [
-                  ['raidSignup', 'Raid Kayıt', 'İmza takvimi, çoklu roster ve konfirmasyon'],
-                  ['loot', 'Loot Sistemi', 'Şeffaf öncelik sıraları, BoE ve BoP tarifler'],
-                  ['attendance', 'Devam Takibi', 'Puan sıralaması ve 1 Ocak 40-Man hedefi'],
-                  ['bank', 'Guild Bank', 'Malzeme talebi ve lonca banka defteri'],
-                ] as const
-              ).map(([key, title, desc]) => {
-                const isPublic = rs.settings.publicModules[key]
-                return (
-                  <button
-                    key={key}
-                    disabled={busy}
-                    onClick={() => void togglePublicModule(key)}
-                    className={cn(
-                      'cursor-pointer rounded-xl border p-4 text-left transition',
-                      isPublic
-                        ? 'border-emerald-500/50 bg-emerald-500/10'
-                        : 'border-border bg-[#071422] hover:border-purple-400/50',
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-display text-sm font-bold text-foreground">{title}</span>
-                      {isPublic ? (
-                        <Eye className="size-4 text-emerald-400" />
-                      ) : (
-                        <EyeOff className="size-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <p className="mt-1 text-[11px] text-muted-foreground">{desc}</p>
-                    <Badge
-                      className={cn(
-                        'mt-3',
-                        isPublic
-                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                          : 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-                      )}
-                    >
-                      {isPublic ? 'CANLI (Tüm Guild Görür)' : 'BETA (Sadece GM & Officer)'}
-                    </Badge>
-                  </button>
-                )
-              })}
-            </div>
-          </Panel>
-
           {/* Point Rules Configuration */}
           <Panel className="border-gold/30">
             <PanelTitle icon={Settings}>Puanlama Kuralları (Sadece GM)</PanelTitle>

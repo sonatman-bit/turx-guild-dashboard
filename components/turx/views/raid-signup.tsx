@@ -32,9 +32,11 @@ import {
   deriveOutcomeFromFlags,
   formatCountdown,
   formatTrDateTime,
+  isGuildMeetingEvent,
   RAID_CATALOG,
   resolveAttendanceFlags,
   ROSTER_COLOR_PRESETS,
+  SPECIAL_EVENT_CATALOG,
   type AttendanceFlags,
   type AttendanceOutcome,
   type PrepChecklist,
@@ -297,7 +299,10 @@ export function RaidSignupView() {
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
-    const def = RAID_CATALOG.find((r) => r.id === newRaidId) || RAID_CATALOG[0]
+    const def =
+      RAID_CATALOG.find((r) => r.id === newRaidId) ||
+      SPECIAL_EVENT_CATALOG.find((r) => r.id === newRaidId) ||
+      RAID_CATALOG[0]
     const ok = await runAction(
       {
         action: 'create_event',
@@ -530,7 +535,9 @@ export function RaidSignupView() {
                         <div>
                           <div className="flex items-center gap-2">
                             <span className="font-display text-base font-bold text-gold">{ev.raidName}</span>
-                            <Badge className="border-gold/30 bg-gold/10 text-gold">{ev.size}-Man</Badge>
+                            <Badge className={isGuildMeetingEvent(ev.raidId) ? 'border-purple-400/40 bg-purple-500/15 text-purple-200' : 'border-gold/30 bg-gold/10 text-gold'}>
+                              {isGuildMeetingEvent(ev.raidId) ? 'Tüm Guild' : `${ev.size}-Man`}
+                            </Badge>
                           </div>
                           <p className="mt-1 text-xs text-silver">{formatTrDateTime(ev.scheduledAt)}</p>
                         </div>
@@ -856,17 +863,26 @@ export function RaidSignupView() {
         description="Gün ve saat belirleyerek tek imza havuzu açın. İmza sayısına göre birden fazla roster grubu oluşturabilirsiniz."
       >
         <form onSubmit={handleCreateEvent} className="space-y-4">
-          <Field label="Raid Seçimi">
+          <Field label="Raid / Etkinlik Seçimi">
             <select
               className={inputClass}
               value={newRaidId}
               onChange={(e) => handleRaidPresetChange(e.target.value)}
             >
-              {RAID_CATALOG.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} ({r.size}-Man)
-                </option>
-              ))}
+              <optgroup label="Raidler">
+                {RAID_CATALOG.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({r.size}-Man)
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Özel Guild Etkinlikleri (Tüm Seviyeler)">
+                {SPECIAL_EVENT_CATALOG.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} (Tüm Guild)
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </Field>
 
@@ -1206,7 +1222,9 @@ function EventWorkspace({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="font-display text-2xl font-bold text-gold">{event.raidName}</h2>
-              <Badge className="border-gold/40 bg-gold/10 text-gold">{event.size}-Man</Badge>
+              <Badge className={isGuildMeetingEvent(event.raidId) ? 'border-purple-400/40 bg-purple-500/15 text-purple-200' : 'border-gold/40 bg-gold/10 text-gold'}>
+                {isGuildMeetingEvent(event.raidId) ? 'Tüm Guild · Tüm Seviyeler' : `${event.size}-Man`}
+              </Badge>
               <Badge
                 className={
                   event.status === 'ROSTERS_PUBLISHED'
@@ -1235,8 +1253,9 @@ function EventWorkspace({
 
         {/* Player CTA Bar */}
         {(() => {
+          const isMeeting = isGuildMeetingEvent(event.raidId)
           const myLevel = myMain?.level ?? 0
-          const isBelowLevel60 = Boolean(currentUsername && myLevel < 60)
+          const isBelowLevel60 = Boolean(!isMeeting && currentUsername && myLevel < 60)
           return (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-[#071422]/85 px-4 py-3">
               <div className="text-xs">
@@ -1275,7 +1294,9 @@ function EventWorkspace({
                   </span>
                 ) : (
                   <span className="text-muted-foreground">
-                    Bu raide henüz imza atmadınız. Tek imza havuzuna kaydolun, Officerlar uygun gruba atasın.
+                    {isMeeting
+                      ? 'Bu guild toplantısına henüz imza atmadınız. Tüm seviyeler imza atabilir — ilk puanlarınız bu demo ile başlar!'
+                      : 'Bu raide henüz imza atmadınız. Tek imza havuzuna kaydolun, Officerlar uygun gruba atasın.'}
                   </span>
                 )}
               </div>
@@ -1302,7 +1323,7 @@ function EventWorkspace({
                   ) : (
                     <GoldButton disabled={busy || (signupExpired && !isOfficer)} onClick={onSignup}>
                       <UserCheck className="size-4" />
-                      Raide İmza At (+{rules.signup}p)
+                      {isMeeting ? `Toplantıya İmza At (+${rules.signup}p)` : `Raide İmza At (+${rules.signup}p)`}
                     </GoldButton>
                   )
                 ) : (

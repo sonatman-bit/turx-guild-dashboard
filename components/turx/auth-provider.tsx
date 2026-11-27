@@ -877,38 +877,45 @@ export function AuthNavbarWidget({
     <div className="flex items-center gap-3">
       {user ? (
         <div className="flex items-center gap-3.5 rounded-xl border border-gold/40 bg-gradient-to-r from-[#071422] to-card px-4 py-2.5 shadow-lg">
-          <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold/15 text-gold shadow-[0_0_12px_rgb(212,175,55/0.3)] overflow-hidden">
-            {userAvatar ? (
-              <Image
-                src={getAvatarSrc(userAvatar)}
-                alt={user.username}
-                width={40}
-                height={40}
-                className="size-full rounded-full object-cover"
-              />
-            ) : (
-              <User className="size-5" />
-            )}
-            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-card bg-success z-10" />
-            {unreadCount > 0 && (
-              <span
-                className="absolute -top-1 -right-1 z-20 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
-                title={`${unreadCount} okunmamış mesaj`}
-              >
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate && onNavigate('profile')}
+            className="group flex items-center gap-3.5 text-left cursor-pointer rounded-lg transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-gold"
+            title="Profil ve Karakter Sayfasına Git"
+          >
+            <div className="relative flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-gold bg-gold/15 text-gold shadow-[0_0_12px_rgb(212,175,55/0.3)] overflow-hidden transition group-hover:scale-105 group-hover:shadow-[0_0_16px_rgb(212,175,55/0.55)]">
+              {userAvatar ? (
+                <Image
+                  src={getAvatarSrc(userAvatar)}
+                  alt={user.username}
+                  width={40}
+                  height={40}
+                  className="size-full rounded-full object-cover"
+                />
+              ) : (
+                <User className="size-5" />
+              )}
+              <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-card bg-success z-10" />
+              {unreadCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 z-20 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"
+                  title={`${unreadCount} okunmamış mesaj`}
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </div>
 
-          <div className="flex flex-col text-left leading-tight">
-            <span className="text-sm font-bold text-foreground flex items-center gap-1.5">
-              {user.username}
-              <span className="rounded bg-gold/15 px-1.5 py-0.2 text-[10px] font-semibold text-gold border border-gold/30">
-                {user.role}
+            <div className="flex flex-col text-left leading-tight">
+              <span className="text-sm font-bold text-foreground flex items-center gap-1.5 group-hover:text-gold transition">
+                {user.username}
+                <span className="rounded bg-gold/15 px-1.5 py-0.2 text-[10px] font-semibold text-gold border border-gold/30">
+                  {user.role}
+                </span>
               </span>
-            </span>
-            <span className="text-xs text-muted-foreground mt-0.5">{user.email}</span>
-          </div>
+              <span className="text-xs text-muted-foreground mt-0.5">{user.email}</span>
+            </div>
+          </button>
 
           <div className="flex items-center gap-1.5 ml-2 pl-3 border-l border-border">
             {isStaff && (

@@ -7,6 +7,7 @@ import {
   type ArmoryRankMapping,
 } from '@/lib/armory-ranks'
 import { normalizeAvailability } from '@/lib/availability'
+import type { GuildProgressTrackerState } from '@/lib/progress-tracker'
 import {
   defaultRaidSystemStore,
   normalizeRaidSystemStore,
@@ -166,6 +167,7 @@ export type GuildStore = {
   raidSystem?: RaidSystemStore
   armoryAudit?: StoredArmoryAuditState | null
   armoryRankMappings?: ArmoryRankMapping[]
+  progressTracker?: GuildProgressTrackerState | null
 }
 
 const PATH = 'turx-guild-store.json'
@@ -203,6 +205,7 @@ export function emptyStore(): GuildStore {
     raidSystem: defaultRaidSystemStore(),
     armoryAudit: null,
     armoryRankMappings: DEFAULT_ARMORY_RANK_MAPPINGS.map((m) => ({ ...m })),
+    progressTracker: null,
   }
 }
 
@@ -244,6 +247,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     raidSystem: normalizeRaidSystemStore(data.raidSystem),
     armoryAudit,
     armoryRankMappings: normalizeArmoryRankMappings(data.armoryRankMappings),
+    progressTracker: data.progressTracker ?? null,
   }
 }
 

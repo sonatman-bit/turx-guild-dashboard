@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/armory-sync",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-progress",
+      "schedule": "0 2 * * 3"
     }
   ]
 }

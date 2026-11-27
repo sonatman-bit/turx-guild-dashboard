@@ -154,6 +154,7 @@ export async function GET(request: Request) {
       const isGm = isGuildMasterEmail(account.email) || matchesGmIdentity(account.username)
 
       const showRealName = rawProfile.showRealNameInRoster !== false
+      const showBnet = rawProfile.showBnetInRoster !== false
       const rawFullName = typeof rawProfile.fullName === 'string' && rawProfile.fullName.trim()
         ? rawProfile.fullName.trim()
         : ''
@@ -164,6 +165,7 @@ export async function GET(request: Request) {
       const sanitizedProfile = {
         fullName: displayRealName,
         showRealName,
+        realNameHidden: !showRealName,
         selectedAvatar: typeof rawProfile.selectedAvatar === 'string' ? rawProfile.selectedAvatar : undefined,
       }
 
@@ -218,7 +220,8 @@ export async function GET(request: Request) {
         email: isGmOrOfficer || isSelf ? pub.email : undefined,
         profile: sanitizedProfile,
         bnet: {
-          tag: bnetTag,
+          tag: showBnet ? bnetTag : '',
+          hidden: !showBnet,
           connected: bnetConnected,
           online: bnetOnline,
           inGame,

@@ -59,14 +59,14 @@ const ROLE_META: Record<
 }
 
 const GROUP_ACCENTS = [
-  '#d4af37', // Grup 1: Altın
-  '#00f2fe', // Grup 2: Turkuaz
-  '#34d399', // Grup 3: Zümrüt
-  '#a78bfa', // Grup 4: Mor
-  '#38bdf8', // Grup 5: Mavi
-  '#fbbf24', // Grup 6: Kehribar
-  '#fb7185', // Grup 7: Gül
-  '#fb923c', // Grup 8: Turuncu
+  '#d4af37',
+  '#00f2fe',
+  '#34d399',
+  '#a78bfa',
+  '#38bdf8',
+  '#fbbf24',
+  '#fb7185',
+  '#fb923c',
 ]
 
 function inferRoleFromSpec(spec: string): RaidRoleType {
@@ -88,6 +88,37 @@ function inferRoleFromSpec(spec: string): RaidRoleType {
   return 'MELEE'
 }
 
+/** Splits canonical "Warrior (Protection)" -> { cls: "Warrior", spec: "Protection" } for clean compact split cells */
+function parseClassAndSpec(canonical: string): { cls: string; spec: string } {
+  const m = canonical.match(/^([^(]+)\(([^)]+)\)$/)
+  if (m) {
+    return { cls: m[1].trim(), spec: m[2].trim() }
+  }
+  return { cls: canonical.trim(), spec: '' }
+}
+
+function compactSpecName(spec: string): string {
+  const map: Record<string, string> = {
+    Protection: 'Prot',
+    Restoration: 'Resto',
+    Retribution: 'Ret',
+    Discipline: 'Disc',
+    Assassination: 'Assass.',
+    Enhancement: 'Enh',
+    Elemental: 'Ele',
+    Destruction: 'Destro',
+    Affliction: 'Affli',
+    Demonology: 'Demo',
+    'Beast Mastery': 'BM',
+    Marksman: 'MM',
+    Survival: 'Surv',
+    Balance: 'Bal',
+    'Feral Tank': 'Feral T',
+    'Feral DPS': 'Feral',
+  }
+  return map[spec] || spec
+}
+
 export function RosterTemplatePanel({
   templates,
   isOfficer,
@@ -102,11 +133,9 @@ export function RosterTemplatePanel({
   const [expanded, setExpanded] = useState(true)
   const [activeSize, setActiveSize] = useState<RosterTemplateSize>('20')
 
-  // Drag-and-drop swap state
   const [dragIdx, setDragIdx] = useState<number | null>(null)
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
-  // Slot editor modal state
   const [modalOpen, setModalOpen] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [formOptions, setFormOptions] = useState<string[]>([])
@@ -221,7 +250,7 @@ export function RosterTemplatePanel({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Her raid 5&apos;er kişilik gruplar halinde gösterilir. Her kutucukta tek spec veya 2&apos;li / 3&apos;lü alternatif seçenekler (veya) tanımlanabilir.
+              Her raid 5&apos;er kişilik standart kutulardan oluşan gruplar halinde gösterilir. Çoklu opsiyonlar aynı satırda eşit bölünür.
             </p>
           </div>
           <ChevronDown
@@ -291,7 +320,7 @@ export function RosterTemplatePanel({
             </div>
             {isOfficer && (
               <span className="text-[11px] text-muted-foreground">
-                İpucu: Herhangi bir kutucuğa tıklayarak 1&apos;li / 2&apos;li / 3&apos;lü spec seçin; sürükleyip bırakarak gruplar arası yer değiştirin.
+                Kutucuğa tıklayarak 1&apos;li / 2&apos;li / 3&apos;lü spec seçin; sürükleyip bırakarak yer değiştirin.
               </span>
             )}
           </div>
@@ -341,15 +370,18 @@ export function RosterTemplatePanel({
                     </span>
                   </div>
 
-                  {/* 5 Individual Player Boxes */}
-                  <div className="flex flex-1 flex-col gap-1.5 p-2">
+                  {/* 5 Uniform Standard-Height Boxes (h-[52px] each) */}
+                  <div className="flex flex-col gap-1.5 p-2">
                     {groupSlots.map((slot, localIdx) => {
                       const globalIdx = groupIdx * 5 + localIdx
-                      const hasOptions = slot.options.length > 0
+                      const optCount = slot.options.length
+                      const hasOptions = optCount > 0
                       const rm = ROLE_META[slot.role] || ROLE_META.MELEE
                       const primaryColor = hasOptions ? getSpecColor(slot.options[0]) : '#64748b'
                       const isDragging = dragIdx === globalIdx
                       const isDragOver = dragOverIdx === globalIdx && dragIdx !== null && dragIdx !== globalIdx
+                      const visibleOpts = slot.options.slice(0, 3)
+                      const extraCount = Math.max(0, optCount - 3)
 
                       return (
                         <div
@@ -384,92 +416,137 @@ export function RosterTemplatePanel({
                           onClick={() => {
                             if (isOfficer && !busy) openEditSlotModal(globalIdx)
                           }}
+                          title={
+                            hasOptions
+                              ? `${slot.options.join(' veya ')}${slot.note ? ` — ${slot.note}` : ''}`
+                              : 'Boş Slot'
+                          }
                           className={cn(
-                            'group relative flex min-h-[52px] flex-col justify-center rounded-lg border px-2.5 py-1.5 transition',
+                            'group relative flex h-[54px] w-full items-stretch overflow-hidden rounded-lg border transition',
                             isOfficer && 'cursor-pointer',
                             hasOptions
-                              ? 'bg-[#0b1b2d]/95 hover:border-gold/50'
+                              ? 'bg-[#0b1b2d]/95 hover:border-gold/55'
                               : 'border-dashed border-border/60 bg-[#071422]/45 hover:border-neon/50 hover:bg-neon/[0.04]',
                             isDragging && 'scale-[0.98] opacity-40',
                             isDragOver && 'ring-2 ring-neon/80 border-neon bg-neon/10',
                           )}
                           style={
                             hasOptions && !isDragOver
-                              ? {
-                                  borderColor: `${primaryColor}45`,
-                                  boxShadow: `inset 2.5px 0 0 ${primaryColor}`,
-                                }
+                              ? { borderColor: `${primaryColor}45` }
                               : undefined
                           }
                         >
                           {hasOptions ? (
-                            <div className="flex items-start justify-between gap-1.5">
-                              <div className="min-w-0 flex-1 space-y-1">
-                                {slot.options.map((specLabel, optIdx) => (
-                                  <div key={specLabel} className="flex items-center gap-1.5">
-                                    {optIdx > 0 ? (
-                                      <span className="shrink-0 rounded bg-white/5 px-1 py-0.5 text-[9px] font-bold tracking-wider text-muted-foreground uppercase">
-                                        veya
-                                      </span>
-                                    ) : (
-                                      <span
-                                        className={cn(
-                                          'flex size-4 shrink-0 items-center justify-center rounded text-[9px] font-black',
-                                          rm.bg,
-                                          rm.text,
-                                        )}
-                                        title={rm.label}
-                                      >
-                                        {rm.short}
-                                      </span>
-                                    )}
-                                    <SpecMiniIcon specLabel={specLabel} size={16} />
-                                    <span
-                                      className="truncate text-[11px] font-bold leading-tight"
-                                      style={{ color: getSpecColor(specLabel) }}
-                                      title={specLabel}
-                                    >
-                                      {specLabel}
-                                    </span>
-                                  </div>
-                                ))}
-
-                                {slot.note && (
-                                  <p className="truncate pl-5 text-[10px] italic text-silver/70" title={slot.note}>
-                                    {slot.note}
-                                  </p>
+                            <>
+                              {/* Left Role Accent Strip */}
+                              <div
+                                className={cn(
+                                  'flex w-5 shrink-0 items-center justify-center border-r border-white/[0.06] text-[9px] font-black select-none',
+                                  rm.bg,
+                                  rm.text,
                                 )}
+                                title={rm.label}
+                              >
+                                {rm.short}
                               </div>
 
-                              {/* Officer quick drag / edit / clear icons */}
+                              {/* Single Spec vs Horizontal Equal Split (2-way / 3-way) */}
+                              {visibleOpts.length === 1 ? (
+                                <div className="flex min-w-0 flex-1 items-center gap-2 px-2.5">
+                                  <SpecMiniIcon specLabel={visibleOpts[0]} size={20} />
+                                  <div className="min-w-0 flex-1 leading-tight">
+                                    <p
+                                      className="truncate text-[11px] font-bold"
+                                      style={{ color: getSpecColor(visibleOpts[0]) }}
+                                    >
+                                      {visibleOpts[0]}
+                                    </p>
+                                    {slot.note && (
+                                      <p className="truncate text-[10px] italic text-silver/70">
+                                        {slot.note}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  className={cn(
+                                    'grid min-w-0 flex-1 divide-x divide-white/10',
+                                    visibleOpts.length === 2 ? 'grid-cols-2' : 'grid-cols-3',
+                                  )}
+                                >
+                                  {visibleOpts.map((specLabel, optIdx) => {
+                                    const { cls, spec } = parseClassAndSpec(specLabel)
+                                    const specColor = getSpecColor(specLabel)
+                                    const isTriple = visibleOpts.length >= 3
+                                    return (
+                                      <div
+                                        key={specLabel}
+                                        className="relative flex min-w-0 items-center gap-1.5 px-1.5"
+                                        style={{
+                                          background: `linear-gradient(180deg, ${specColor}12 0%, transparent 100%)`,
+                                        }}
+                                      >
+                                        <SpecMiniIcon specLabel={specLabel} size={isTriple ? 16 : 18} />
+                                        <div className="min-w-0 flex-1 leading-[1.15]">
+                                          <p
+                                            className={cn(
+                                              'truncate font-bold',
+                                              isTriple ? 'text-[10px]' : 'text-[11px]',
+                                            )}
+                                            style={{ color: specColor }}
+                                          >
+                                            {isTriple ? compactSpecName(spec) || cls : cls}
+                                          </p>
+                                          <p className="truncate text-[9px] text-silver/75">
+                                            {isTriple ? cls : compactSpecName(spec)}
+                                          </p>
+                                        </div>
+                                        {extraCount > 0 && optIdx === visibleOpts.length - 1 && (
+                                          <span className="shrink-0 rounded bg-gold/20 px-1 text-[9px] font-bold text-gold">
+                                            +{extraCount}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Optional subtle note badge when split */}
+                              {visibleOpts.length > 1 && slot.note && (
+                                <span
+                                  className="pointer-events-none absolute right-1 bottom-0.5 max-w-[90px] truncate rounded bg-[#06111e]/90 px-1 text-[8px] font-medium italic text-silver/75"
+                                >
+                                  {slot.note}
+                                </span>
+                              )}
+
+                              {/* Officer Hover Action Pill (never crowds or wraps box text) */}
                               {isOfficer && (
-                                <div className="flex shrink-0 items-center gap-0.5 opacity-60 transition group-hover:opacity-100">
+                                <div
+                                  className="absolute top-1 right-1 flex items-center gap-0.5 rounded-md border border-border/80 bg-[#06111e]/95 px-1 py-0.5 opacity-0 shadow-md backdrop-blur-sm transition group-hover:opacity-100"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <span
                                     className="cursor-grab p-0.5 text-muted-foreground hover:text-silver active:cursor-grabbing"
                                     title="Sürükleyip başka slotla yer değiştir"
-                                    onClick={(e) => e.stopPropagation()}
                                   >
                                     <GripVertical className="size-3" />
                                   </span>
                                   <button
                                     type="button"
                                     disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      openEditSlotModal(globalIdx)
-                                    }}
+                                    onClick={() => openEditSlotModal(globalIdx)}
                                     className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-white/10 hover:text-gold"
-                                    title="Slotu düzenle (1'li / 2'li / 3'lü opsiyon)"
+                                    title="Slotu düzenle"
                                   >
                                     <Pencil className="size-3" />
                                   </button>
                                   <button
                                     type="button"
                                     disabled={busy}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      void handleClearSlot(globalIdx)
-                                    }}
+                                    onClick={() => void handleClearSlot(globalIdx)}
                                     className="cursor-pointer rounded p-0.5 text-muted-foreground hover:bg-rose-500/15 hover:text-rose-300"
                                     title="Slotu boşalt"
                                   >
@@ -477,9 +554,9 @@ export function RosterTemplatePanel({
                                   </button>
                                 </div>
                               )}
-                            </div>
+                            </>
                           ) : (
-                            <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground/70">
+                            <div className="flex w-full items-center justify-between gap-2 px-3 text-[11px] text-muted-foreground/70">
                               <span className="flex items-center gap-1.5">
                                 <span className="font-mono text-[10px] text-muted-foreground/50">
                                   #{localIdx + 1}
@@ -500,7 +577,7 @@ export function RosterTemplatePanel({
         </div>
       )}
 
-      {/* Edit Single Player Box Modal (1 / 2 / 3+ Alternative Spec Options) */}
+      {/* Edit Single Player Box Modal */}
       <Modal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -513,7 +590,6 @@ export function RosterTemplatePanel({
         className="max-w-3xl"
       >
         <form onSubmit={handleSaveModal} className="space-y-4">
-          {/* Selected Options Preview */}
           <div className="rounded-xl border border-border/80 bg-[#071422] p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-bold tracking-wide text-silver uppercase">
@@ -531,7 +607,7 @@ export function RosterTemplatePanel({
             </div>
             {formOptions.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Aşağıdaki sınıf/spec ikonlarından 1, 2 veya 3+ seçenek tıklayın (boş bırakıp kaydederseniz slot açık kalır).
+                Aşağıdaki sınıf/spec ikonlarından 1, 2 veya 3 seçenek tıklayın (aynı satırda eşit bölünerek görünür).
               </p>
             ) : (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -565,7 +641,6 @@ export function RosterTemplatePanel({
             )}
           </div>
 
-          {/* WoW Class/Spec Icon Picker */}
           <div className="space-y-1.5">
             <SpecIconPicker
               selectedSpecs={formOptions}
@@ -573,7 +648,7 @@ export function RosterTemplatePanel({
               compact
             />
             <p className="text-[11px] text-muted-foreground">
-              Birden fazla ikona tıklayarak bu kutu için 2&apos;li veya 3&apos;lü alternatif opsiyon (veya) oluşturabilirsiniz.
+              Birden fazla ikona tıklayarak bu kutu için yan yana bölünmüş 2&apos;li veya 3&apos;lü alternatif opsiyon (veya) oluşturabilirsiniz.
             </p>
           </div>
 

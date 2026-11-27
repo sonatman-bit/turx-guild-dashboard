@@ -1,16 +1,15 @@
 'use client'
 
-import { Crown, Search, Star, Wrench, Shield, Swords, Cross, Target } from 'lucide-react'
+import { Crown, Lock, Search, Star, Wrench, Shield, Swords, Cross, Target, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ArmoryRankColorId } from '@/lib/armory-ranks'
 import { authHeaders } from '@/lib/client-session'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
 import { classIconUrl, type ArmorySnapshot } from '@/lib/wow-armory'
-import { useToast } from '../toast'
-import { useAuth, type GuildRank } from '../auth-provider' // Auth entegrasyonu
+import { useAuth, type GuildRank } from '../auth-provider'
 import { RosterSummarySection, type RosterSummaryStats } from '../roster-summary'
-import { Badge, Panel, PointsPill, RankPill, SectionHeader, inputClass } from '../ui'
+import { Badge, Panel, PanelTitle, PointsPill, RankPill, SectionHeader, inputClass } from '../ui'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
 
@@ -43,9 +42,10 @@ type ServerCharacter = StoredCharacter & {
 type ServerMember = {
   username: string
   role: GuildRank
-  profile?: { fullName?: string; showRealName?: boolean } | null
+  profile?: { fullName?: string; showRealName?: boolean; realNameHidden?: boolean } | null
   bnet?: {
     tag: string
+    hidden?: boolean
     connected: boolean
     online: boolean
     inGame?: boolean
@@ -65,7 +65,9 @@ interface RosterMemberRow {
   id: string
   username: string
   charName: string
+  mainCharName: string
   realName: string
+  realNameHidden: boolean
   level: number | null
   race: string
   wowClass: WowClass
@@ -78,6 +80,7 @@ interface RosterMemberRow {
   armoryRankColor?: ArmoryRankColorId
   bnet?: {
     tag: string
+    hidden?: boolean
     connected: boolean
     online: boolean
     inGame?: boolean
@@ -121,40 +124,45 @@ function isWowClass(value: string | undefined): value is WowClass {
 function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
   return accounts.flatMap((account) => {
     const chars = Array.isArray(account.characters) ? account.characters : []
-    const displayName = (account.profile?.fullName || '').trim()
-    return chars
-      .filter((character) => character.firstName?.trim() && character.lastName?.trim())
-      .map((character, index) => {
-        const wowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
-        return {
-          id: character.id || `${account.username}-${index}`,
-          username: account.username,
-          charName: `${character.firstName} ${character.lastName}`,
-          realName: displayName,
-          level: typeof character.armory?.level === 'number' ? character.armory.level : null,
-          race: character.race || '—',
-          wowClass,
-          spec: character.spec || '—',
-          offSpec: character.offSpec || 'Yok',
-          role: character.role || 'MELEE',
-          rank: account.role,
-          armoryRankId: character.armoryRankId ?? null,
-          armoryRankLabel: character.armoryRankLabel,
-          armoryRankColor: character.armoryRankColor,
-          bnet: account.bnet,
-          discord: account.discord,
-          type: character.isMain ? 'Main' : 'Alt',
-          professions: character.professions || ['Yok', 'Yok'],
-          attunements: {
-            onyxia: Boolean(character.attunements?.onyxia),
-            hyjal: Boolean(character.attunements?.hyjal),
-          },
-          armoryUrl: character.armory?.url || null,
-          avatarUrl: character.armory?.avatarUrl || character.armory?.renderUrl || null,
-          renderUrl: character.armory?.renderUrl || null,
-          classIconUrl: character.armory?.classIconUrl || classIconUrl(wowClass),
-        }
-      })
+    const validChars = chars.filter((c) => c.firstName?.trim() && c.lastName?.trim())
+    const mainChar = validChars.find((c) => c.isMain) || validChars[0]
+    const mainCharName = mainChar ? `${mainChar.firstName} ${mainChar.lastName}`.trim() : account.username
+    const realNameHidden = Boolean(account.profile?.realNameHidden || account.profile?.showRealName === false)
+    const displayName = realNameHidden ? '' : (account.profile?.fullName || '').trim()
+
+    return validChars.map((character, index) => {
+      const wowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
+      return {
+        id: character.id || `${account.username}-${index}`,
+        username: account.username,
+        charName: `${character.firstName} ${character.lastName}`,
+        mainCharName,
+        realName: displayName,
+        realNameHidden,
+        level: typeof character.armory?.level === 'number' ? character.armory.level : null,
+        race: character.race || '—',
+        wowClass,
+        spec: character.spec || '—',
+        offSpec: character.offSpec || 'Yok',
+        role: character.role || 'MELEE',
+        rank: account.role,
+        armoryRankId: character.armoryRankId ?? null,
+        armoryRankLabel: character.armoryRankLabel,
+        armoryRankColor: character.armoryRankColor,
+        bnet: account.bnet,
+        discord: account.discord,
+        type: character.isMain ? 'Main' : 'Alt',
+        professions: character.professions || ['Yok', 'Yok'],
+        attunements: {
+          onyxia: Boolean(character.attunements?.onyxia),
+          hyjal: Boolean(character.attunements?.hyjal),
+        },
+        armoryUrl: character.armory?.url || null,
+        avatarUrl: character.armory?.avatarUrl || character.armory?.renderUrl || null,
+        renderUrl: character.armory?.renderUrl || null,
+        classIconUrl: character.armory?.classIconUrl || classIconUrl(wowClass),
+      }
+    })
   })
 }
 
@@ -168,17 +176,23 @@ function RoleIcon({ role }: { role: ExtendedRole }) {
   }
 }
 
+function HiddenBadge({ label = 'Gizli' }: { label?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-border/60 bg-white/[0.03] px-1.5 py-0.5 text-[10px] font-medium italic text-muted-foreground">
+      <Lock className="size-2.5 text-muted-foreground/80" />
+      {label}
+    </span>
+  )
+}
+
 export function RosterView() {
-  const toast = useToast()
   const { user } = useAuth()
-  const currentUserRole = user?.role || 'Turx'
 
   const [query, setQuery] = useState('')
   const [cls, setCls] = useState<WowClass | 'all'>('all')
   const [role, setRole] = useState<string | 'all'>('all')
   const [rank, setRank] = useState<GuildRank | 'all'>('all')
   const [professionFilter, setProfessionFilter] = useState<string>('all')
-  const [hideAlts, setHideAlts] = useState(false)
 
   const [defaultMembers, setDefaultMembers] = useState<RosterMemberRow[]>([])
   const [pointsByUser, setPointsByUser] = useState<Map<string, number> | null>(null)
@@ -233,7 +247,7 @@ export function RosterView() {
     for (const m of mains) mainClasses[m.wowClass] = (mainClasses[m.wowClass] || 0) + 1
     for (const m of alts) altClasses[m.wowClass] = (altClasses[m.wowClass] || 0) + 1
     return {
-      totalPlayers: new Set(rosterMembers.map((m) => m.realName || m.username)).size,
+      totalPlayers: new Set(rosterMembers.map((m) => m.username)).size,
       totalCharacters: rosterMembers.length,
       mainCount: mains.length,
       altCount: alts.length,
@@ -247,38 +261,110 @@ export function RosterView() {
     }
   }, [rosterMembers])
 
-  const filtered = useMemo(() => {
+  const matchesFilters = (m: RosterMemberRow) => {
     const q = query.trim().toLocaleLowerCase('tr-TR')
-    return rosterMembers.filter((m) => {
-      const matchesQuery = !q || [m.charName, m.realName, m.wowClass, m.role, m.spec, m.offSpec].some((v) => v.toLocaleLowerCase('tr-TR').includes(q))
-      const matchesClass = cls === 'all' || m.wowClass === cls
-      const matchesRole = role === 'all' || m.role === role
-      const matchesRank = rank === 'all' || m.rank === rank
-      const matchesProf = professionFilter === 'all' || m.professions.includes(professionFilter)
-      const matchesAlt = !hideAlts || m.type === 'Main'
+    const matchesQuery =
+      !q ||
+      [m.charName, m.mainCharName, m.realName, m.wowClass, m.role, m.spec, m.offSpec, m.armoryRankLabel || m.rank].some(
+        (v) => v.toLocaleLowerCase('tr-TR').includes(q),
+      )
+    const matchesClass = cls === 'all' || m.wowClass === cls
+    const matchesRole = role === 'all' || m.role === role
+    const matchesRank = rank === 'all' || m.rank === rank
+    const matchesProf = professionFilter === 'all' || m.professions.includes(professionFilter)
+    return matchesQuery && matchesClass && matchesRole && matchesRank && matchesProf
+  }
 
-      return matchesQuery && matchesClass && matchesRole && matchesRank && matchesProf && matchesAlt
-    })
-  }, [query, cls, role, rank, professionFilter, hideAlts, rosterMembers])
+  const allMains = useMemo(() => rosterMembers.filter((m) => m.type === 'Main'), [rosterMembers])
+  const allAlts = useMemo(() => rosterMembers.filter((m) => m.type === 'Alt'), [rosterMembers])
+  const filteredMains = useMemo(
+    () => allMains.filter(matchesFilters),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allMains, query, cls, role, rank, professionFilter],
+  )
+  const filteredAlts = useMemo(
+    () => allAlts.filter(matchesFilters),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allAlts, query, cls, role, rank, professionFilter],
+  )
+
+  const renderBnetCell = (m: RosterMemberRow) => {
+    if (m.bnet?.hidden) {
+      return <HiddenBadge label="Gizli" />
+    }
+    if (m.bnet?.connected || m.bnet?.inGame) {
+      return (
+        <div
+          className="flex flex-col gap-0.5"
+          title={
+            m.bnet.inGame
+              ? `Oyunda: ${m.bnet.gameTitle || 'World of Warcraft: Forever'}`
+              : m.bnet.online
+                ? 'Battle.net Çevrimiçi'
+                : 'Battle.net Çevrimdışı'
+          }
+        >
+          <div className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'size-2.5 rounded-full shrink-0 transition-colors',
+                m.bnet.inGame
+                  ? 'bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.9)] animate-pulse'
+                  : m.bnet.online
+                    ? 'bg-emerald-400 shadow-[0_0_6px_rgb(52,211,153/0.8)]'
+                    : 'bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]',
+              )}
+            />
+            <span
+              className={cn(
+                'font-mono text-xs truncate max-w-[125px]',
+                m.bnet.inGame
+                  ? 'text-white font-semibold'
+                  : m.bnet.online
+                    ? 'text-silver font-medium'
+                    : 'text-muted-foreground/75',
+              )}
+            >
+              {m.bnet.tag || m.charName.split(' ')[0]}
+            </span>
+          </div>
+          {m.bnet.inGame ? (
+            <div className="flex items-center gap-1 pl-4">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                Oyunda
+              </span>
+              {m.bnet.gameTitle && !m.bnet.gameTitle.toLowerCase().includes('world of warcraft') ? (
+                <span className="text-[10px] text-muted-foreground truncate max-w-[80px]" title={m.bnet.gameTitle}>
+                  {m.bnet.gameTitle}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )
+    }
+    return <span className="text-muted-foreground/50 text-xs">—</span>
+  }
 
   return (
-    <div className="flex flex-col gap-8 pb-10">
+    <div className="flex flex-col gap-6 pb-10">
       <SectionHeader
         eyebrow="Phase 1 Hazırlıkları"
         title="Guild Kadrosu & Roster Yönetimi"
-        description="WoW: Forever Alliance lonca kadrosu, sınıf dağılımı ve anlık Battle.net / Discord durumu"
+        description="WoW: Forever Alliance lonca kadrosu — Main karakterler ve Alt karakterler ayrı listeler halinde takip edilir"
       />
 
       <RosterSummarySection stats={summaryStats} />
 
-      <Panel className="mt-6 p-0">
-        <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center justify-between">
+      {/* Shared Filters */}
+      <Panel className="p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center justify-between">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Karakter, Gerçek İsim, Sınıf, Spec ara..."
+              placeholder="Karakter, Gerçek İsim, Sınıf, Spec, Rütbe ara..."
               className={cn(inputClass, 'pl-9')}
             />
           </div>
@@ -316,33 +402,34 @@ export function RosterView() {
             </select>
           </div>
         </div>
+      </Panel>
 
-        <div className="flex items-center justify-between px-4 py-2.5 bg-card/40 border-b border-border">
-          <span className="text-xs text-muted-foreground">Tablo Görünüm Ayarları</span>
-          <button
-            type="button"
-            onClick={() => setHideAlts(!hideAlts)}
-            className={cn(
-              "relative flex items-center h-7 w-36 rounded-full p-1 transition-colors duration-300 focus:outline-none cursor-pointer border text-xs font-semibold",
-              hideAlts ? "bg-gold/20 border-gold/60 text-gold shadow-[0_0_10px_rgb(212,175,55/0.2)]" : "bg-background border-border text-muted-foreground"
-            )}
-          >
-            <span className="w-full text-center">{hideAlts ? '✨ Sadece Mainler' : '👥 Tüm Karakterler'}</span>
-          </button>
+      {/* PANEL 1: MAIN KARAKTERLER */}
+      <Panel className="border-gold/30 p-0 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-gradient-to-r from-gold/[0.07] via-card/60 to-transparent px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Star className="size-4 fill-gold text-gold" />
+            <h2 className="font-display text-base font-bold text-gold">
+              Main Karakterler ({filteredMains.length})
+            </h2>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Ana raid ve devam puanı takibine dahil olan karakterler
+          </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-sm">
-            <caption className="sr-only">Lonca üye listesi</caption>
+            <caption className="sr-only">Main karakterler listesi</caption>
             <thead className="text-xs tracking-wider text-muted-foreground uppercase">
               <tr className="border-b border-border">
-                {['Karakter / Oyuncu', 'Level', 'Race', 'Class / Spec / Rol', 'Guild Rank', 'Battle.net', 'Discord', 'Main/Alt', 'Meslekler'].map((h) => (
+                {['Main Karakter / Oyuncu', 'Level', 'Race', 'Class / Spec / Rol', 'Guild Rank', 'Battle.net', 'Discord', 'Attunement', 'Meslekler'].map((h) => (
                   <th key={h} scope="col" className="px-4 py-3 font-semibold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((m) => (
+              {filteredMains.map((m) => (
                 <tr key={m.id} className="transition hover:bg-neon/[0.03]">
                   <td className="px-4 py-3">
                     <span className="flex items-center gap-2.5">
@@ -364,7 +451,7 @@ export function RosterView() {
                         />
                       )}
                       <span className="min-w-0">
-                        <span className="flex items-center gap-1.5 font-bold" style={{ color: CLASS_COLORS[m.wowClass] }}>
+                        <span className="flex flex-wrap items-center gap-1.5 font-bold" style={{ color: CLASS_COLORS[m.wowClass] }}>
                           {m.rank === 'Guild Master' && <Crown className="size-3.5 text-gold shrink-0" />}
                           {m.armoryUrl ? (
                             <a
@@ -384,13 +471,17 @@ export function RosterView() {
                             color={m.armoryRankColor}
                             armoryRankId={m.armoryRankId}
                           />
-                          {pointsByUser && m.type === 'Main' && (
+                          {pointsByUser && (
                             <PointsPill points={pointsByUser.get(m.username.toLowerCase()) ?? 0} />
                           )}
                         </span>
-                        {m.realName ? (
-                          <span className="block text-xs text-silver font-medium">{m.realName}</span>
-                        ) : null}
+                        <span className="mt-0.5 block">
+                          {m.realNameHidden ? (
+                            <HiddenBadge label="İsim Gizli" />
+                          ) : m.realName ? (
+                            <span className="text-xs text-silver font-medium">{m.realName}</span>
+                          ) : null}
+                        </span>
                       </span>
                     </span>
                   </td>
@@ -426,84 +517,32 @@ export function RosterView() {
                       <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    {m.bnet?.connected || m.bnet?.inGame ? (
-                      <div
-                        className="flex flex-col gap-0.5"
-                        title={
-                          m.bnet.inGame
-                            ? `Oyunda: ${m.bnet.gameTitle || 'World of Warcraft: Forever'}`
-                            : m.bnet.online
-                              ? 'Battle.net Çevrimiçi'
-                              : 'Battle.net Çevrimdışı'
-                        }
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={cn(
-                              "size-2.5 rounded-full shrink-0 transition-colors",
-                              m.bnet.inGame
-                                ? "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.9)] animate-pulse"
-                                : m.bnet.online
-                                  ? "bg-emerald-400 shadow-[0_0_6px_rgb(52,211,153/0.8)]"
-                                  : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
-                            )}
-                          />
-                          <span
-                            className={cn(
-                              "font-mono text-xs truncate max-w-[125px]",
-                              m.bnet.inGame
-                                ? "text-white font-semibold"
-                                : m.bnet.online
-                                  ? "text-silver font-medium"
-                                  : "text-muted-foreground/75"
-                            )}
-                          >
-                            {m.bnet.tag || m.charName.split(' ')[0]}
-                          </span>
-                        </div>
-                        {m.bnet.inGame ? (
-                          <div className="flex items-center gap-1 pl-4">
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                              Oyunda
-                            </span>
-                            {m.bnet.gameTitle && !m.bnet.gameTitle.toLowerCase().includes('world of warcraft') ? (
-                              <span className="text-[10px] text-muted-foreground truncate max-w-[80px]" title={m.bnet.gameTitle}>
-                                {m.bnet.gameTitle}
-                              </span>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground/50 text-xs">—</span>
-                    )}
-                  </td>
+                  <td className="px-4 py-3">{renderBnetCell(m)}</td>
                   <td className="px-4 py-3">
                     {m.discord?.connected ? (
                       <div
                         className="flex flex-col gap-0.5"
                         title={
                           m.discord.online
-                            ? (m.discord.status === 'idle'
-                                ? 'Discord Boşta'
-                                : m.discord.status === 'dnd'
-                                  ? 'Discord Rahatsız Etmeyin'
-                                  : 'Discord Çevrimiçi')
+                            ? m.discord.status === 'idle'
+                              ? 'Discord Boşta'
+                              : m.discord.status === 'dnd'
+                                ? 'Discord Rahatsız Etmeyin'
+                                : 'Discord Çevrimiçi'
                             : 'Discord Çevrimdışı'
                         }
                       >
                         <div className="flex items-center gap-1.5">
                           <span
                             className={cn(
-                              "size-2.5 rounded-full shrink-0 transition-colors",
+                              'size-2.5 rounded-full shrink-0 transition-colors',
                               m.discord.online
-                                ? (m.discord.status === 'idle'
-                                    ? "bg-amber-400 shadow-[0_0_8px_rgb(251,191,36/0.8)]"
-                                    : m.discord.status === 'dnd'
-                                      ? "bg-rose-400 shadow-[0_0_8px_rgb(251,113,133/0.8)]"
-                                      : "bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]")
-                                : "bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]"
+                                ? m.discord.status === 'idle'
+                                  ? 'bg-amber-400 shadow-[0_0_8px_rgb(251,191,36/0.8)]'
+                                  : m.discord.status === 'dnd'
+                                    ? 'bg-rose-400 shadow-[0_0_8px_rgb(251,113,133/0.8)]'
+                                    : 'bg-emerald-400 shadow-[0_0_8px_rgb(52,211,153/0.8)]'
+                                : 'bg-red-500/80 shadow-[0_0_6px_rgb(239,68,68/0.5)]',
                             )}
                           />
                           <span className="text-xs text-silver font-medium truncate max-w-[125px]">
@@ -521,10 +560,17 @@ export function RosterView() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge className={m.type === 'Main' ? 'border-gold/40 text-gold bg-gold/10' : 'border-border text-silver bg-muted/30'}>
-                      {m.type === 'Main' && <Star className="size-3 fill-gold mr-1 inline" />}
-                      {m.type}
-                    </Badge>
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold',
+                        m.attunements.onyxia
+                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                          : 'border-border bg-white/[0.02] text-muted-foreground',
+                      )}
+                      title="Onyxia's Lair (Drakefire Amulet)"
+                    >
+                      Onyxia {m.attunements.onyxia ? '✓' : '—'}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-silver">
                     <span className="flex items-center gap-1">
@@ -533,12 +579,12 @@ export function RosterView() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {filteredMains.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
-                    {rosterMembers.length === 0
-                      ? 'Henüz kayıtlı karakter yok. Üyeler profilini doldurunca burada görünür.'
-                      : 'Aramanızı eşleşen karakter bulunamadı.'}
+                    {allMains.length === 0
+                      ? 'Henüz kayıtlı Main karakter yok. Üyeler profilini doldurunca burada görünür.'
+                      : 'Aramanızla eşleşen Main karakter bulunamadı.'}
                   </td>
                 </tr>
               )}
@@ -546,8 +592,141 @@ export function RosterView() {
           </table>
         </div>
         <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          {filtered.length} / {rosterMembers.length} karakter gösteriliyor
-          {' · '}Level ve portre Forever Armory’den gelir (karakter oyundan çıkınca güncellenir).
+          {filteredMains.length} / {allMains.length} Main karakter gösteriliyor
+          {' · '}Level, rütbe ve portre WoW Forever Armory&apos;den otomatik çekilir.
+        </p>
+      </Panel>
+
+      {/* PANEL 2: ALT KARAKTERLER (AYRI LİSTE) */}
+      <Panel className="border-purple-500/30 p-0 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-gradient-to-r from-purple-500/[0.08] via-card/60 to-transparent px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Users className="size-4 text-purple-300" />
+            <h2 className="font-display text-base font-bold text-purple-200">
+              Alt Karakterler ({filteredAlts.length})
+            </h2>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            Üyelerin yedek / alt karakterleri Main listeden ayrı olarak burada listelenir
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <caption className="sr-only">Alt karakterler listesi</caption>
+            <thead className="text-xs tracking-wider text-muted-foreground uppercase">
+              <tr className="border-b border-border">
+                {['Alt Karakter', 'Main Karakter / Oyuncu', 'Level', 'Race', 'Class / Spec / Rol', 'Guild Rank', 'Battle.net', 'Meslekler'].map((h) => (
+                  <th key={h} scope="col" className="px-4 py-3 font-semibold">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredAlts.map((m) => (
+                <tr key={m.id} className="transition hover:bg-purple-500/[0.04]">
+                  <td className="px-4 py-3">
+                    <span className="flex items-center gap-2.5">
+                      {m.avatarUrl ? (
+                        <img
+                          src={m.avatarUrl}
+                          alt={`${m.charName} portresi`}
+                          width={36}
+                          height={36}
+                          className="size-9 shrink-0 rounded-md border border-border object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={m.classIconUrl}
+                          alt=""
+                          width={36}
+                          height={36}
+                          className="size-9 shrink-0 rounded-md border border-border"
+                        />
+                      )}
+                      <span className="flex flex-wrap items-center gap-1.5 font-bold" style={{ color: CLASS_COLORS[m.wowClass] }}>
+                        {m.armoryUrl ? (
+                          <a
+                            href={m.armoryUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline underline-offset-2"
+                          >
+                            {m.charName}
+                          </a>
+                        ) : (
+                          m.charName
+                        )}
+                        <RankPill
+                          label={m.armoryRankLabel || m.rank}
+                          color={m.armoryRankColor}
+                          armoryRankId={m.armoryRankId}
+                        />
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="block text-xs font-semibold text-gold">{m.mainCharName}</span>
+                    {m.realNameHidden ? (
+                      <span className="mt-0.5 inline-block">
+                        <HiddenBadge label="İsim Gizli" />
+                      </span>
+                    ) : m.realName ? (
+                      <span className="block text-[11px] text-muted-foreground">{m.realName}</span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-muted-foreground">
+                    {m.level == null ? '—' : `Level ${m.level}`}
+                  </td>
+                  <td className="px-4 py-3 text-silver">{m.race}</td>
+                  <td className="px-4 py-3">
+                    <span className="flex items-center gap-1.5 font-semibold" style={{ color: CLASS_COLORS[m.wowClass] }}>
+                      <img
+                        src={m.classIconUrl}
+                        alt=""
+                        width={18}
+                        height={18}
+                        className="size-[18px] shrink-0 rounded-sm border border-black/40"
+                      />
+                      {m.wowClass} ({m.spec})
+                    </span>
+                    <span className="block text-xs font-semibold mt-0.5">
+                      <RoleIcon role={m.role} /> <span className="text-silver">{m.role}</span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {m.armoryRankLabel ? (
+                      <RankPill
+                        label={m.armoryRankLabel}
+                        color={m.armoryRankColor}
+                        armoryRankId={m.armoryRankId}
+                        className="px-2 py-1 text-xs"
+                      />
+                    ) : (
+                      <Badge className={RANK_STYLES[m.rank]}>{m.rank}</Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">{renderBnetCell(m)}</td>
+                  <td className="px-4 py-3 text-xs text-silver">
+                    <span className="flex items-center gap-1">
+                      <Wrench className="size-3 text-muted-foreground" /> {m.professions.join(', ')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filteredAlts.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-xs text-muted-foreground">
+                    {allAlts.length === 0
+                      ? 'Henüz kayıtlı Alt karakter bulunmuyor.'
+                      : 'Aramanızla eşleşen Alt karakter bulunamadı.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          {filteredAlts.length} / {allAlts.length} Alt karakter gösteriliyor
         </p>
       </Panel>
     </div>

@@ -62,6 +62,7 @@ export async function GET(request: Request) {
     const kickLogin = typeof stored.kickLogin === 'string' ? stored.kickLogin : ''
     const youtubeHandle = typeof stored.youtubeHandle === 'string' ? stored.youtubeHandle : ''
     const showRealNameInRoster = stored.showRealNameInRoster !== false
+    const showBnetInRoster = stored.showBnetInRoster !== false
     const skipRaidsForNow = stored.skipRaidsForNow === true
     const profile = {
       ...stored,
@@ -74,6 +75,7 @@ export async function GET(request: Request) {
           availability: normalizeAvailability(stored.availability),
         }),
       showRealNameInRoster,
+      showBnetInRoster,
       discordConnected: links.discord.connected || Boolean(storedTag),
       discordTag: links.discord.username || storedTag,
       bnetConnected: links.bnet.connected || Boolean(storedBnet),
@@ -170,6 +172,10 @@ export async function PUT(request: Request) {
         ? profile.showRealNameInRoster
         : prevProfile.showRealNameInRoster !== false
       profile.showRealNameInRoster = showRealName
+      const showBnet = typeof profile.showBnetInRoster === 'boolean'
+        ? profile.showBnetInRoster
+        : prevProfile.showBnetInRoster !== false
+      profile.showBnetInRoster = showBnet
 
       // Keep links in sync with profile bnet / discord
       const links = { ...(found.links || {}) }

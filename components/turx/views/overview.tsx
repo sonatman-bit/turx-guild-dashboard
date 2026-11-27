@@ -1,12 +1,16 @@
 'use client'
 
-import { CalendarClock, CheckCircle2, Megaphone, Radio, Swords, Trophy } from 'lucide-react'
+import { CalendarClock, CheckCircle2, Minus, Plus, Radio, RefreshCw, ShieldCheck, Swords, Trophy } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { authHeaders, getSessionToken } from '@/lib/client-session'
-import { ANNOUNCEMENTS, PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
+import { authHeaders } from '@/lib/client-session'
+import { PHASES, RAID_DATE, RAIDS } from '@/lib/guild-data'
 import type { StreamPlatform, StreamRadarCard } from '@/lib/account-links'
+import { defaultRaidProgressEntries, type GuildProgressTrackerState } from '@/lib/progress-tracker'
+import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
+import { useAuth } from '../auth-provider'
 import type { TabId } from '../navigation'
+import { useToast } from '../toast'
 import { Badge, GhostButton, Panel, PanelTitle } from '../ui'
 import { HeroLanding } from '../hero-landing'
 
@@ -33,37 +37,40 @@ function Roadmap() {
   const [selected, setSelected] = useState(0)
   const p = PHASES[selected]
   return (
-    <Panel aria-labelledby="roadmap-title">
-      <PanelTitle icon={CalendarClock}>
-        <span id="roadmap-title">WoW: Forever Phase Roadmap</span>
-      </PanelTitle>
-      <div className="overflow-x-auto pb-2">
-        <ol className="relative flex min-w-[560px] justify-between">
-          <span className="absolute top-4 right-6 left-6 h-px bg-gradient-to-r from-neon via-gold/60 to-border" aria-hidden />
-          {PHASES.map((ph, i) => (
-            <li key={ph.phase} className="relative flex flex-1 flex-col items-center">
-              <button
-                onClick={() => setSelected(i)}
-                aria-pressed={selected === i}
-                className="flex flex-col items-center gap-2 rounded-lg p-1 focus-visible:outline-2 focus-visible:outline-neon"
-              >
-                <span
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-full border-2 text-xs font-bold transition',
-                    ph.status === 'next' ? 'border-neon bg-neon/20 text-neon shadow-[0_0_16px_#00f2fe]' : 'border-border bg-card text-muted-foreground',
-                    selected === i && 'scale-110 border-gold text-gold',
-                  )}
+    <Panel aria-labelledby="roadmap-title" className="flex h-full flex-col justify-between">
+      <div>
+        <PanelTitle icon={CalendarClock}>
+          <span id="roadmap-title">WoW: Forever Phase Roadmap</span>
+        </PanelTitle>
+        <div className="overflow-x-auto pb-2">
+          <ol className="relative flex min-w-[560px] justify-between">
+            <span className="absolute top-4 right-6 left-6 h-px bg-gradient-to-r from-neon via-gold/60 to-border" aria-hidden />
+            {PHASES.map((ph, i) => (
+              <li key={ph.phase} className="relative flex flex-1 flex-col items-center">
+                <button
+                  onClick={() => setSelected(i)}
+                  aria-pressed={selected === i}
+                  className="flex cursor-pointer flex-col items-center gap-2 rounded-lg p-1 focus-visible:outline-2 focus-visible:outline-neon"
                 >
-                  {i + 1}
-                </span>
-                <span className={cn('text-xs font-semibold', selected === i ? 'text-gold' : 'text-silver')}>{ph.phase}</span>
-                <span className="text-[11px] text-muted-foreground">{ph.date}</span>
-              </button>
-            </li>
-          ))}
-        </ol>
+                  <span
+                    className={cn(
+                      'flex size-8 items-center justify-center rounded-full border-2 text-xs font-bold transition',
+                      ph.status === 'next' ? 'border-neon bg-neon/20 text-neon shadow-[0_0_16px_#00f2fe]' : 'border-border bg-card text-muted-foreground',
+                      selected === i && 'scale-110 border-gold text-gold',
+                    )}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className={cn('text-xs font-semibold', selected === i ? 'text-gold' : 'text-silver')}>{ph.phase}</span>
+                  <span className="text-[11px] text-muted-foreground">{ph.date}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
-      <div className="mt-3 rounded-lg border border-border bg-[#071422] p-4">
+
+      <div className="mt-4 rounded-lg border border-border bg-[#071422] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-display font-bold text-gold">
             {p.phase}: {p.title}
@@ -84,51 +91,222 @@ function Roadmap() {
   )
 }
 
-const PROGRESS = [
-  { raid: 'Barrow Deeps', bosses: 6, killed: 0 },
-  { raid: 'Hyjal Summit', bosses: 5, killed: 0 },
-  { raid: "Onyxia's Lair", bosses: 1, killed: 0 },
-]
-
-const READINESS = [
-  { label: 'Level 60 Raider', value: 0, total: 40 },
-  { label: 'Onyxia Attunement', value: 0, total: 25 },
-  { label: 'Fire Resistance Set', value: 0, total: 25 },
-]
-
 function ProgressTracker() {
+  const { user } = useAuth()
+  const toast = useToast()
+  const isStaff = canAccessAdminPanel(user?.role)
+  const [syncing, setSyncing] = useState(false)
+  const [progress, setProgress] = useState<GuildProgressTrackerState>({
+    lastSyncedAt: '',
+    source: 'live',
+    scheduleLabel: 'Her Çarşamba 05:00 (TR)',
+    raids: defaultRaidProgressEntries(),
+    level60Count: 0,
+    level60Target: 40,
+    onyxiaAttunedCount: 0,
+    onyxiaAttunedTarget: 40,
+    totalArmoryMembers: 0,
+    armoryDetectedOnyxiaCount: 0,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/progress', { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) return
+        const json = (await res.json().catch(() => ({}))) as { progress?: GuildProgressTrackerState }
+        if (!cancelled && json.progress) {
+          setProgress(json.progress)
+        }
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleManualSync = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/progress', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action: 'sync' }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { progress?: GuildProgressTrackerState; error?: string }
+      if (!res.ok || !json.progress) {
+        toast({ title: 'Senkronize Edilemedi', description: json.error || 'İşlem başarısız.' })
+        return
+      }
+      setProgress(json.progress)
+      toast({
+        title: 'Progress Güncellendi',
+        description: `WoW Armory'den ${json.progress.level60Count} Lv60 ve ${json.progress.onyxiaAttunedCount} Onyxia Attunement güncellendi.`,
+      })
+    } catch {
+      toast({ title: 'Bağlantı Hatası', description: 'Senkronizasyon başarısız oldu.' })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleAdjustKills = async (raidId: string, nextKilled: number) => {
+    setSyncing(true)
+    try {
+      const res = await fetch('/api/progress', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ action: 'update_kills', raidId, killed: nextKilled }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { progress?: GuildProgressTrackerState; error?: string }
+      if (res.ok && json.progress) {
+        setProgress(json.progress)
+      }
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const readiness = [
+    {
+      label: 'Level 60 Raider (WoW Armory)',
+      value: progress.level60Count,
+      total: progress.level60Target || 40,
+    },
+    {
+      label: "Onyxia's Lair Attunement (Drakefire Amulet)",
+      value: progress.onyxiaAttunedCount,
+      total: progress.onyxiaAttunedTarget || 40,
+    },
+  ]
+
   return (
-    <Panel>
-      <PanelTitle icon={Trophy}>TURX Progress Tracker</PanelTitle>
-      <ul className="flex flex-col gap-3">
-        {PROGRESS.map((r) => (
-          <li key={r.raid} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-[#071422] px-3 py-2.5">
-            <span className="text-sm font-medium">{r.raid}</span>
-            <span className="font-display text-sm font-bold text-gold tabular-nums">
-              {r.killed}/{r.bosses} <span className="text-xs text-muted-foreground">Normal</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-5 mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">Launch Hazırlığı</p>
-      <ul className="flex flex-col gap-3">
-        {READINESS.map((r) => {
-          const pct = Math.round((r.value / r.total) * 100)
-          return (
-            <li key={r.label}>
-              <div className="mb-1 flex justify-between text-xs">
-                <span className="text-silver">{r.label}</span>
-                <span className="text-neon tabular-nums">
-                  {r.value}/{r.total}
+    <Panel className="flex h-full flex-col justify-between">
+      <div>
+        <PanelTitle
+          icon={Trophy}
+          action={
+            isStaff ? (
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void handleManualSync()}
+                className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neon/35 bg-neon/10 px-2 py-1 text-[10px] font-semibold text-neon transition hover:bg-neon/20 disabled:opacity-50"
+                title="WoW Armory'den Lv60 ve Attunement verilerini şimdi güncelle"
+              >
+                <RefreshCw className={cn('size-3', syncing && 'animate-spin')} />
+                Güncelle
+              </button>
+            ) : (
+              <Badge className="border-neon/30 bg-neon/10 text-[10px] text-neon">Haftalık Oto-Sync</Badge>
+            )
+          }
+        >
+          TURX Progress Tracker
+        </PanelTitle>
+
+        <ul className="flex flex-col gap-2.5">
+          {progress.raids.map((r) => (
+            <li
+              key={r.raidId}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-[#071422] px-3 py-2.5"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">{r.raidName}</span>
+                  <span className="text-[10px] text-muted-foreground">{r.size}-Man</span>
+                </div>
+                <span
+                  className={cn(
+                    'mt-0.5 inline-flex items-center gap-1 text-[10px]',
+                    r.attunementRequired ? 'text-amber-300' : 'text-emerald-400/80',
+                  )}
+                >
+                  <ShieldCheck className="size-3" />
+                  {r.attunementLabel}
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label={r.label}>
-                <div className="h-full rounded-full bg-gradient-to-r from-azure to-neon" style={{ width: `${pct}%` }} />
+
+              <div className="flex items-center gap-1.5">
+                {isStaff && (
+                  <button
+                    type="button"
+                    disabled={syncing || r.killed <= 0}
+                    onClick={() => void handleAdjustKills(r.raidId, r.killed - 1)}
+                    className="cursor-pointer rounded border border-border/70 p-0.5 text-muted-foreground hover:border-gold/50 hover:text-gold disabled:opacity-30"
+                    title="Boss sayısını azalt"
+                  >
+                    <Minus className="size-3" />
+                  </button>
+                )}
+                <span className="font-display text-sm font-bold text-gold tabular-nums">
+                  {r.killed}/{r.bosses} <span className="text-xs text-muted-foreground">Boss</span>
+                </span>
+                {isStaff && (
+                  <button
+                    type="button"
+                    disabled={syncing || r.killed >= r.bosses}
+                    onClick={() => void handleAdjustKills(r.raidId, r.killed + 1)}
+                    className="cursor-pointer rounded border border-border/70 p-0.5 text-muted-foreground hover:border-gold/50 hover:text-gold disabled:opacity-30"
+                    title="Boss sayısını artır"
+                  >
+                    <Plus className="size-3" />
+                  </button>
+                )}
               </div>
             </li>
-          )
-        })}
-      </ul>
+          ))}
+        </ul>
+
+        <p className="mt-5 mb-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+          Phase 1 Hazırlık &amp; Attunement
+        </p>
+        <ul className="flex flex-col gap-3">
+          {readiness.map((r) => {
+            const pct = Math.min(100, Math.round((r.value / Math.max(1, r.total)) * 100))
+            return (
+              <li key={r.label}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span className="text-silver">{r.label}</span>
+                  <span className="font-mono font-semibold text-neon tabular-nums">
+                    {r.value}/{r.total}
+                  </span>
+                </div>
+                <div
+                  className="h-1.5 rounded-full bg-muted"
+                  role="progressbar"
+                  aria-valuenow={pct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={r.label}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-azure to-neon transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+
+      <p className="mt-4 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
+        Her <strong>Çarşamba 05:00 (TR)</strong> otomatik güncellenir
+        {progress.lastSyncedAt ? (
+          <>
+            {' · '}Son kontrol:{' '}
+            {new Date(progress.lastSyncedAt).toLocaleDateString('tr-TR', {
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </>
+        ) : null}
+      </p>
     </Panel>
   )
 }
@@ -142,21 +320,23 @@ function NextRaid({
 }) {
   const c = useCountdown(RAID_DATE)
   return (
-    <Panel className="flex flex-col">
-      <PanelTitle icon={Swords}>Sıradaki Raid</PanelTitle>
-      <p className="font-display text-xl font-bold text-gold">Phase 1 Açılışı</p>
-      <p className="text-sm text-muted-foreground">9 Aralık 2026 · 21:00 (TR)</p>
-      <p className="mt-4 font-display text-3xl font-black text-neon tabular-nums text-glow-cyan">
-        {c ? `${c.days}g ${pad(c.hours)}:${pad(c.mins)}:${pad(c.secs)}` : '--g --:--:--'}
-      </p>
-      <ul className="mt-4 flex flex-col gap-1.5 text-sm">
-        {RAIDS.map((r) => (
-          <li key={r.id} className="flex justify-between text-silver">
-            <span>{r.name}</span>
-            <span className="text-muted-foreground">{r.size}-Man</span>
-          </li>
-        ))}
-      </ul>
+    <Panel className="flex h-full flex-col justify-between">
+      <div>
+        <PanelTitle icon={Swords}>Sıradaki Raid</PanelTitle>
+        <p className="font-display text-xl font-bold text-gold">Phase 1 Açılışı</p>
+        <p className="text-sm text-muted-foreground">9 Aralık 2026 · 21:00 (TR)</p>
+        <p className="mt-4 font-display text-3xl font-black text-neon tabular-nums text-glow-cyan">
+          {c ? `${c.days}g ${pad(c.hours)}:${pad(c.mins)}:${pad(c.secs)}` : '--g --:--:--'}
+        </p>
+        <ul className="mt-4 flex flex-col gap-1.5 text-sm">
+          {RAIDS.map((r) => (
+            <li key={r.id} className="flex justify-between text-silver">
+              <span>{r.name}</span>
+              <span className="text-muted-foreground">{r.size}-Man</span>
+            </li>
+          ))}
+        </ul>
+      </div>
       {canOpenRaidSignup && (
         <GhostButton className="mt-6 w-full cursor-pointer" onClick={() => onNavigate('raid-signup')}>
           Raid Kaydına Git
@@ -204,7 +384,7 @@ function StreamRadar() {
   }, [])
 
   return (
-    <Panel>
+    <Panel className="flex h-full flex-col">
       <PanelTitle
         icon={Radio}
         action={
@@ -217,7 +397,7 @@ function StreamRadar() {
       >
         Stream Radar
       </PanelTitle>
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-1 flex-col gap-2">
         {channels.length === 0 && (
           <li className="rounded-lg border border-border bg-[#071422] p-3 text-sm text-muted-foreground">
             Kayıtlı kanal yok. Profiline Twitch, Kick veya YouTube kanal adını yaz.
@@ -277,31 +457,6 @@ function StreamRadar() {
   )
 }
 
-function DiscordFeed() {
-  return (
-    <Panel>
-      <PanelTitle icon={Megaphone} action={<Badge className="border-[#5865f2]/50 bg-[#5865f2]/15 text-[#a5adff]">#duyurular</Badge>}>
-        Discord Duyuruları
-      </PanelTitle>
-      <ul className="flex flex-col gap-3">
-        {ANNOUNCEMENTS.length === 0 && (
-          <li className="text-sm text-muted-foreground">Henüz duyuru yok.</li>
-        )}
-        {ANNOUNCEMENTS.map((a) => (
-          <li key={a.text} className="border-l-2 border-gold/50 pl-3">
-            <p className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-semibold text-gold">{a.author}</span>
-              <span className="text-[11px] text-neon">{a.rank}</span>
-              <span className="text-[11px] text-muted-foreground">· {a.time}</span>
-            </p>
-            <p className="mt-1 text-sm leading-relaxed text-pretty text-silver/90">{a.text}</p>
-          </li>
-        ))}
-      </ul>
-    </Panel>
-  )
-}
-
 export function OverviewView({
   onNavigate,
   canOpenRaidSignup = false,
@@ -312,16 +467,21 @@ export function OverviewView({
   return (
     <div className="flex flex-col gap-6">
       <HeroLanding onNavigate={onNavigate} />
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2">
-          <Roadmap />
+      <div className="grid items-stretch gap-6 xl:grid-cols-3">
+        <div className="flex xl:col-span-2">
+          <div className="w-full">
+            <Roadmap />
+          </div>
         </div>
-        <NextRaid onNavigate={onNavigate} canOpenRaidSignup={canOpenRaidSignup} />
+        <div className="flex">
+          <div className="w-full">
+            <NextRaid onNavigate={onNavigate} canOpenRaidSignup={canOpenRaidSignup} />
+          </div>
+        </div>
       </div>
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid items-stretch gap-6 md:grid-cols-2">
         <ProgressTracker />
         <StreamRadar />
-        <DiscordFeed />
       </div>
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <CheckCircle2 className="size-3.5 text-success" /> Tüm saatler Türkiye saatine (UTC+3) göredir.

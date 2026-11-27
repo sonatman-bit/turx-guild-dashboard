@@ -10,6 +10,7 @@ export type OnboardingProfile = {
   phoneNumber?: string
   selectedAvatar?: string
   showRealNameInRoster?: boolean
+  showBnetInRoster?: boolean
   discordTag?: string
   discordConnected?: boolean
   bnetConnected?: boolean

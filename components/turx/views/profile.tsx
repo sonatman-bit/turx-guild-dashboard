@@ -98,6 +98,7 @@ interface UserProfileData {
   phoneNumber: string
   selectedAvatar: string
   showRealNameInRoster: boolean
+  showBnetInRoster: boolean
   discordConnected: boolean
   discordTag: string
   bnetConnected: boolean
@@ -231,6 +232,7 @@ function emptyProfile(email: string): UserProfileData {
     phoneNumber: '',
     selectedAvatar: 'Druid',
     showRealNameInRoster: true,
+    showBnetInRoster: true,
     discordConnected: false,
     discordTag: '',
     bnetConnected: false,
@@ -2267,11 +2269,18 @@ export function ProfileView() {
                               <Wrench className="size-3" /> {char.professions?.[0] || 'Yok'}, {char.professions?.[1] || 'Yok'}
                             </span>
                             <div className="flex items-center gap-1.5 text-[10px]">
-                              <span className="text-muted-foreground">Attunement:</span>
-                              <span className={cn('px-1.5 py-0.5 rounded border', char.attunements?.onyxia ? 'border-success/40 bg-success/10 text-success' : 'border-border text-muted-foreground')}>Ony</span>
-                              <span className={cn('px-1.5 py-0.5 rounded border', char.attunements?.mc ? 'border-success/40 bg-success/10 text-success' : 'border-border text-muted-foreground')}>MC</span>
-                              <span className={cn('px-1.5 py-0.5 rounded border', char.attunements?.bwl ? 'border-success/40 bg-success/10 text-success' : 'border-border text-muted-foreground')}>BWL</span>
-                              <span className={cn('px-1.5 py-0.5 rounded border', char.attunements?.naxx ? 'border-success/40 bg-success/10 text-success' : 'border-border text-muted-foreground')}>Naxx</span>
+                              <span className="text-muted-foreground">Phase 1 Attunement:</span>
+                              <span
+                                className={cn(
+                                  'px-1.5 py-0.5 rounded border font-semibold',
+                                  char.attunements?.onyxia
+                                    ? 'border-success/40 bg-success/10 text-success'
+                                    : 'border-amber-500/35 bg-amber-500/10 text-amber-200',
+                                )}
+                                title="Onyxia's Lair (Drakefire Amulet) — Barrow Deeps & Hyjal Summit attunement gerektirmez"
+                              >
+                                Onyxia {char.attunements?.onyxia ? '✓' : 'Eksik'}
+                              </span>
                             </div>
                           </div>
                         </>
@@ -2555,7 +2564,7 @@ export function ProfileView() {
                 <span className="text-[11px] text-muted-foreground mt-0.5">
                   {profile.showRealNameInRoster
                     ? 'Açık: Kadro sayfasında karakterinizin altında adınız ve soyadınız listelenir.'
-                    : 'Kapalı: Adınız ve soyadınız kadroda gizlenir, sadece oyun içi karakteriniz görünür.'}
+                    : 'Kapalı: Gerçek isminiz kadroda gizlenir ve "Gizli" ibaresiyle gösterilir.'}
                 </span>
               </div>
               <button
@@ -2578,6 +2587,40 @@ export function ProfileView() {
                   )}
                 >
                   {profile.showRealNameInRoster ? '✓' : '✕'}
+                </span>
+              </button>
+            </div>
+
+            {/* Battle.net ID Görünürlük Tercihi */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-background/50 md:col-span-2">
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold text-silver">Guild Kadrosunda Battle.net ID&apos;m Görünsün</span>
+                <span className="text-[11px] text-muted-foreground mt-0.5">
+                  {profile.showBnetInRoster
+                    ? 'Açık: Kadro sayfasında Battle.net ID (BattleTag) bilginiz listelenir.'
+                    : 'Kapalı: Battle.net ID bilginiz kadroda gizlenir ve "Gizli" ibaresiyle gösterilir.'}
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={profile.showBnetInRoster}
+                onClick={() => setProfile({ ...profile, showBnetInRoster: !profile.showBnetInRoster })}
+                className={cn(
+                  'relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 ease-in-out focus:outline-none',
+                  profile.showBnetInRoster
+                    ? 'bg-emerald-600 border-emerald-500 shadow-[0_0_12px_rgb(16_185_129/0.4)]'
+                    : 'bg-red-700/80 border-red-600 shadow-[0_0_10px_rgb(220_38_38/0.3)]',
+                )}
+                title={profile.showBnetInRoster ? 'Açık: Battle.net ID kadroda görünüyor' : 'Kapalı: Battle.net ID gizli'}
+              >
+                <span
+                  className={cn(
+                    'pointer-events-none inline-block size-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out flex items-center justify-center text-[11px] font-bold',
+                    profile.showBnetInRoster ? 'translate-x-7 text-emerald-700' : 'translate-x-0 text-red-700',
+                  )}
+                >
+                  {profile.showBnetInRoster ? '✓' : '✕'}
                 </span>
               </button>
             </div>

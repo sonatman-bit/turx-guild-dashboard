@@ -18,6 +18,7 @@ export type ArmorySnapshot = {
   inTurxGuild: boolean
   characterClass: string | null
   characterRace: string | null
+  hasDrakefireAmulet?: boolean
 }
 
 export type ArmoryVerificationStatus =
@@ -207,6 +208,7 @@ export function emptyArmory(firstName: string, lastName: string, wowClass: WowCl
     inTurxGuild: false,
     characterClass: null,
     characterRace: null,
+    hasDrakefireAmulet: false,
   }
 }
 
@@ -215,6 +217,7 @@ type CharacterState = {
     level?: number
     avatar?: { url?: string }
     media?: Record<string, { url?: string } | undefined>
+    gear?: Record<string, { id?: number; name?: string } | undefined>
     guild?: {
       name?: string
       slug?: string
@@ -264,7 +267,16 @@ export function parseForeverCharacterHtml(
   html: string,
 ): Pick<
   ArmorySnapshot,
-  'found' | 'level' | 'avatarUrl' | 'renderUrl' | 'guildName' | 'guildSlug' | 'inTurxGuild' | 'characterClass' | 'characterRace'
+  | 'found'
+  | 'level'
+  | 'avatarUrl'
+  | 'renderUrl'
+  | 'guildName'
+  | 'guildSlug'
+  | 'inTurxGuild'
+  | 'characterClass'
+  | 'characterRace'
+  | 'hasDrakefireAmulet'
 > | null {
   const marker = 'var characterProfileInitialState = '
   const markerAt = html.indexOf(marker)
@@ -283,6 +295,12 @@ export function parseForeverCharacterHtml(
     const guildSlug = typeof character.guild?.slug === 'string' && character.guild.slug.trim()
       ? character.guild.slug.trim().toLowerCase()
       : null
+    const gearItems = Object.values(character.gear || {})
+    const hasDrakefireAmulet = gearItems.some(
+      (item) =>
+        item?.id === 16309 ||
+        (typeof item?.name === 'string' && item.name.toLowerCase().includes('drakefire amulet')),
+    )
     return {
       found: true,
       level: typeof character.level === 'number' ? character.level : null,
@@ -293,6 +311,7 @@ export function parseForeverCharacterHtml(
       inTurxGuild: isTurxGuildMatch(guildName, guildSlug),
       characterClass: typeof character.class?.name === 'string' ? character.class.name : null,
       characterRace: typeof character.race?.name === 'string' ? character.race.name : null,
+      hasDrakefireAmulet,
     }
   } catch {
     return null

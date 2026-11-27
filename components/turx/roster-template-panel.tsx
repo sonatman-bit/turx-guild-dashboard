@@ -307,13 +307,14 @@ export function RosterTemplatePanel({
                   <span
                     key={role}
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-semibold',
+                      'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs leading-none font-semibold tabular-nums',
                       rm.border,
                       rm.bg,
                       rm.text,
                     )}
                   >
-                    {rm.label}: <span className="font-mono font-bold">{roleTotals[role]}</span>
+                    <span>{rm.label}:</span>
+                    <span className="font-bold">{roleTotals[role]}</span>
                   </span>
                 )
               })}
@@ -450,24 +451,33 @@ export function RosterTemplatePanel({
                                 {rm.short}
                               </div>
 
-                              {/* Single Spec vs Horizontal Equal Split (2-way / 3-way) */}
+                              {/* Single Spec vs Horizontal Equal Split (2-way / 3-way) — ALWAYS Class on top, Spec underneath */}
                               {visibleOpts.length === 1 ? (
-                                <div className="flex min-w-0 flex-1 items-center gap-2 px-2.5">
-                                  <SpecMiniIcon specLabel={visibleOpts[0]} size={20} />
-                                  <div className="min-w-0 flex-1 leading-tight">
-                                    <p
-                                      className="truncate text-[11px] font-bold"
-                                      style={{ color: getSpecColor(visibleOpts[0]) }}
+                                (() => {
+                                  const { cls, spec } = parseClassAndSpec(visibleOpts[0])
+                                  const specColor = getSpecColor(visibleOpts[0])
+                                  return (
+                                    <div
+                                      className="flex min-w-0 flex-1 items-center gap-2 px-2.5"
+                                      style={{
+                                        background: `linear-gradient(180deg, ${specColor}12 0%, transparent 100%)`,
+                                      }}
                                     >
-                                      {visibleOpts[0]}
-                                    </p>
-                                    {slot.note && (
-                                      <p className="truncate text-[10px] italic text-silver/70">
-                                        {slot.note}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
+                                      <SpecMiniIcon specLabel={visibleOpts[0]} size={20} />
+                                      <div className="min-w-0 flex-1 leading-[1.2]">
+                                        <p className="truncate text-[11px] font-bold" style={{ color: specColor }}>
+                                          {cls}
+                                        </p>
+                                        <p className="truncate text-[10px] text-silver/80">
+                                          {spec || cls}
+                                          {slot.note ? (
+                                            <span className="ml-1 italic text-muted-foreground">· {slot.note}</span>
+                                          ) : null}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )
+                                })()
                               ) : (
                                 <div
                                   className={cn(
@@ -488,7 +498,7 @@ export function RosterTemplatePanel({
                                         }}
                                       >
                                         <SpecMiniIcon specLabel={specLabel} size={isTriple ? 16 : 18} />
-                                        <div className="min-w-0 flex-1 leading-[1.15]">
+                                        <div className="min-w-0 flex-1 leading-[1.2]">
                                           <p
                                             className={cn(
                                               'truncate font-bold',
@@ -496,10 +506,15 @@ export function RosterTemplatePanel({
                                             )}
                                             style={{ color: specColor }}
                                           >
-                                            {isTriple ? compactSpecName(spec) || cls : cls}
+                                            {cls}
                                           </p>
-                                          <p className="truncate text-[9px] text-silver/75">
-                                            {isTriple ? cls : compactSpecName(spec)}
+                                          <p
+                                            className={cn(
+                                              'truncate text-silver/80',
+                                              isTriple ? 'text-[9px]' : 'text-[10px]',
+                                            )}
+                                          >
+                                            {compactSpecName(spec) || spec}
                                           </p>
                                         </div>
                                         {extraCount > 0 && optIdx === visibleOpts.length - 1 && (

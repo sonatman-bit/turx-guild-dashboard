@@ -177,7 +177,7 @@ export function WeeklyRaidTimeline({
       accentBg: 'bg-sky-500/12 border-sky-400/35 text-sky-300',
       pillText: 'Anında Yayın',
       bullets: [
-        { icon: Send, text: 'İmza kapanır kapanmaz yayın' },
+        { icon: Send, text: 'İmza kapanır kapanmaz roster açıklanır' },
         { icon: Sparkles, text: 'Grup 1, 2, 3... + Bench' },
         { icon: ShieldCheck, text: 'Bench hazır = Tam puan' },
       ],
@@ -213,7 +213,7 @@ export function WeeklyRaidTimeline({
       bullets: [
         { icon: Lock, text: '24 saat kala her şey kilitlenir' },
         { icon: Swords, text: '20:45 Alanda (-15 dk) · 21:00 Pull' },
-        { icon: Sparkles, text: 'Consumables · %100 Repair · Spells' },
+        { icon: Sparkles, text: 'Consumables&Buffs · %100 Repair&Train · Boss Taktikleri' },
       ],
     },
   ]

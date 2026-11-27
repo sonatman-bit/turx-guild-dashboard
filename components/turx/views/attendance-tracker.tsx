@@ -604,7 +604,7 @@ export function AttendanceTrackerView() {
                 [
                   ['roadmap', 'Road Map Sunumu', 'Oyuncular için interaktif sistem rehberi'],
                   ['raidSignup', 'Raid Kayıt', 'İmza takvimi, çoklu roster ve konfirmasyon'],
-                  ['loot', 'Loot Dağıtımı', 'Şeffaf öncelik kutuları, BoE ve BoP tarifler'],
+                  ['loot', 'Loot Sistemi', 'Şeffaf öncelik sıraları, BoE ve BoP tarifler'],
                   ['attendance', 'Devam Takibi', 'Puan sıralaması ve 1 Ocak 40-Man hedefi'],
                   ['bank', 'Guild Bankası', 'Malzeme talebi ve lonca banka defteri'],
                 ] as const

@@ -1080,7 +1080,7 @@ export async function POST(request: Request) {
       MEMBER_NOT_FOUND: ['Guild üyesi bulunamadı.', 404],
       LOOT_FIELDS_REQUIRED: ['Item adı, boss adı ve en az 1 öncelik sırası zorunludur.', 400],
       LOOT_NOT_FOUND: ['Loot kaydı bulunamadı.', 404],
-      INVALID_SLOT: ['Geçersiz öncelik kutusu.', 400],
+      INVALID_SLOT: ['Geçersiz öncelik sırası.', 400],
       CANNOT_CHANGE_STAFF_RANK: ['GM ve Görevli rütbeleri buradan değiştirilemez.', 403],
       UNKNOWN_ACTION: ['Bilinmeyen aksiyon.', 400],
     }

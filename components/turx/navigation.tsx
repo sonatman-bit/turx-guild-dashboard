@@ -52,7 +52,7 @@ export const NAV_ITEMS: {
   { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins, moduleFlag: 'bank' },
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock },
   { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, moduleFlag: 'raidSignup' },
-  { id: 'loot', label: 'Loot Dağıtımı', short: 'Öncelik & BoE/BoP', icon: Award, moduleFlag: 'loot' },
+  { id: 'loot', label: 'Loot Sistemi', short: 'Öncelik & BoE/BoP', icon: Award, moduleFlag: 'loot' },
   { id: 'attendance', label: 'Devam Takibi', short: 'Puan & 40-Man Raider', icon: ClipboardList, moduleFlag: 'attendance' },
   { id: 'roadmap', label: 'Road Map', short: 'Sistem Sunumu & Rehber', icon: Map, moduleFlag: 'roadmap' },
   { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield },

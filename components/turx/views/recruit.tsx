@@ -62,22 +62,22 @@ type LootGuideTab = {
 const TURX_LOOT_GUIDE: LootGuideTab[] = [
   {
     id: 'rotation',
-    name: 'Kutu Rotasyonu & Liste Kilidi',
+    name: 'Öncelik Rotasyonu & Liste Kilidi',
     badge: 'AKTİF SİSTEM',
     summary:
-      'TURX’ta kapalı kapılar ardında karar verilen klasik Loot Council veya puan yakmalı DKP/EPGP yoktur. Her eşyanın faz başında belirlenip kilitlenen şeffaf bir Spec Kutu Sırası vardır.',
+      'TURX’ta kapalı kapılar ardında karar verilen klasik Loot Council veya puan yakmalı DKP/EPGP yoktur. Her eşyanın faz başında belirlenip kilitlenen şeffaf bir Spec Öncelik Sırası vardır.',
     bullets: [
       {
         title: 'Faz Başı İtiraz & Kilit',
         desc: 'Her faz başlamadan 5–7 gün önce öncelik listesi loncaya sunulur ve öneriler değerlendirilir. Faz açılışında liste kilitlenir, sonraki faza kadar tartışmaya kapatılır.',
       },
       {
-        title: 'Kutu Kutu Adil Rotasyon (Round-Robin)',
-        desc: 'Eşya düştükçe sıradaki spec kutusunu doldurur; tüm kutular dolunca Tur 2 ile sıra başa döner. Kritik 1–2 tank/çekirdek parçada liste başına çift öncelik kutusu tanımlanabilir.',
+        title: 'Sıralı Adil Rotasyon (Round-Robin)',
+        desc: 'Eşya düştükçe sıradaki spec önceliğini alır; tüm sıralar dolunca Tur 2 ile liste başa döner. Kritik 1–2 tank/healer core parçada liste başına ek öncelik sırası tanımlanabilir.',
       },
       {
         title: 'Hakkınız Yanmaz (Bekleyen Öncelik)',
-        desc: 'Sıradaki spec o gün raidde yoksa sonraki uygun spec kendi kutusunu alır; eksik spec’in kutusu "Bekleyen Öncelik" olarak açık kalır ve bir sonraki dropta sıra tekrar ona gelir.',
+        desc: 'Sıradaki spec o gün raidde yoksa sonraki uygun spec kendi sırasını alır; eksik spec’in hakkı "Bekleyen Öncelik" olarak açık kalır ve bir sonraki dropta sıra tekrar ona gelir.',
       },
       {
         title: 'Aynı Spec İçinde: Devam Puanı → Zar',
@@ -113,7 +113,7 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
     id: 'addon',
     name: 'RCLootCouncil & Dayanışma',
     summary:
-      'Boss kesildikten sonra oyun içinde hızlı talep toplamak için RCLootCouncil addonu kullanılır; ancak nihai otorite her zaman sitedeki Kutu Sırası + Devam Puanıdır.',
+      'Boss kesildikten sonra oyun içinde hızlı talep toplamak için RCLootCouncil addonu kullanılır; ancak nihai otorite her zaman sitedeki Öncelik Sırası + Devam Puanıdır.',
     bullets: [
       {
         title: 'Oyun İçi Hızlı Seçim',
@@ -125,7 +125,7 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
       },
       {
         title: 'Gönüllü Minor Update Koruması',
-        desc: 'Sıradaki oyuncu, takım arkadaşına daha büyük upgrade olması için gönüllü olarak Minor Update seçip sırayı bırakırsa alan oyuncunun kutusu dolar; dayanışma gösteren oyuncunun kutusu ise "Bekleyen Öncelik" olarak açık kalır.',
+        desc: 'Sıradaki oyuncu, takım arkadaşına daha büyük upgrade olması için gönüllü olarak Minor Update seçip sırayı bırakırsa alan oyuncunun sırası dolar; dayanışma gösteren oyuncunun hakkı ise "Bekleyen Öncelik" olarak açık kalır.',
       },
     ],
   },
@@ -137,15 +137,15 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
     bullets: [
       {
         title: 'BoE Eşyalar → Guild Bankası',
-        desc: 'Raidlerde düşen tüm BoE eşyalar istisnasız Guild Bankasına (flask, potion, repair fonu) aktarılır ve panelde şeffafça listelenir.',
+        desc: 'Raidlerde düşen tüm BoE eşyalar istisnasız Guild Bankasına gelir amaçlı aktarılır ve panelde şeffafça listelenir.',
       },
       {
         title: 'BoP Tarifler → Meslek Sorumlusu & Min 300 Roll',
-        desc: 'Tüm BoP tarifler ilk düşüşte lonca üyelerine ücretsiz craft şartıyla Meslek Sorumlusuna verilir. Aynı tarif tekrar düşerse o meslekte min 300 olanlar anında öğrenmek şartıyla rollar.',
+        desc: 'Tüm BoP tarifler ilk düşüşte guildin belirlediği Meslek Sorumlusuna verilir. Aynı tarif tekrar düşerse o meslekte min 300 olanlar anında öğrenmek şartıyla rollar.',
       },
       {
         title: '1 Ocak 2027 Raider Rütbesi Hedefi',
-        desc: 'Phase 1’den itibaren tüm LvL 60 Main karakterler eşit şartlarda puan biriktirir; 40-man çekirdek kadro ve Raider rütbesi tamamen şeffaf devam puanına göre şekillenir.',
+        desc: 'Phase 1’den itibaren tüm LvL 60 Main karakterler eşit şartlarda puan biriktirir; en yüksek devam puanına sahip ilk 50 oyuncu 1 Ocak 2027’de RAIDER rütbesine yükseltilir.',
       },
     ],
   },
@@ -413,7 +413,7 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
         </PanelTitle>
 
         <p className="mb-4 max-w-3xl text-xs leading-relaxed text-silver">
-          Başvurmadan önce sistemimizi 30 saniyede tanıyın: TURX’ta <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> hibrit Kutu Rotasyonu + Ağırlıklı Devam Puanı sistemi uygulanır.
+          Başvurmadan önce sistemimizi 30 saniyede tanıyın: TURX’ta <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> hibrit Öncelik Rotasyonu + Ağırlıklı Devam Puanı sistemi uygulanır.
         </p>
 
         {/* 4 Kartlık Hızlı Bakış Özeti */}
@@ -430,10 +430,10 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
           <div className="rounded-xl border border-neon/30 bg-[#071422]/90 p-3.5">
             <p className="flex items-center gap-1.5 font-display text-xs font-bold text-neon">
               <Award className="size-3.5 shrink-0" />
-              Kutu Rotasyonu &amp; Puan
+              Öncelik Rotasyonu &amp; Puan
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Spec’ler sırayla kutu doldurur; aynı spec içinde yüksek devam puanı (eşitse zar) kazanır.
+              Spec’ler öncelik sırasıyla loot alır; aynı spec içinde yüksek devam puanı (eşitse zar) kazanır.
             </p>
           </div>
           <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 p-3.5">
@@ -442,7 +442,7 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
               RCLootCouncil Dayanışma
             </p>
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Gönüllü <em>Minor Update</em> ile sıra veren oyuncunun kutusu <strong>Bekleyen Öncelik</strong> olarak korunur.
+              Gönüllü <em>Minor Update</em> ile sıra veren oyuncunun hakkı <strong>Bekleyen Öncelik</strong> olarak korunur.
             </p>
           </div>
           <div className="rounded-xl border border-amber-400/30 bg-[#071422]/90 p-3.5">

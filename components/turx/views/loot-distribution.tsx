@@ -465,8 +465,8 @@ export function LootDistributionView() {
     <div className="space-y-6">
       <SectionHeader
         eyebrow={`${activePhase?.name || 'Phase 1'} · ŞEFFAF LOOT SİSTEMİ`}
-        title="Loot Dağıtım Listesi & Öncelik Rotasyonu"
-        description="Her item için sınıf/spec öncelik kutuları 7/24 açıktır. Sıradaki sınıf raidde yoksa sonraki uygun kutu dolar, atlanan kutu açık (öncelikli) kalır. Aynı spec'te eşitlikte devam puanı, puanda da eşitlikte zar belirler."
+        title="Loot Sistemi & Öncelik Rotasyonu"
+        description="Her item için sınıf/spec öncelik sıraları 7/24 açıktır. Sıradaki sınıf raidde yoksa sonraki uygun sıra dolar, atlanan öncelik açık (beklemede) kalır. Aynı spec'te eşitlikte devam puanı, puanda da eşitlikte zar belirler."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-border bg-[#071422] p-1">
@@ -533,7 +533,7 @@ export function LootDistributionView() {
                       Canlı Raid Hızlı Dağıtım Modu
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Aktif bir raid seçerseniz, kutuya tıkladığınızda sistem sadece o raiddeki oyuncuları devam puanına göre sıralar ve zar durumunu uyarır.
+                      Aktif bir raid seçerseniz, bir öncelik sırasına tıkladığınızda sistem sadece o raiddeki oyuncuları devam puanına göre sıralar ve zar durumunu uyarır.
                     </p>
                   </div>
                 </div>
@@ -565,10 +565,10 @@ export function LootDistributionView() {
             </div>
             <div className="rounded-xl border border-neon/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
               <p className="flex items-center gap-1.5 font-display font-bold text-neon">
-                <Award className="size-3.5" /> Kutu Rotasyonu &amp; Bekleyen Öncelik
+                <Award className="size-3.5" /> Öncelik Rotasyonu &amp; Bekleyen Öncelik
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Her tur kutular sırayla dolar; o gün raidde olmayan sınıfın kutusu yanmaz, <em>Bekleyen Öncelik</em> olarak korunur.
+                Her tur öncelik sıraları sırayla dolar; o gün raidde olmayan sınıfın sırası yanmaz, <em>Bekleyen Öncelik</em> olarak korunur.
               </p>
             </div>
             <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
@@ -576,7 +576,7 @@ export function LootDistributionView() {
                 <ShieldCheck className="size-3.5" /> RCLootCouncil &amp; Minor Update
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Oyun içi talep toplar; karar bu listedendir. Gönüllü <em>Minor Update</em> ile sırayı veren oyuncunun kutusu açık kalır.
+                Oyun içi talep toplar; karar bu listedendir. Gönüllü <em>Minor Update</em> ile sırayı veren oyuncunun önceliği açık kalır.
               </p>
             </div>
             <div className="rounded-xl border border-amber-400/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
@@ -584,7 +584,7 @@ export function LootDistributionView() {
                 <Dices className="size-3.5" /> Aynı Spec: Puan → Zar
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Aynı kutuda birden fazla uygun oyuncu varsa <strong>Devam Puanı</strong> yüksek olan (eşitse zar) alır.
+                Aynı öncelik sırasında birden fazla uygun oyuncu varsa <strong>Devam Puanı</strong> yüksek olan (eşitse zar) alır.
               </p>
             </div>
           </div>
@@ -824,7 +824,7 @@ export function LootDistributionView() {
                                                         roundIndex: roundState.roundIndex,
                                                         slotIndex: idx,
                                                       },
-                                                      'Kutu boşaltıldı (geri alındı).',
+                                                      'Öncelik sırası boşaltıldı (geri alındı).',
                                                     )
                                                   }
                                                   className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-300"
@@ -914,7 +914,7 @@ export function LootDistributionView() {
               BoE Eşyalar → Guild Banka Geliri
             </PanelTitle>
             <p className="mb-4 text-xs text-muted-foreground">
-              Kural: Tüm raid içi BoE itemlar istisnasız Guild Bankasına gelir amaçlı (consumable/repair fonu) alınır ve burada şeffaf olarak takip edilir.
+              Kural: Tüm raid içi BoE itemlar istisnasız Guild Bankasına gelir amaçlı alınır ve burada şeffaf olarak takip edilir.
             </p>
 
             {rs.boeLogs.length === 0 ? (
@@ -990,7 +990,7 @@ export function LootDistributionView() {
                 Guild Meslek Sorumluları (BoP Tarif Önceliği)
               </PanelTitle>
               <p className="mb-3 text-xs text-muted-foreground">
-                Kural: Tüm BoP tarifler ilk düşüşte guildin belirlediği meslek sorumlusuna verilir (guild üyelerine ücretsiz/malzemesine craft şartıyla). Tekrar düşerse min 300 mesleğe sahip olanlar <strong>anında öğrenmek şartıyla</strong> rollar.
+                Kural: Tüm BoP tarifler ilk düşüşte guildin belirlediği meslek sorumlusuna verilir. Tekrar düşerse min 300 mesleğe sahip olanlar <strong>anında öğrenmek şartıyla</strong> rollar.
               </p>
 
               <div className="space-y-2">
@@ -1085,7 +1085,7 @@ export function LootDistributionView() {
         title={awardTarget ? `Loot Dağıt: ${awardTarget.item.itemName}` : 'Loot Dağıt'}
         description={
           awardTarget
-            ? `Tur #${awardTarget.roundNumber} · Kutu #${awardTarget.slotIndex + 1}: ${awardTarget.specLabel} (${selectedLiveEvent ? `Canlı Raid: ${selectedLiveEvent.raidName}` : 'Tüm Guild Üyeleri'})`
+            ? `Tur #${awardTarget.roundNumber} · Öncelik #${awardTarget.slotIndex + 1}: ${awardTarget.specLabel} (${selectedLiveEvent ? `Canlı Raid: ${selectedLiveEvent.raidName}` : 'Tüm Guild Üyeleri'})`
             : undefined
         }
         className="max-w-xl"
@@ -1182,7 +1182,7 @@ export function LootDistributionView() {
               </GhostButton>
               <GoldButton type="button" disabled={busy} onClick={() => void handleAwardConfirm()}>
                 <Award className="size-4" />
-                Kutuya İşle
+                Sıraya İşle
               </GoldButton>
             </div>
           </div>

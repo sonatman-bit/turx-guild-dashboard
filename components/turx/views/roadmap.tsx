@@ -34,7 +34,7 @@ import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
 const SLIDE_TITLES = [
   '1. Vizyon & Zaman Çizelgesi',
   '2. Haftalık Raid Döngüsü',
-  '3. Şeffaf Loot Kutu Rotasyonu',
+  '3. Şeffaf Loot Öncelik Rotasyonu',
   '4. SSS & Sistem Onayı',
 ]
 
@@ -57,7 +57,7 @@ const DEMO_STEPS: DemoStep[] = [
     winnerName: 'Demir Kalkan',
     winnerClass: 'Warrior',
     narration:
-      '1. Drop: Öncelik 1. Tank Warrior kutusunda. Raidde 2 Tank Warrior var → Devam puanı yüksek olan (eşitse zar kazananı) "Demir Kalkan" alır!',
+      '1. Drop: Öncelik 1. sıradaki Tank Warrior\'da. Raidde 2 Tank Warrior var → Devam puanı yüksek olan (eşitse zar kazananı) "Demir Kalkan" alır!',
   },
   {
     dropNo: 2,
@@ -66,7 +66,7 @@ const DEMO_STEPS: DemoStep[] = [
     winnerName: 'Gölge Hançer',
     winnerClass: 'Rogue',
     narration:
-      '2. Drop: Sıra 2. Tank Paladin kutusunda ama o gün raidde Tank Paladin YOK! Sıradaki uygun 3. Rogue ("Gölge Hançer") alır; 2. Tank Paladin kutusu AÇIK (Bekleyen Öncelik) kalır!',
+      '2. Drop: Öncelik 2. sıradaki Tank Paladin\'de ama o gün raidde Tank Paladin YOK! Sıradaki uygun 3. Rogue ("Gölge Hançer") alır; 2. Tank Paladin sırası AÇIK (Bekleyen Öncelik) kalır!',
   },
   {
     dropNo: 3,
@@ -75,7 +75,7 @@ const DEMO_STEPS: DemoStep[] = [
     winnerName: 'Işık Koruması',
     winnerClass: 'Paladin',
     narration:
-      '3. Drop: Ertesi hafta Tank Paladin raidde! Açık bekleyen 2. Tank Paladin kutusu ilk önceliği geri alır → "Işık Koruması" kazanır!',
+      '3. Drop: Ertesi hafta Tank Paladin raidde! Açık bekleyen 2. Tank Paladin sırası ilk önceliği geri alır → "Işık Koruması" kazanır!',
   },
   {
     dropNo: 4,
@@ -83,7 +83,7 @@ const DEMO_STEPS: DemoStep[] = [
     slotIndex: 3,
     winnerName: 'Öfke Baltası',
     winnerClass: 'Warrior',
-    narration: '4. Drop: Açık sıradaki 4. Fury Warrior kutusuna gider → "Öfke Baltası" kazanır.',
+    narration: '4. Drop: Açık olan 4. sıradaki Fury Warrior\'a gider → "Öfke Baltası" kazanır.',
   },
   {
     dropNo: 5,
@@ -91,7 +91,7 @@ const DEMO_STEPS: DemoStep[] = [
     slotIndex: 4,
     winnerName: 'Keskin Ok',
     winnerClass: 'Hunter',
-    narration: '5. Drop: Son kutu olan 5. Hunter dolar → "Keskin Ok". Tur 1 tamamen bitti! Bir sonraki drop ile Tur 2 başa döner.',
+    narration: '5. Drop: Son öncelik olan 5. Hunter sırası dolar → "Keskin Ok". Tur 1 tamamen bitti! Bir sonraki drop ile Tur 2 başa döner.',
   },
   {
     dropNo: 6,
@@ -115,11 +115,11 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Loot sırasında benim sınıfım var ama ben o gün raidde değildim, hakkım yanar mı?',
-    a: 'Hayır, kutu mantığımız sayesinde hakkınız yanmaz! O gün sıradaki sınıf raidde yoksa bir sonraki sınıf kendi kutusunu doldurur; sizin kutunuz "Bekleyen Öncelik" olarak açık kalır ve bir sonraki düşüşte öncelik tekrar size gelir.',
+    a: 'Hayır, öncelik rotasyonu mantığımız sayesinde hakkınız yanmaz! O gün sıradaki sınıf raidde yoksa bir sonraki sınıf kendi sırasını doldurur; sizin sıranız "Bekleyen Öncelik" olarak açık kalır ve bir sonraki düşüşte öncelik tekrar size gelir.',
   },
   {
-    q: 'RCLootCouncil addonu nasıl kullanılır? Gönüllü "Minor Update" seçersem kutu hakkım yanar mı?',
-    a: 'RCLootCouncil yalnızca boss sonrası oyun içinde hızlı talep toplamak (BIS / Major Update / Minor Update / OS / Pass) için kullanılır; nihai karar her zaman sitedeki Kutu Sırası + Devam Puanınındır. Hiçbir oyuncu pas geçmek zorunda değildir — elinde muadil eşya olsa bile BIS basarsa ve sıra kendisindeyse itemı alır. Takım arkadaşına büyük upgrade olması için gönüllü olarak "Minor Update" seçip sırayı verirse, alan kişinin kutusu dolar ve gönüllü öncelik veren oyuncunun kutusu AÇIK (Bekleyen Öncelik) olarak korunur.',
+    q: 'RCLootCouncil addonu nasıl kullanılır? Gönüllü "Minor Update" seçersem öncelik hakkım yanar mı?',
+    a: 'RCLootCouncil yalnızca boss sonrası oyun içinde hızlı talep toplamak (BIS / Major Update / Minor Update / OS / Pass) için kullanılır; nihai karar her zaman sitedeki Öncelik Sırası + Devam Puanınındır. Hiçbir oyuncu pas geçmek zorunda değildir — elinde muadil eşya olsa bile BIS basarsa ve sıra kendisindeyse itemı alır. Takım arkadaşına büyük upgrade olması için gönüllü olarak "Minor Update" seçip sırayı verirse, alan kişinin sırası dolar ve gönüllü öncelik veren oyuncunun sırası AÇIK (Bekleyen Öncelik) olarak korunur.',
   },
   {
     q: 'Faz içindeki Loot Öncelik Listesine itiraz edebilir miyiz?',
@@ -131,11 +131,11 @@ const FAQ_ITEMS = [
   },
   {
     q: 'BoE itemlar ve BoP tarifler nasıl dağıtılır?',
-    a: 'Tüm BoE itemlar istisnasız Guild Bankasına gelir (consumable/repair fonu) amaçlı alınır. Tüm BoP tarifler ilk düşüşte guildin belirlediği Meslek Sorumlusuna verilir (guild üyelerine ücretsiz craft şartıyla); aynı tarif tekrar düşerse min 300 mesleğe sahip olanlar anında öğrenmek şartıyla rollar.',
+    a: 'Tüm BoE itemlar istisnasız Guild Bankasına gelir amaçlı alınır. Tüm BoP tarifler ilk düşüşte guildin belirlediği Meslek Sorumlusuna verilir; aynı tarif tekrar düşerse min 300 mesleğe sahip olanlar anında öğrenmek şartıyla rollar.',
   },
   {
     q: '1 Ocak 2027 tarihinde Raider rütbesi nasıl verilecek?',
-    a: '1 Ocak 2027\'ye kadar tüm LvL 60 Main karakterler TURX rütbesiyle puan biriktirir. 1 Ocak\'ta en yüksek devam puanına ve kadro ihtiyacına göre GM tarafından Raider rütbesi verilir.',
+    a: '1 Ocak 2027\'ye kadar tüm LvL 60 Main karakterler TURX rütbesiyle puan biriktirir. En yüksek devam puanına sahip ilk 50 oyuncu 1 Ocak 2027 tarihinde RAIDER rütbesine yükseltilir.',
   },
 ]
 
@@ -249,16 +249,16 @@ export function RoadmapView() {
         </div>
         <div className="rounded-xl border border-gold/50 bg-gold/[0.07] p-4 shadow-[0_0_25px_rgb(212_175_55/0.12)]">
           <Badge className="border-gold/50 bg-gold/15 text-gold">1 Ocak 2027</Badge>
-          <h3 className="mt-2 font-display text-lg font-bold text-gold">40-Man Core & Raider Rütbesi</h3>
+          <h3 className="mt-2 font-display text-lg font-bold text-gold">Roster Şablonu & Raider Rütbesi</h3>
           <p className="mt-1 text-xs leading-relaxed text-silver">
-            İsimsiz olarak yayınlanan 40 kişilik sınıf/spec şablonuna göre her sınıftan <strong>en yüksek devam puanlı</strong> oyuncular <strong className="text-gold">Raider</strong> rütbesini kazanır.
+            10-20 ve 40-man rosterlar isimsiz olarak class/spec şablonu olarak yayınlanır. Raidlere bu önceliğe göre invite yapılır. En yüksek devam puanına sahip <strong>ilk 50 oyuncu</strong> 1 Ocak 2027 tarihinde <strong className="text-gold">RAIDER</strong> rütbesine yükseltilir.
           </p>
         </div>
         <div className="rounded-xl border border-purple-400/35 bg-[#071422]/90 p-4">
-          <Badge className="border-purple-400/40 bg-purple-500/10 text-purple-300">Her 3 Ayda Bir</Badge>
+          <Badge className="border-purple-400/40 bg-purple-500/10 text-purple-300">Yeni Fazlar</Badge>
           <h3 className="mt-2 font-display text-lg font-bold text-foreground">Yeni Faz, Taze Rekabet</h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Her 3 ayda bir yeni faz ve yeni raid grubu eklenir. Her fazın kendi raidleri ve item öncelik listesi ayrı takip edilir.
+            Blizzard her yeni faz raid paketi eklediğinde, yeni faza ait item listesi ve öncelik sıralaması ayrıca hazırlanır ve takip edilir.
           </p>
         </div>
       </div>
@@ -299,7 +299,7 @@ export function RoadmapView() {
           </div>
         }
       >
-        3. Şeffaf Loot Kutu Rotasyonu (Canlı Demo!)
+        3. Şeffaf Loot Öncelik Rotasyonu (Canlı Demo!)
       </PanelTitle>
 
       <div className="mb-4 rounded-xl border border-gold/30 bg-[#071422] p-4">
@@ -348,7 +348,7 @@ export function RoadmapView() {
                       {filled.name}
                     </p>
                   ) : (
-                    <p className="text-xs italic text-muted-foreground">Boş kutu...</p>
+                    <p className="text-xs italic text-muted-foreground">Sıra bekleniyor...</p>
                   )}
                 </div>
               </div>
@@ -361,7 +361,7 @@ export function RoadmapView() {
             <p>{demoBoard.lastStep.narration}</p>
           ) : (
             <p className="text-muted-foreground">
-              Yukarıdaki <strong className="text-gold">&quot;Item Düştü Simüle Et&quot;</strong> butonuna basarak 2. Tank Paladin raidde yokken kutusunun nasıl korunduğunu ve 5. drop sonrası sıranın başa nasıl döndüğünü izleyin!
+              Yukarıdaki <strong className="text-gold">&quot;Item Düştü Simüle Et&quot;</strong> butonuna basarak 2. Tank Paladin raidde yokken önceliğinin nasıl korunduğunu ve 5. drop sonrası sıranın başa nasıl döndüğünü izleyin!
             </p>
           )}
         </div>
@@ -384,16 +384,16 @@ export function RoadmapView() {
             RCLootCouncil (Gönüllü Dayanışma)
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Oyun içi talep toplamak (<em>BIS / Major / Minor / OS / Pass</em>) için kullanılır; nihai karar sitedeki <strong>Kutu + Puan</strong> listesidir. Muadili olan oyuncu gönüllü <em>Minor Update</em> seçip sırayı verirse kendi kutusu <strong>Bekleyen Öncelik</strong> olarak korunur.
+            Oyun içi talep toplamak (<em>BIS / Major / Minor / OS / Pass</em>) için kullanılır; nihai karar sitedeki <strong>Öncelik Sırası + Puan</strong> listesidir. Muadili olan oyuncu gönüllü <em>Minor Update</em> seçip sırayı verirse kendi önceliği <strong>Bekleyen Öncelik</strong> olarak korunur.
           </p>
         </div>
         <div className="rounded-xl border border-emerald-500/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-emerald-300">
             <Users className="size-4" />
-            Bench Sınırı &amp; Çift Kutu Esnekliği
+            Bench Sınırı &amp; Ek Sıra Esnekliği
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Aynı oyuncu kendi isteğiyle <strong>üst üste 2 kez benche yazılamaz</strong> (Officer kararı hariç). Progress kilitleyen 1–2 kritik tank/çekirdek parçada liste başına çift öncelik kutusu tanımlanabilir.
+            Aynı oyuncu kendi isteğiyle <strong>üst üste 2 kez benche yazılamaz</strong> (Officer kararı hariç). Progress kilitleyen 1–2 kritik tank/healer core parçada liste başına ek öncelik sırası tanımlanabilir.
           </p>
         </div>
       </div>
@@ -406,7 +406,7 @@ export function RoadmapView() {
             BoE Eşyalar → Guild Banka
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Raidlerde düşen tüm BoE itemlar istisnasız Guild Bankasına gelir amaçlı (flask, potion, repair desteği) alınır ve sitede şeffaf olarak listelenir.
+            Raidlerde düşen tüm BoE itemlar istisnasız Guild Bankasına gelir amaçlı alınır ve sitede şeffaf olarak listelenir.
           </p>
         </div>
         <div className="rounded-xl border border-neon/30 bg-[#071422] p-4">

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Award,
   BookOpen,
+  ChevronDown,
   Coins,
   Dices,
   Edit3,
@@ -62,6 +63,13 @@ export function LootDistributionView() {
   const [selectedBoss, setSelectedBoss] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [liveRaidEventId, setLiveRaidEventId] = useState<string>('')
+  const [collapsedRaids, setCollapsedRaids] = useState<Record<string, boolean>>({})
+  const [collapsedBosses, setCollapsedBosses] = useState<Record<string, boolean>>({})
+
+  const toggleRaid = (raidId: string) =>
+    setCollapsedRaids((prev) => ({ ...prev, [raidId]: !prev[raidId] }))
+  const toggleBoss = (bossKey: string) =>
+    setCollapsedBosses((prev) => ({ ...prev, [bossKey]: !prev[bossKey] }))
 
   // Award Slot modal
   const [awardTarget, setAwardTarget] = useState<{
@@ -661,39 +669,71 @@ export function LootDistributionView() {
             </Panel>
           ) : (
             <div className="space-y-8">
-              {groupedByRaidAndBoss.map((raidGroup) => (
+              {groupedByRaidAndBoss.map((raidGroup) => {
+                const isRaidCollapsed = Boolean(collapsedRaids[raidGroup.raidId])
+                return (
                 <section key={raidGroup.raidId} className="space-y-5">
                   {/* Raid Section Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold/25 pb-2.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleRaid(raidGroup.raidId)}
+                    aria-expanded={!isRaidCollapsed}
+                    className="group flex w-full cursor-pointer flex-wrap items-center justify-between gap-2 border-b border-gold/25 pb-2.5 text-left transition hover:border-gold/50"
+                  >
                     <div className="flex items-center gap-2.5">
                       <span className="inline-flex size-8 items-center justify-center rounded-lg border border-gold/40 bg-gold/10 text-gold">
                         <Swords className="size-4" />
                       </span>
                       <div>
-                        <h2 className="font-display text-lg font-bold tracking-wide text-gold">
-                          {raidGroup.raidName}
-                        </h2>
+                        <div className="flex items-center gap-1.5">
+                          <h2 className="font-display text-lg font-bold tracking-wide text-gold">
+                            {raidGroup.raidName}
+                          </h2>
+                          <ChevronDown
+                            className={cn(
+                              'size-4 text-gold/80 transition-transform duration-200 group-hover:text-gold',
+                              isRaidCollapsed && '-rotate-90',
+                            )}
+                          />
+                        </div>
                         {raidGroup.raidSize && (
                           <p className="text-[11px] text-muted-foreground">
-                            {raidGroup.raidSize} Kişilik Raid
+                            {raidGroup.raidSize} Kişilik Raid · {raidGroup.bosses.length} Boss
                           </p>
                         )}
                       </div>
                     </div>
-                  </div>
+                  </button>
 
                   {/* Separate Boss Groups inside this Raid */}
+                  {!isRaidCollapsed && (
                   <div className="space-y-6">
-                    {raidGroup.bosses.map((bossGroup) => (
-                      <div key={`${raidGroup.raidId}-${bossGroup.bossName}`} className="space-y-3">
-                        <div className="flex items-center gap-2 px-1">
+                    {raidGroup.bosses.map((bossGroup) => {
+                      const bossKey = `${raidGroup.raidId}-${bossGroup.bossName}`
+                      const isBossCollapsed = Boolean(collapsedBosses[bossKey])
+                      return (
+                      <div key={bossKey} className="space-y-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleBoss(bossKey)}
+                          aria-expanded={!isBossCollapsed}
+                          className="group flex w-full cursor-pointer items-center gap-2 px-1 py-0.5 text-left"
+                        >
                           <Skull className="size-4 shrink-0 text-neon" />
-                          <h3 className="font-display text-sm font-bold tracking-wide text-foreground">
+                          <h3 className="font-display text-sm font-bold tracking-wide text-foreground transition group-hover:text-neon">
                             {bossGroup.bossName}
                           </h3>
+                          <ChevronDown
+                            className={cn(
+                              'size-3.5 shrink-0 text-neon/80 transition-transform duration-200 group-hover:text-neon',
+                              isBossCollapsed && '-rotate-90',
+                            )}
+                          />
+                          <span className="text-[11px] text-muted-foreground">({bossGroup.items.length})</span>
                           <span className="h-px flex-1 bg-gradient-to-r from-neon/30 to-transparent" />
-                        </div>
+                        </button>
 
+                        {!isBossCollapsed && (
                         <div className="space-y-3">
                           {bossGroup.items.map((item) => {
                             const roundState = getActiveLootRoundState(item)
@@ -885,11 +925,15 @@ export function LootDistributionView() {
                             )
                           })}
                         </div>
+                        )}
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
+                  )}
                 </section>
-              ))}
+                )
+              })}
             </div>
           )}
         </>

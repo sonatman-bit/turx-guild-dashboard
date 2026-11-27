@@ -663,7 +663,17 @@ export function WeeklyRaidTimeline({
       )}
 
       {/* ULTRA-COMPACT VISUAL RULES STRIP (At-a-Glance Chips, Zero Paragraphs) */}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-gold/35 bg-gold/[0.07] px-3 py-2.5 text-xs">
+          <span className="flex items-center gap-1.5 font-semibold text-gold">
+            <Swords className="size-4 shrink-0 text-gold" />
+            Raid Tam Katılım
+          </span>
+          <span className="rounded-md bg-gold/20 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gold">
+            +{rules.raid10}p
+          </span>
+        </div>
+
         <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/[0.06] px-3 py-2.5 text-xs">
           <span className="flex items-center gap-1.5 font-semibold text-emerald-200">
             <ShieldCheck className="size-4 shrink-0 text-emerald-400" />
@@ -708,7 +718,7 @@ export function WeeklyRaidTimeline({
           </span>
         </div>
 
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-500/35 bg-rose-500/[0.08] px-3 py-2.5 text-xs sm:col-span-2 lg:col-span-1">
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-rose-500/35 bg-rose-500/[0.08] px-3 py-2.5 text-xs">
           <span className="flex items-center gap-1.5 font-semibold text-rose-200">
             <Ban className="size-4 shrink-0 text-rose-400" />
             No-Show

@@ -4,8 +4,13 @@ import type { WowClass } from '@/lib/guild-data'
 import {
   calculateSignupPoints,
   cloneStarterLootItems,
+  defaultQuotaForRaid,
   deriveOutcomeFromFlags,
+  formatTierLabel,
   getActiveLootRoundState,
+  getItemPriorityTiers,
+  getRoundTierAwards,
+  normalizePriorityTiers,
   normalizeRaidSystemStore,
   RAID_CATALOG,
   type AttendanceAdjustment,
@@ -14,6 +19,7 @@ import {
   type BoeLogEntry,
   type BopRecipeDrop,
   type LootItem,
+  type LootPriorityTier,
   type LootSlotAward,
   type MemberAttendanceRow,
   type PointRules,
@@ -927,12 +933,18 @@ export async function POST(request: Request) {
           const itemName = String(body.itemName || '').trim()
           const bossName = String(body.bossName || '').trim()
           const raidId = String(body.raidId || 'barrow')
-          const priorityOrder = Array.isArray(body.priorityOrder)
+          const rawOrder = Array.isArray(body.priorityOrder)
             ? (body.priorityOrder as string[]).map((s) => s.trim()).filter(Boolean)
             : []
-          if (!itemName || !bossName || priorityOrder.length === 0) {
+          const priorityTiers: LootPriorityTier[] = normalizePriorityTiers(
+            body.priorityTiers,
+            rawOrder,
+            defaultQuotaForRaid(raidId),
+          )
+          if (!itemName || !bossName || priorityTiers.length === 0) {
             throw new Error('LOOT_FIELDS_REQUIRED')
           }
+          const priorityOrder = priorityTiers.map(formatTierLabel)
 
           const newItem: LootItem = {
             id: `loot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -948,7 +960,14 @@ export async function POST(request: Request) {
             notes: typeof body.notes === 'string' ? body.notes.trim() : '',
             wowheadUrl: typeof body.wowheadUrl === 'string' ? body.wowheadUrl.trim() : '',
             priorityOrder,
-            rounds: [{ roundNumber: 1, slots: priorityOrder.map(() => null) }],
+            priorityTiers,
+            rounds: [
+              {
+                roundNumber: 1,
+                slots: priorityTiers.map(() => null),
+                tierAwards: priorityTiers.map(() => []),
+              },
+            ],
           }
           rs.lootItems.unshift(newItem)
           break
@@ -968,13 +987,32 @@ export async function POST(request: Request) {
           if (typeof body.wowheadUrl === 'string') item.wowheadUrl = body.wowheadUrl.trim()
           if (typeof body.unique === 'boolean') item.unique = body.unique
           if (typeof body.discovered === 'boolean') item.discovered = body.discovered
-          if (Array.isArray(body.priorityOrder) && body.priorityOrder.length > 0) {
-            const nextOrder = (body.priorityOrder as string[]).map((s) => s.trim()).filter(Boolean)
-            item.priorityOrder = nextOrder
-            item.rounds = item.rounds.map((r) => ({
-              ...r,
-              slots: nextOrder.map((_, idx) => r.slots[idx] ?? null),
-            }))
+
+          const hasNewTiers = Array.isArray(body.priorityTiers) && body.priorityTiers.length > 0
+          const hasNewOrder = Array.isArray(body.priorityOrder) && body.priorityOrder.length > 0
+          if (hasNewTiers || hasNewOrder) {
+            const rawOrder = hasNewOrder
+              ? (body.priorityOrder as string[]).map((s) => s.trim()).filter(Boolean)
+              : item.priorityOrder
+            const nextTiers = normalizePriorityTiers(
+              hasNewTiers ? body.priorityTiers : undefined,
+              rawOrder,
+              defaultQuotaForRaid(item.raidId),
+            )
+            if (nextTiers.length > 0) {
+              const prevCount = getItemPriorityTiers(item).length
+              item.priorityTiers = nextTiers
+              item.priorityOrder = nextTiers.map(formatTierLabel)
+              item.rounds = item.rounds.map((r) => {
+                const prevAwards = getRoundTierAwards(r, prevCount)
+                const nextAwards = nextTiers.map((_, idx) => prevAwards[idx] || [])
+                return {
+                  ...r,
+                  slots: nextAwards.map((list) => list[0] || null),
+                  tierAwards: nextAwards,
+                }
+              })
+            }
           }
           break
         }
@@ -1001,7 +1039,8 @@ export async function POST(request: Request) {
           const slotIndex = Number(body.slotIndex)
           const item = rs.lootItems.find((l) => l.id === itemId)
           if (!item) throw new Error('LOOT_NOT_FOUND')
-          if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= item.priorityOrder.length) {
+          const tiers = getItemPriorityTiers(item)
+          if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= tiers.length) {
             throw new Error('INVALID_SLOT')
           }
 
@@ -1020,29 +1059,35 @@ export async function POST(request: Request) {
           if (state.allFilledInLatest && typeof body.roundIndex !== 'number') {
             item.rounds.push({
               roundNumber: state.roundNumber,
-              slots: item.priorityOrder.map(() => null),
+              slots: tiers.map(() => null),
+              tierAwards: tiers.map(() => []),
             })
             targetRoundIndex = item.rounds.length - 1
           }
           if (!item.rounds[targetRoundIndex]) {
             item.rounds.push({
               roundNumber: item.rounds.length + 1,
-              slots: item.priorityOrder.map(() => null),
+              slots: tiers.map(() => null),
+              tierAwards: tiers.map(() => []),
             })
             targetRoundIndex = item.rounds.length - 1
           }
 
+          const round = item.rounds[targetRoundIndex]
+          const tierAwards = getRoundTierAwards(round, tiers.length)
           const award: LootSlotAward = {
             characterName: awardInput.characterName.trim(),
             username: awardInput.username || awardInput.characterName.trim(),
             wowClass: awardInput.wowClass || 'Warrior',
-            spec: awardInput.spec || item.priorityOrder[slotIndex],
+            spec: awardInput.spec || formatTierLabel(tiers[slotIndex]),
             awardedAt: nowIso,
             awardedBy: session.username,
             raidEventId: awardInput.raidEventId,
             note: awardInput.note?.trim(),
           }
-          item.rounds[targetRoundIndex].slots[slotIndex] = award
+          tierAwards[slotIndex].push(award)
+          round.tierAwards = tierAwards
+          round.slots = tierAwards.map((list) => list[0] || null)
           break
         }
 
@@ -1051,9 +1096,21 @@ export async function POST(request: Request) {
           const itemId = String(body.itemId || '')
           const roundIndex = Number(body.roundIndex)
           const slotIndex = Number(body.slotIndex)
+          const awardIndex = typeof body.awardIndex === 'number' ? body.awardIndex : undefined
           const item = rs.lootItems.find((l) => l.id === itemId)
           if (!item || !item.rounds[roundIndex]) throw new Error('LOOT_NOT_FOUND')
-          item.rounds[roundIndex].slots[slotIndex] = null
+          const tiers = getItemPriorityTiers(item)
+          const round = item.rounds[roundIndex]
+          const tierAwards = getRoundTierAwards(round, tiers.length)
+          if (slotIndex >= 0 && slotIndex < tierAwards.length) {
+            if (typeof awardIndex === 'number' && awardIndex >= 0 && awardIndex < tierAwards[slotIndex].length) {
+              tierAwards[slotIndex].splice(awardIndex, 1)
+            } else {
+              tierAwards[slotIndex] = []
+            }
+          }
+          round.tierAwards = tierAwards
+          round.slots = tierAwards.map((list) => list[0] || null)
           break
         }
 

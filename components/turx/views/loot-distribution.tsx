@@ -2,8 +2,11 @@
 
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Award,
   BookOpen,
+  CheckCircle2,
   ChevronDown,
   Coins,
   Dices,
@@ -24,8 +27,12 @@ import { useMemo, useState } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import {
   ALL_SPEC_LABELS,
-  characterMatchesSpecLabel,
+  characterMatchesTier,
+  defaultQuotaForRaid,
+  formatTierLabel,
   getActiveLootRoundState,
+  getItemPriorityTiers,
+  getRoundTierAwards,
   getSpecColor,
   getSpecWowClass,
   hasCharacterReceivedItem,
@@ -33,6 +40,7 @@ import {
   RAID_CATALOG,
   WOW_ITEM_ICON_PRESETS,
   type LootItem,
+  type LootPriorityTier,
   type ProfessionLead,
   type WowItemQuality,
   type WowItemTooltipData,
@@ -64,6 +72,7 @@ export function LootDistributionView() {
   const [selectedBoss, setSelectedBoss] = useState<string>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [liveRaidEventId, setLiveRaidEventId] = useState<string>('')
+  const [liveRosterId, setLiveRosterId] = useState<string>('all')
   const [collapsedRaids, setCollapsedRaids] = useState<Record<string, boolean>>({})
   const [collapsedBosses, setCollapsedBosses] = useState<Record<string, boolean>>({})
 
@@ -78,7 +87,9 @@ export function LootDistributionView() {
     roundIndex: number
     roundNumber: number
     slotIndex: number
+    tier: LootPriorityTier
     specLabel: string
+    filledCount: number
   } | null>(null)
   const [awardSelectedUsername, setAwardSelectedUsername] = useState('')
   const [awardCustomName, setAwardCustomName] = useState('')
@@ -99,14 +110,15 @@ export function LootDistributionView() {
   const [formUnique, setFormUnique] = useState(true)
   const [formNotes, setFormNotes] = useState('')
   const [formWowheadUrl, setFormWowheadUrl] = useState('')
-  const [formPriorityOrder, setFormPriorityOrder] = useState<string[]>([
-    'Tank Warrior',
-    'Tank Paladin',
-    'Rogue',
-    'Fury Warrior',
-    'Hunter',
+  const [formPriorityTiers, setFormPriorityTiers] = useState<LootPriorityTier[]>([
+    { specs: ['Tank Warrior'], quota: 1 },
+    { specs: ['Tank Paladin'], quota: 1 },
+    { specs: ['Rogue'], quota: 1 },
+    { specs: ['Fury Warrior'], quota: 1 },
+    { specs: ['Hunter'], quota: 1 },
   ])
-  const [specToAdd, setSpecToAdd] = useState<string>('Tank Warrior')
+  const [specToAdd, setSpecToAdd] = useState<string>('Rogue')
+  const [quotaToAdd, setQuotaToAdd] = useState<number>(1)
 
   // BoE & BoP Recipe forms
   const [boeModalOpen, setBoeModalOpen] = useState(false)
@@ -264,7 +276,11 @@ export function LootDistributionView() {
     if (!awardTarget) return []
     const sourcePool = selectedLiveEvent
       ? selectedLiveEvent.signups
-          .filter((s) => s.assignment !== 'POOL' && s.confirmStatus !== 'DECLINED_EXCUSED')
+          .filter((s) => {
+            if (s.assignment === 'POOL' || s.confirmStatus === 'DECLINED_EXCUSED') return false
+            if (liveRosterId !== 'all' && s.assignment !== liveRosterId) return false
+            return true
+          })
           .map((s) => ({
             username: s.username,
             characterName: s.characterName,
@@ -284,7 +300,7 @@ export function LootDistributionView() {
 
     return sourcePool
       .map((c) => {
-        const matches = characterMatchesSpecLabel(c, awardTarget.specLabel)
+        const matches = characterMatchesTier(c, awardTarget.tier)
         const points = pointsByUser.get(c.username.toLowerCase()) ?? 0
         const alreadyOwns = hasCharacterReceivedItem(awardTarget.item, c.username, c.characterName)
         return { ...c, matches, points, alreadyOwns }
@@ -295,7 +311,7 @@ export function LootDistributionView() {
         if (b.points !== a.points) return b.points - a.points
         return a.characterName.localeCompare(b.characterName, 'tr')
       })
-  }, [awardTarget, selectedLiveEvent, guildMembers, pointsByUser])
+  }, [awardTarget, selectedLiveEvent, liveRosterId, guildMembers, pointsByUser])
 
   const eligibleMatchingTop = useMemo(() => {
     const eligible = awardCandidates.filter((c) => c.matches && !c.alreadyOwns)
@@ -325,8 +341,10 @@ export function LootDistributionView() {
 
   const openAddItemModal = () => {
     setEditingItem(null)
-    setFormRaidId(selectedRaidId !== 'all' ? selectedRaidId : 'barrow')
-    const cat = RAID_CATALOG.find((r) => r.id === (selectedRaidId !== 'all' ? selectedRaidId : 'barrow')) || RAID_CATALOG[0]
+    const initialRaidId = selectedRaidId !== 'all' ? selectedRaidId : 'barrow'
+    const defQuota = defaultQuotaForRaid(initialRaidId)
+    setFormRaidId(initialRaidId)
+    const cat = RAID_CATALOG.find((r) => r.id === initialRaidId) || RAID_CATALOG[0]
     setFormBossName(cat.bosses[0])
     setFormItemName('')
     setFormItemSlot('Trinket')
@@ -338,7 +356,8 @@ export function LootDistributionView() {
     setFormUnique(true)
     setFormNotes('')
     setFormWowheadUrl('')
-    setFormPriorityOrder([...LOOT_PRIORITY_PRESETS[0].order])
+    setFormPriorityTiers(LOOT_PRIORITY_PRESETS[0].order.map((sp) => ({ specs: [sp], quota: defQuota })))
+    setQuotaToAdd(defQuota)
     setItemModalOpen(true)
   }
 
@@ -356,13 +375,21 @@ export function LootDistributionView() {
     setFormUnique(Boolean(item.unique))
     setFormNotes(item.notes || '')
     setFormWowheadUrl(item.wowheadUrl || '')
-    setFormPriorityOrder([...item.priorityOrder])
+    setFormPriorityTiers(getItemPriorityTiers(item).map((t) => ({ specs: [...t.specs], quota: t.quota })))
+    setQuotaToAdd(defaultQuotaForRaid(item.raidId))
     setItemModalOpen(true)
   }
 
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formItemName.trim() || formPriorityOrder.length === 0) return
+    const validTiers = formPriorityTiers
+      .map((t) => ({
+        specs: [...new Set(t.specs.map((s) => s.trim()).filter(Boolean))],
+        quota: Math.max(1, Math.min(15, Math.floor(Number(t.quota) || 1))),
+      }))
+      .filter((t) => t.specs.length > 0)
+    if (!formItemName.trim() || validTiers.length === 0) return
+    const derivedOrder = validTiers.map(formatTierLabel)
 
     const statsLines = formStatsText
       .split('\n')
@@ -398,7 +425,8 @@ export function LootDistributionView() {
             discovered: true,
             notes: formNotes,
             wowheadUrl: formWowheadUrl,
-            priorityOrder: formPriorityOrder,
+            priorityOrder: derivedOrder,
+            priorityTiers: validTiers,
           }
         : {
             action: 'add_loot_item',
@@ -412,7 +440,8 @@ export function LootDistributionView() {
             discovered: true,
             notes: formNotes,
             wowheadUrl: formWowheadUrl,
-            priorityOrder: formPriorityOrder,
+            priorityOrder: derivedOrder,
+            priorityTiers: validTiers,
           },
       editingItem ? 'Item öncelik listesi güncellendi.' : 'Yeni item loot listesine eklendi.',
     )
@@ -436,7 +465,7 @@ export function LootDistributionView() {
         award: {
           characterName: charName,
           username: chosen?.username || charName,
-          wowClass: chosen?.wowClass || getSpecWowClass(awardTarget.specLabel),
+          wowClass: chosen?.wowClass || getSpecWowClass(awardTarget.tier.specs[0] || awardTarget.specLabel),
           spec: chosen?.spec || awardTarget.specLabel,
           raidEventId: selectedLiveEvent?.id,
           note: awardNote,
@@ -473,9 +502,9 @@ export function LootDistributionView() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow={`${activePhase?.name || 'Phase 1'} · ŞEFFAF LOOT SİSTEMİ`}
+        eyebrow={`${activePhase?.name || 'Phase 1'} · ORTAK LOOT LİSTESİ`}
         title="Loot Sistemi & Öncelik Rotasyonu"
-        description="Her item için sınıf/spec öncelik sıraları 7/24 açıktır. Sıradaki sınıf raidde yoksa sonraki uygun sıra dolar, atlanan öncelik açık (beklemede) kalır. Aynı spec'te eşitlikte devam puanı, puanda da eşitlikte zar belirler."
+        description="Tüm lonca ve tüm raid grupları tek ortak öncelik listesiyle takip edilir. Varsayılan kota: 10-man 1 · 20-man 2 · 40-man 4 (item bazında özelleştirilebilir). Aynı öncelikte eşit paylaşımlı spec'ler Devam Puanı (eşitse zar) ile belirlenir."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-border bg-[#071422] p-1">
@@ -548,18 +577,37 @@ export function LootDistributionView() {
                     </p>
                   </div>
                 </div>
-                <select
-                  value={liveRaidEventId}
-                  onChange={(e) => setLiveRaidEventId(e.target.value)}
-                  className="min-w-[240px] rounded-lg border border-neon/40 bg-[#071422] px-3 py-2 text-xs text-foreground focus:border-neon focus:outline-none"
-                >
-                  <option value="">Tüm Guild Üyeleri (Genel Mod)</option>
-                  {activeRaidEvents.map((ev) => (
-                    <option key={ev.id} value={ev.id}>
-                      Canlı Raid: {ev.raidName} ({ev.signups.length} kayıt)
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={liveRaidEventId}
+                    onChange={(e) => {
+                      setLiveRaidEventId(e.target.value)
+                      setLiveRosterId('all')
+                    }}
+                    className="min-w-[220px] rounded-lg border border-neon/40 bg-[#071422] px-3 py-2 text-xs text-foreground focus:border-neon focus:outline-none"
+                  >
+                    <option value="">Tüm Guild Üyeleri (Genel Mod)</option>
+                    {activeRaidEvents.map((ev) => (
+                      <option key={ev.id} value={ev.id}>
+                        Canlı Raid: {ev.raidName} ({ev.signups.length} kayıt)
+                      </option>
+                    ))}
+                  </select>
+                  {selectedLiveEvent && selectedLiveEvent.rosters.length > 1 && (
+                    <select
+                      value={liveRosterId}
+                      onChange={(e) => setLiveRosterId(e.target.value)}
+                      className="rounded-lg border border-gold/40 bg-[#071422] px-3 py-2 text-xs text-gold focus:border-gold focus:outline-none"
+                    >
+                      <option value="all">Tüm Gruplar ({selectedLiveEvent.rosters.length})</option>
+                      {selectedLiveEvent.rosters.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
               </div>
             </Panel>
           )}
@@ -568,18 +616,18 @@ export function LootDistributionView() {
           <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-gold/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
               <p className="flex items-center gap-1.5 font-display font-bold text-gold">
-                <Lock className="size-3.5" /> Faz Başı Liste Kilidi
+                <Lock className="size-3.5" /> Ortak Liste &amp; Faz Kilidi
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Öncelik listesi faz başlamadan lonca görüşüne açılır, faz günü kilitlenir ve faz boyunca sabit kalır.
+                Tüm 10m / 20m / 40m grupları aynı ortak listeyi kullanır; liste faz başı lonca onayına açılır ve kilitlenir.
               </p>
             </div>
             <div className="rounded-xl border border-neon/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
               <p className="flex items-center gap-1.5 font-display font-bold text-neon">
-                <Award className="size-3.5" /> Öncelik Rotasyonu &amp; Bekleyen Öncelik
+                <Award className="size-3.5" /> Sabit Kota (10m:1 · 20m:2 · 40m:4)
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Her tur öncelik sıraları sırayla dolar; o gün raidde olmayan sınıfın sırası yanmaz, <em>Bekleyen Öncelik</em> olarak korunur.
+                Her öncelik kotası dolunca sıradaki önceliğe geçilir; o gün raidde olmayan sınıfın kalan kotası <em>Bekleyen Öncelik</em> olarak korunur.
               </p>
             </div>
             <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
@@ -592,10 +640,10 @@ export function LootDistributionView() {
             </div>
             <div className="rounded-xl border border-amber-400/30 bg-[#071422]/90 px-3.5 py-2.5 text-xs">
               <p className="flex items-center gap-1.5 font-display font-bold text-amber-300">
-                <Dices className="size-3.5" /> Aynı Spec: Puan → Zar
+                <Dices className="size-3.5" /> Eşit Spec &amp; Puan → Zar
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                Aynı öncelik sırasında birden fazla uygun oyuncu varsa <strong>Devam Puanı</strong> yüksek olan (eşitse zar) alır.
+                Aynı öncelikte birden fazla uygun oyuncu (veya eşit paylaşımlı spec) varsa <strong>Devam Puanı</strong> yüksek olan (eşitse zar) alır.
               </p>
             </div>
           </div>
@@ -739,16 +787,18 @@ export function LootDistributionView() {
                         {!isBossCollapsed && (
                         <div className="space-y-3">
                           {bossGroup.items.map((item) => {
+                            const tiers = getItemPriorityTiers(item)
                             const roundState = getActiveLootRoundState(item)
-                            const displayRound = roundState.allFilledInLatest
-                              ? { roundNumber: roundState.roundNumber, slots: item.priorityOrder.map(() => null) }
-                              : item.rounds[roundState.roundIndex] || {
-                                  roundNumber: 1,
-                                  slots: item.priorityOrder.map(() => null),
-                                }
+                            const activeTierAwards = roundState.allFilledInLatest
+                              ? tiers.map(() => [])
+                              : getRoundTierAwards(item.rounds[roundState.roundIndex], tiers.length)
                             const completedRounds = roundState.allFilledInLatest
                               ? item.rounds
                               : item.rounds.slice(0, roundState.roundIndex)
+                            const highestAwardedTierIdx = Math.max(
+                              -1,
+                              ...activeTierAwards.map((list, si) => (list.length > 0 ? si : -1)),
+                            )
 
                             return (
                               <Panel key={item.id} className="border-border/80 transition hover:border-gold/30">
@@ -802,51 +852,73 @@ export function LootDistributionView() {
                                   </div>
                                 </div>
 
-                                {/* Active Round Priority Boxes */}
-                                <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-                                  {item.priorityOrder.map((specLabel, idx) => {
-                                    const award = displayRound.slots[idx]
-                                    const specColor = getSpecColor(specLabel)
-                                    const isNextPriority = !award && idx === roundState.primarySlotIndex
-                                    const isSkippedWaiting =
-                                      !award &&
-                                      idx <
-                                        Math.max(
-                                          -1,
-                                          ...displayRound.slots.map((s, si) => (s ? si : -1)),
-                                        )
+                                {/* Active Round Flexible Priority Tiers with Quotas */}
+                                <div className="mt-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+                                  {tiers.map((tier, idx) => {
+                                    const awards = activeTierAwards[idx] || []
+                                    const isFull = awards.length >= tier.quota
+                                    const isNextPriority = !isFull && idx === roundState.primarySlotIndex
+                                    const isSkippedWaiting = !isFull && idx < highestAwardedTierIdx
+                                    const tierLabel = formatTierLabel(tier)
 
                                     return (
                                       <div
-                                        key={`${specLabel}-${idx}`}
+                                        key={`${tierLabel}-${idx}`}
                                         className={cn(
                                           'relative flex flex-col justify-between rounded-xl border p-3 transition',
-                                          award
-                                            ? 'border-emerald-500/30 bg-emerald-500/[0.06]'
+                                          isFull
+                                            ? 'border-emerald-500/35 bg-emerald-500/[0.06]'
                                             : isNextPriority
                                               ? 'border-gold/70 bg-gold/[0.08] shadow-[0_0_18px_rgb(212_175_55/0.16)]'
                                               : 'border-border/70 bg-[#071422]/80',
                                         )}
                                       >
-                                        <div className="flex items-center justify-between gap-1">
-                                          <span className="text-[11px] font-bold" style={{ color: specColor }}>
-                                            {idx + 1}. {specLabel}
-                                          </span>
-                                          {isNextPriority && (
-                                            <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-gold uppercase">
-                                              {isSkippedWaiting ? 'Bekleyen Öncelik' : 'Sırada'}
+                                        <div className="flex flex-wrap items-start justify-between gap-1.5">
+                                          <div className="min-w-0 flex-1 text-[11px] leading-snug font-bold">
+                                            <span className="mr-1 text-muted-foreground">{idx + 1}.</span>
+                                            {tier.specs.map((sp, spIdx) => (
+                                              <span key={sp}>
+                                                {spIdx > 0 && <span className="mx-1 text-muted-foreground">/</span>}
+                                                <span style={{ color: getSpecColor(sp) }}>{sp}</span>
+                                              </span>
+                                            ))}
+                                          </div>
+                                          <div className="flex shrink-0 items-center gap-1">
+                                            <span
+                                              className={cn(
+                                                'inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-mono text-[10px] font-bold',
+                                                isFull
+                                                  ? 'bg-emerald-500/20 text-emerald-300'
+                                                  : isNextPriority
+                                                    ? 'bg-gold/20 text-gold'
+                                                    : 'bg-white/5 text-silver',
+                                              )}
+                                              title={`Kota: ${awards.length} / ${tier.quota}`}
+                                            >
+                                              {awards.length}/{tier.quota}
+                                              {isFull && <CheckCircle2 className="size-2.5" />}
                                             </span>
-                                          )}
+                                            {isNextPriority && (
+                                              <span className="rounded-full bg-gold/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-gold uppercase">
+                                                {isSkippedWaiting ? 'Bekleyen' : 'Sırada'}
+                                              </span>
+                                            )}
+                                          </div>
                                         </div>
 
-                                        <div className="mt-2.5">
-                                          {award ? (
-                                            <div className="flex items-center justify-between gap-2">
+                                        <div className="mt-2.5 space-y-1.5">
+                                          {awards.map((award, aIdx) => (
+                                            <div
+                                              key={`${award.username}-${aIdx}`}
+                                              className="flex items-center justify-between gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] px-2 py-1"
+                                            >
                                               <div className="min-w-0">
-                                                <div className="flex items-center gap-1.5">
+                                                <div className="flex items-center gap-1">
                                                   <p
-                                                    className="truncate text-sm font-bold"
-                                                    style={{ color: CLASS_COLORS[award.wowClass] || specColor }}
+                                                    className="truncate text-xs font-bold"
+                                                    style={{
+                                                      color: CLASS_COLORS[award.wowClass] || getSpecColor(tier.specs[0] || ''),
+                                                    }}
                                                   >
                                                     {award.characterName}
                                                   </p>
@@ -866,40 +938,50 @@ export function LootDistributionView() {
                                                         itemId: item.id,
                                                         roundIndex: roundState.roundIndex,
                                                         slotIndex: idx,
+                                                        awardIndex: aIdx,
                                                       },
-                                                      'Öncelik sırası boşaltıldı (geri alındı).',
+                                                      'Atama geri alındı.',
                                                     )
                                                   }
                                                   className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-300"
-                                                  title="Atamayı geri al"
+                                                  title="Bu atamayı geri al"
                                                 >
-                                                  <RotateCcw className="size-3.5" />
+                                                  <RotateCcw className="size-3" />
                                                 </button>
                                               )}
                                             </div>
-                                          ) : isOfficer ? (
-                                            <button
-                                              disabled={busy}
-                                              onClick={() => {
-                                                setAwardTarget({
-                                                  item,
-                                                  roundIndex: roundState.roundIndex,
-                                                  roundNumber: roundState.roundNumber,
-                                                  slotIndex: idx,
-                                                  specLabel,
-                                                })
-                                                setAwardSelectedUsername('')
-                                                setAwardCustomName('')
-                                                setAwardNote('')
-                                              }}
-                                              className="w-full cursor-pointer rounded-lg border border-dashed border-neon/40 bg-neon/5 px-2.5 py-1.5 text-xs font-medium text-neon hover:bg-neon/15"
-                                            >
-                                              <Award className="mr-1 inline size-3.5" />
-                                              Oyuncuya Ver
-                                            </button>
-                                          ) : (
-                                            <p className="text-xs italic text-muted-foreground/70">Sıra bekleniyor...</p>
-                                          )}
+                                          ))}
+
+                                          {!isFull &&
+                                            (isOfficer ? (
+                                              <button
+                                                disabled={busy}
+                                                onClick={() => {
+                                                  setAwardTarget({
+                                                    item,
+                                                    roundIndex: roundState.roundIndex,
+                                                    roundNumber: roundState.roundNumber,
+                                                    slotIndex: idx,
+                                                    tier,
+                                                    specLabel: tierLabel,
+                                                    filledCount: awards.length,
+                                                  })
+                                                  setAwardSelectedUsername('')
+                                                  setAwardCustomName('')
+                                                  setAwardNote('')
+                                                }}
+                                                className="w-full cursor-pointer rounded-lg border border-dashed border-neon/40 bg-neon/5 px-2.5 py-1.5 text-xs font-medium text-neon hover:bg-neon/15"
+                                              >
+                                                <Award className="mr-1 inline size-3.5" />
+                                                Oyuncuya Ver{tier.quota > 1 ? ` (${awards.length + 1}/${tier.quota})` : ''}
+                                              </button>
+                                            ) : awards.length === 0 ? (
+                                              <p className="text-xs italic text-muted-foreground/70">Sıra bekleniyor...</p>
+                                            ) : (
+                                              <p className="text-[11px] italic text-muted-foreground/80">
+                                                Kalan kota: {tier.quota - awards.length}
+                                              </p>
+                                            ))}
                                         </div>
                                       </div>
                                     )
@@ -910,18 +992,21 @@ export function LootDistributionView() {
                                 {completedRounds.length > 0 && (
                                   <div className="mt-3 rounded-lg border border-border/50 bg-[#071422]/60 px-3 py-2 text-[11px] text-muted-foreground">
                                     <span className="font-semibold text-silver">Tamamlanan Turlar: </span>
-                                    {completedRounds.map((r) => (
-                                      <span key={r.roundNumber} className="mr-3 inline-flex flex-wrap items-center gap-1.5">
-                                        <strong className="text-gold">Tur {r.roundNumber}:</strong>
-                                        {r.slots.map((s, si) =>
-                                          s ? (
-                                            <span key={si} style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                                              {si + 1}.{s.characterName}
-                                            </span>
-                                          ) : null,
-                                        )}
-                                      </span>
-                                    ))}
+                                    {completedRounds.map((r) => {
+                                      const rAwards = getRoundTierAwards(r, tiers.length)
+                                      return (
+                                        <span key={r.roundNumber} className="mr-3 inline-flex flex-wrap items-center gap-1.5">
+                                          <strong className="text-gold">Tur {r.roundNumber}:</strong>
+                                          {rAwards.map((list, si) =>
+                                            list.map((s, ai) => (
+                                              <span key={`${si}-${ai}`} style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
+                                                {si + 1}.{s.characterName}
+                                              </span>
+                                            )),
+                                          )}
+                                        </span>
+                                      )
+                                    })}
                                   </div>
                                 )}
                               </Panel>
@@ -1132,7 +1217,15 @@ export function LootDistributionView() {
         title={awardTarget ? `Loot Dağıt: ${awardTarget.item.itemName}` : 'Loot Dağıt'}
         description={
           awardTarget
-            ? `Tur #${awardTarget.roundNumber} · Öncelik #${awardTarget.slotIndex + 1}: ${awardTarget.specLabel} (${selectedLiveEvent ? `Canlı Raid: ${selectedLiveEvent.raidName}` : 'Tüm Guild Üyeleri'})`
+            ? `Tur #${awardTarget.roundNumber} · Öncelik #${awardTarget.slotIndex + 1} (${awardTarget.filledCount + 1}/${awardTarget.tier.quota}): ${awardTarget.specLabel} (${
+                selectedLiveEvent
+                  ? `Canlı Raid: ${selectedLiveEvent.raidName}${
+                      liveRosterId !== 'all'
+                        ? ` · ${selectedLiveEvent.rosters.find((r) => r.id === liveRosterId)?.name || ''}`
+                        : ''
+                    }`
+                  : 'Tüm Guild Üyeleri'
+              })`
             : undefined
         }
         className="max-w-xl"
@@ -1236,13 +1329,13 @@ export function LootDistributionView() {
         )}
       </Modal>
 
-      {/* Add/Edit Loot Item Modal with Priority Preset Templates */}
+      {/* Add/Edit Loot Item Modal with Flexible Priority Tier & Quota Builder */}
       <Modal
         open={itemModalOpen}
         onClose={() => setItemModalOpen(false)}
         title={editingItem ? 'Loot Item Düzenle' : 'Yeni Loot Item Ekle'}
-        description="Hazır öncelik şablonlarından 1 tıkla seçim yapabilir veya sırayı özelleştirebilirsiniz."
-        className="max-w-xl"
+        description="Her öncelik sırası için bir veya birden fazla eşit sınıf/spec ve kota tanımlayabilirsiniz (varsayılan: 10m → 1, 20m → 2, 40m → 4)."
+        className="max-w-2xl"
       >
         <form onSubmit={handleSaveItem} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1252,14 +1345,18 @@ export function LootDistributionView() {
                 value={formRaidId}
                 disabled={Boolean(editingItem)}
                 onChange={(e) => {
-                  setFormRaidId(e.target.value)
-                  const cat = RAID_CATALOG.find((r) => r.id === e.target.value)
+                  const nextRaidId = e.target.value
+                  const nextDefQuota = defaultQuotaForRaid(nextRaidId)
+                  setFormRaidId(nextRaidId)
+                  setQuotaToAdd(nextDefQuota)
+                  setFormPriorityTiers((prev) => prev.map((t) => ({ ...t, quota: nextDefQuota })))
+                  const cat = RAID_CATALOG.find((r) => r.id === nextRaidId)
                   if (cat && cat.bosses[0]) setFormBossName(cat.bosses[0])
                 }}
               >
                 {RAID_CATALOG.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {r.name}
+                    {r.name} ({r.size}m · varsayılan kota {defaultQuotaForRaid(r.id)})
                   </option>
                 ))}
               </select>
@@ -1373,7 +1470,10 @@ export function LootDistributionView() {
                 <button
                   type="button"
                   key={preset.id}
-                  onClick={() => setFormPriorityOrder([...preset.order])}
+                  onClick={() => {
+                    const q = defaultQuotaForRaid(formRaidId)
+                    setFormPriorityTiers(preset.order.map((sp) => ({ specs: [sp], quota: q })))
+                  }}
                   className="cursor-pointer rounded-md border border-neon/30 bg-neon/5 px-2.5 py-1 text-[11px] text-neon hover:bg-neon/15"
                 >
                   {preset.label}
@@ -1382,32 +1482,159 @@ export function LootDistributionView() {
             </div>
           </div>
 
-          {/* Editable Priority Order */}
-          <div>
-            <p className="mb-1.5 text-xs font-medium tracking-wide text-silver uppercase">
-              Öncelik Sırası (1 → {formPriorityOrder.length})
-            </p>
-            <div className="flex flex-wrap gap-1.5 rounded-lg border border-border bg-[#071422] p-2.5">
-              {formPriorityOrder.map((sp, i) => (
-                <span
-                  key={`${sp}-${i}`}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-[#0d2238] px-2.5 py-1 text-xs font-semibold"
-                  style={{ color: getSpecColor(sp) }}
-                >
-                  {i + 1}. {sp}
-                  <button
-                    type="button"
-                    onClick={() => setFormPriorityOrder((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="cursor-pointer text-muted-foreground hover:text-rose-400"
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
+          {/* Flexible Priority Tier Builder (Multi-Spec Equal Share + Per-Tier Quota) */}
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium tracking-wide text-silver uppercase">
+                Öncelik Sıraları (1 → {formPriorityTiers.length}) · Eşit Spec &amp; Kota
+              </p>
+              <span className="text-[10px] text-muted-foreground">
+                Aynı sıraya birden fazla spec ekleyerek eşit öncelik verebilirsiniz
+              </span>
             </div>
-            <div className="mt-2 flex gap-2">
+
+            <div className="space-y-2 rounded-xl border border-border bg-[#071422] p-2.5">
+              {formPriorityTiers.length === 0 ? (
+                <p className="py-3 text-center text-xs text-muted-foreground">
+                  Henüz öncelik sırası yok. Aşağıdan yeni sıra ekleyin.
+                </p>
+              ) : (
+                formPriorityTiers.map((tier, idx) => (
+                  <div
+                    key={idx}
+                    className="flex flex-col gap-2 rounded-lg border border-border/70 bg-[#0b1b2d]/90 p-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded bg-gold/15 px-1.5 py-0.5 font-mono text-[11px] font-bold text-gold">
+                          #{idx + 1}
+                        </span>
+                        {tier.specs.map((sp) => (
+                          <span
+                            key={sp}
+                            className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-[#071422] px-2.5 py-0.5 text-xs font-semibold"
+                            style={{ color: getSpecColor(sp) }}
+                          >
+                            {sp}
+                            {tier.specs.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormPriorityTiers((prev) =>
+                                    prev.map((t, ti) =>
+                                      ti === idx ? { ...t, specs: t.specs.filter((s) => s !== sp) } : t,
+                                    ),
+                                  )
+                                }
+                                className="cursor-pointer text-muted-foreground hover:text-rose-400"
+                                title="Bu spec'i sıradan çıkar"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <span>Kota:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={15}
+                            value={tier.quota}
+                            onChange={(e) => {
+                              const val = Math.max(1, Math.min(15, Number(e.target.value) || 1))
+                              setFormPriorityTiers((prev) =>
+                                prev.map((t, ti) => (ti === idx ? { ...t, quota: val } : t)),
+                              )
+                            }}
+                            className="w-12 rounded border border-gold/40 bg-[#071422] px-1.5 py-0.5 text-center font-mono text-xs font-bold text-gold"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() =>
+                            setFormPriorityTiers((prev) => {
+                              if (idx === 0) return prev
+                              const copy = [...prev]
+                              ;[copy[idx - 1], copy[idx]] = [copy[idx], copy[idx - 1]]
+                              return copy
+                            })
+                          }
+                          className="cursor-pointer rounded border border-border/70 p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                          title="Yukarı taşı"
+                        >
+                          <ArrowUp className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === formPriorityTiers.length - 1}
+                          onClick={() =>
+                            setFormPriorityTiers((prev) => {
+                              if (idx === prev.length - 1) return prev
+                              const copy = [...prev]
+                              ;[copy[idx + 1], copy[idx]] = [copy[idx], copy[idx + 1]]
+                              return copy
+                            })
+                          }
+                          className="cursor-pointer rounded border border-border/70 p-1 text-muted-foreground hover:text-foreground disabled:opacity-30"
+                          title="Aşağı taşı"
+                        >
+                          <ArrowDown className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormPriorityTiers((prev) => prev.filter((_, ti) => ti !== idx))}
+                          className="cursor-pointer rounded border border-rose-500/30 p-1 text-rose-400 hover:bg-rose-500/10"
+                          title="Öncelik sırasını sil"
+                        >
+                          <Trash2 className="size-3" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Add an equal-priority spec to THIS tier */}
+                    <div className="flex items-center gap-2">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const chosen = e.target.value
+                          if (!chosen) return
+                          setFormPriorityTiers((prev) =>
+                            prev.map((t, ti) =>
+                              ti === idx && !t.specs.includes(chosen)
+                                ? { ...t, specs: [...t.specs, chosen] }
+                                : t,
+                            ),
+                          )
+                        }}
+                        className="rounded-md border border-dashed border-neon/35 bg-[#071422] px-2 py-1 text-[11px] text-neon focus:border-neon focus:outline-none"
+                      >
+                        <option value="">+ Eşit öncelikli sınıf/spec ekle...</option>
+                        {ALL_SPEC_LABELS.filter((sp) => !tier.specs.includes(sp)).map((sp) => (
+                          <option key={sp} value={sp}>
+                            {sp}
+                          </option>
+                        ))}
+                      </select>
+                      {tier.specs.length > 1 && (
+                        <span className="text-[10px] text-emerald-300/90">
+                          Eşit paylaşım: Devam Puanı yüksek olan alır
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Add New Priority Tier Row */}
+            <div className="flex flex-wrap items-center gap-2">
               <select
-                className={cn(inputClass, 'flex-1 text-xs')}
+                className={cn(inputClass, 'min-w-[160px] flex-1 text-xs')}
                 value={specToAdd}
                 onChange={(e) => setSpecToAdd(e.target.value)}
               >
@@ -1417,12 +1644,25 @@ export function LootDistributionView() {
                   </option>
                 ))}
               </select>
+              <label className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-[#071422] px-2.5 py-1.5 text-xs text-silver">
+                <span>Kota:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={15}
+                  value={quotaToAdd}
+                  onChange={(e) => setQuotaToAdd(Math.max(1, Math.min(15, Number(e.target.value) || 1)))}
+                  className="w-12 rounded border border-gold/40 bg-[#0b1b2d] px-1.5 py-0.5 text-center font-mono text-xs font-bold text-gold"
+                />
+              </label>
               <GhostButton
                 type="button"
-                onClick={() => setFormPriorityOrder((prev) => [...prev, specToAdd])}
+                onClick={() =>
+                  setFormPriorityTiers((prev) => [...prev, { specs: [specToAdd], quota: quotaToAdd }])
+                }
                 className="text-xs"
               >
-                + Sıraya Ekle
+                + Yeni Öncelik Sırası Ekle
               </GhostButton>
             </div>
           </div>

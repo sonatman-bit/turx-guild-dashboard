@@ -391,10 +391,11 @@ export function RoadmapView() {
         <div className="rounded-xl border border-emerald-500/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-emerald-300">
             <Users className="size-4" />
-            Bench Sınırı &amp; Ek Sıra Esnekliği
+            Ortak Liste &amp; Sabit Kota (10m:1 · 20m:2 · 40m:4)
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Aynı oyuncu kendi isteğiyle <strong>üst üste 2 kez benche yazılamaz</strong> (Officer kararı hariç). Progress kilitleyen 1–2 kritik tank/healer core parçada liste başına ek öncelik sırası tanımlanabilir.
+            Tüm raid grupları tek ortak listeyi kullanır: her öncelik sırası <strong>10-man&apos;de 1</strong>,{' '}
+            <strong>20-man&apos;de 2</strong>, <strong>40-man&apos;de 4 kota</strong> (item bazında özelleştirilebilir ve birden fazla spec eşit paylaşabilir) ile döner. Aynı oyuncu kendi isteğiyle <strong>üst üste 2 kez benche yazılamaz</strong> (Officer kararı hariç).
           </p>
         </div>
       </div>

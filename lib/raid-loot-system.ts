@@ -156,6 +156,13 @@ export type ProfessionLead = {
   notes?: string
 }
 
+export type LootPriorityTier = {
+  /** One or more equal-priority class/spec labels sharing this tier (e.g. ['Mage', 'Warlock']) */
+  specs: string[]
+  /** Quota per round (defaults: 10m -> 1, 20m -> 2, 40m -> 4) */
+  quota: number
+}
+
 export type LootSlotAward = {
   characterName: string
   username: string
@@ -169,8 +176,10 @@ export type LootSlotAward = {
 
 export type LootRound = {
   roundNumber: number
-  /** Same length as item.priorityOrder; null means open/waiting */
+  /** Legacy 1-per-tier array kept for backward compatibility */
   slots: (LootSlotAward | null)[]
+  /** Multi-quota awards per tier index: tierAwards[tierIdx] holds up to tier.quota awards */
+  tierAwards?: LootSlotAward[][]
 }
 
 export type WowItemQuality = 'legendary' | 'epic' | 'rare' | 'uncommon'
@@ -253,6 +262,8 @@ export type LootItem = {
   discovered?: boolean
   /** Ordered list of Spec Labels, e.g. ['Tank Warrior', 'Tank Paladin', 'Rogue', 'Fury Warrior', 'Hunter'] */
   priorityOrder: string[]
+  /** Flexible priority tiers supporting shared equal specs and per-tier quota */
+  priorityTiers?: LootPriorityTier[]
   rounds: LootRound[]
 }
 
@@ -1670,9 +1681,74 @@ export function calculateSignupPoints(
   }
 }
 
+export function defaultQuotaForRaid(raidId: string): number {
+  const found = RAID_CATALOG.find((r) => r.id === raidId)
+  if (found?.size === 40) return 4
+  if (found?.size === 20) return 2
+  return 1
+}
+
+export function formatTierLabel(tier: LootPriorityTier): string {
+  return tier.specs.join(' / ')
+}
+
+export function normalizePriorityTiers(
+  rawTiers: unknown,
+  fallbackOrder: string[],
+  defaultQuota: number,
+): LootPriorityTier[] {
+  const safeDefault = Math.max(1, Math.min(15, Math.floor(defaultQuota) || 1))
+  if (Array.isArray(rawTiers) && rawTiers.length > 0) {
+    const cleaned: LootPriorityTier[] = []
+    for (const entry of rawTiers) {
+      if (!entry || typeof entry !== 'object') continue
+      const obj = entry as { specs?: unknown; quota?: unknown }
+      const specs = Array.isArray(obj.specs)
+        ? [...new Set(obj.specs.map((s) => String(s || '').trim()).filter(Boolean))]
+        : []
+      if (specs.length === 0) continue
+      const q = Number(obj.quota)
+      const quota = Number.isFinite(q) && q >= 1 ? Math.min(15, Math.floor(q)) : safeDefault
+      cleaned.push({ specs, quota })
+    }
+    if (cleaned.length > 0) return cleaned
+  }
+
+  return fallbackOrder
+    .map((label) => {
+      const specs = label
+        .split('/')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      return { specs, quota: safeDefault }
+    })
+    .filter((t) => t.specs.length > 0)
+}
+
+export function getItemPriorityTiers(item: Pick<LootItem, 'raidId' | 'priorityOrder' | 'priorityTiers'>): LootPriorityTier[] {
+  return normalizePriorityTiers(item.priorityTiers, item.priorityOrder || [], defaultQuotaForRaid(item.raidId))
+}
+
+export function getRoundTierAwards(round: LootRound | undefined, tierCount: number): LootSlotAward[][] {
+  if (!round) return Array.from({ length: tierCount }, () => [])
+  if (Array.isArray(round.tierAwards)) {
+    return Array.from({ length: tierCount }, (_, i) => {
+      const list = round.tierAwards?.[i]
+      if (Array.isArray(list)) return list.filter(Boolean)
+      const legacy = round.slots?.[i]
+      return legacy ? [legacy] : []
+    })
+  }
+  return Array.from({ length: tierCount }, (_, i) => {
+    const legacy = round.slots?.[i]
+    return legacy ? [legacy] : []
+  })
+}
+
 /**
- * Finds the current active round and the first open (waiting) slot index for a loot item.
- * If all slots in the latest round are filled, returns a virtual next round index so UI knows it wraps.
+ * Finds the current active round and the first open (waiting) tier index for a loot item.
+ * A tier is open while its awarded count < tier.quota.
+ * If all tiers in the latest round have reached their quota, returns a virtual next round index so UI knows it wraps.
  */
 export function getActiveLootRoundState(item: LootItem): {
   roundIndex: number
@@ -1681,11 +1757,12 @@ export function getActiveLootRoundState(item: LootItem): {
   primarySlotIndex: number
   allFilledInLatest: boolean
 } {
+  const tiers = getItemPriorityTiers(item)
   if (!item.rounds || item.rounds.length === 0) {
     return {
       roundIndex: 0,
       roundNumber: 1,
-      openSlotIndices: item.priorityOrder.map((_, idx) => idx),
+      openSlotIndices: tiers.map((_, idx) => idx),
       primarySlotIndex: 0,
       allFilledInLatest: false,
     }
@@ -1693,16 +1770,19 @@ export function getActiveLootRoundState(item: LootItem): {
 
   const lastIdx = item.rounds.length - 1
   const lastRound = item.rounds[lastIdx]
+  const tierAwards = getRoundTierAwards(lastRound, tiers.length)
   const openSlotIndices: number[] = []
-  for (let i = 0; i < item.priorityOrder.length; i += 1) {
-    if (!lastRound.slots[i]) openSlotIndices.push(i)
+  for (let i = 0; i < tiers.length; i += 1) {
+    if ((tierAwards[i]?.length || 0) < tiers[i].quota) {
+      openSlotIndices.push(i)
+    }
   }
 
   if (openSlotIndices.length === 0) {
     return {
       roundIndex: lastIdx + 1,
       roundNumber: lastRound.roundNumber + 1,
-      openSlotIndices: item.priorityOrder.map((_, idx) => idx),
+      openSlotIndices: tiers.map((_, idx) => idx),
       primarySlotIndex: 0,
       allFilledInLatest: true,
     }
@@ -1721,15 +1801,24 @@ export function getActiveLootRoundState(item: LootItem): {
 export function hasCharacterReceivedItem(item: LootItem, username: string, characterName: string): boolean {
   const uLower = username.toLowerCase()
   const cLower = characterName.toLowerCase()
+  const tierCount = getItemPriorityTiers(item).length
   for (const round of item.rounds || []) {
-    for (const slot of round.slots || []) {
-      if (!slot) continue
-      if (slot.username.toLowerCase() === uLower || slot.characterName.toLowerCase() === cLower) {
+    const allAwards = getRoundTierAwards(round, tierCount).flat()
+    for (const award of allAwards) {
+      if (!award) continue
+      if (award.username.toLowerCase() === uLower || award.characterName.toLowerCase() === cLower) {
         return true
       }
     }
   }
   return false
+}
+
+export function characterMatchesTier(
+  char: { wowClass: string; spec: string; role?: string },
+  tier: LootPriorityTier,
+): boolean {
+  return tier.specs.some((sp) => characterMatchesSpecLabel(char, sp))
 }
 
 /** Match whether a character's class/spec fits a priority spec label (e.g. "Tank Warrior") */

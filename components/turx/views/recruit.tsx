@@ -72,8 +72,8 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
         desc: 'Her faz başlamadan 5–7 gün önce öncelik listesi loncaya sunulur ve öneriler değerlendirilir. Faz açılışında liste kilitlenir, sonraki faza kadar tartışmaya kapatılır.',
       },
       {
-        title: 'Sıralı Adil Rotasyon (Round-Robin)',
-        desc: 'Eşya düştükçe sıradaki spec önceliğini alır; tüm sıralar dolunca Tur 2 ile liste başa döner. Kritik 1–2 tank/healer core parçada liste başına ek öncelik sırası tanımlanabilir.',
+        title: 'Ortak Liste & Raid Boyutuna Göre Kota (10m:1 · 20m:2 · 40m:4)',
+        desc: 'Tüm lonca ve tüm raid grupları tek ortak öncelik listesini kullanır. Varsayılan olarak 10-man itemlarda 1, 20-man itemlarda 2, 40-man itemlarda 4 kota dolar ve tüm kotalar bitince Tur 2 başlar. Gerekli eşyalarda aynı öncelik sırasını birden fazla sınıf/spec eşit paylaşabilir.',
       },
       {
         title: 'Hakkınız Yanmaz (Bekleyen Öncelik)',

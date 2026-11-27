@@ -156,6 +156,9 @@ export async function POST(request: Request) {
       current.raidStates = merged.raidStates
       current.bankRequests = merged.bankRequests
       current.bankLedger = merged.bankLedger
+      current.messages = merged.messages
+      current.anonymousMessages = merged.anonymousMessages
+      current.deletedAnonymousMessageIds = merged.deletedAnonymousMessageIds
       return {
         users: current.users.length,
         applications: current.applications.length,

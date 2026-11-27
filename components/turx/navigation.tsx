@@ -66,11 +66,13 @@ function NavList({
   onSelect,
   navigationLocked = false,
   publicModules,
+  unreadAnonymousCount = 0,
 }: {
   active: TabId
   onSelect: (id: TabId) => void
   navigationLocked?: boolean
   publicModules: PublicModuleFlags
+  unreadAnonymousCount?: number
 }) {
   const { user } = useAuth()
   const [mounted, setMounted] = useState(false)
@@ -158,8 +160,27 @@ function NavList({
                     </span>
                   )}
                 </span>
-                <span className="truncate text-[11px] text-muted-foreground">{short}</span>
+                {id === 'admin' && unreadAnonymousCount > 0 ? (
+                  <span className="truncate text-[11px] font-medium text-red-300">
+                    {unreadAnonymousCount} okunmamış anonim mesaj
+                  </span>
+                ) : (
+                  <span className="truncate text-[11px] text-muted-foreground">{short}</span>
+                )}
               </span>
+              {id === 'admin' && unreadAnonymousCount > 0 && (
+                <span
+                  className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-400/75 bg-red-500/20 px-2 py-0.5 text-[11px] font-black text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.45)]"
+                  title={`${unreadAnonymousCount} okunmamış anonim mesaj`}
+                  aria-label={`${unreadAnonymousCount} okunmamış anonim mesaj`}
+                >
+                  <span className="relative flex size-2 shrink-0">
+                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-85" />
+                    <span className="relative inline-flex size-2 rounded-full bg-red-500" />
+                  </span>
+                  <span className="tabular-nums">{unreadAnonymousCount > 99 ? '99+' : unreadAnonymousCount}</span>
+                </span>
+              )}
             </button>
           </div>
         )
@@ -173,11 +194,13 @@ function SidebarBody({
   onSelect,
   navigationLocked = false,
   publicModules,
+  unreadAnonymousCount = 0,
 }: {
   active: TabId
   onSelect: (id: TabId) => void
   navigationLocked?: boolean
   publicModules: PublicModuleFlags
+  unreadAnonymousCount?: number
 }) {
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto p-4">
@@ -195,7 +218,13 @@ function SidebarBody({
           <p className="mt-1 font-display text-[10px] tracking-[0.3em] text-neon">TURX FOREVER</p>
         </div>
       </div>
-      <NavList active={active} onSelect={onSelect} navigationLocked={navigationLocked} publicModules={publicModules} />
+      <NavList
+        active={active}
+        onSelect={onSelect}
+        navigationLocked={navigationLocked}
+        publicModules={publicModules}
+        unreadAnonymousCount={unreadAnonymousCount}
+      />
       <div className="mt-auto rounded-xl border border-gold/25 bg-gradient-to-br from-gold/10 to-transparent p-4">
         <div className="flex items-center gap-2 text-gold">
           <Shield className="size-4" />
@@ -216,6 +245,7 @@ export function Sidebar({
   onCloseMobile,
   navigationLocked = false,
   publicModules = { raidSignup: false, loot: false, attendance: false, roadmap: false, bank: false },
+  unreadAnonymousCount = 0,
 }: {
   active: TabId
   onSelect: (id: TabId) => void
@@ -223,6 +253,7 @@ export function Sidebar({
   onCloseMobile: () => void
   navigationLocked?: boolean
   publicModules?: PublicModuleFlags
+  unreadAnonymousCount?: number
 }) {
   useEffect(() => {
     if (!mobileOpen) return
@@ -234,7 +265,13 @@ export function Sidebar({
   return (
     <>
       <aside className="sticky top-11 hidden h-[calc(100dvh-2.75rem)] w-72 shrink-0 border-r border-sidebar-border bg-sidebar/90 backdrop-blur lg:block">
-        <SidebarBody active={active} onSelect={onSelect} navigationLocked={navigationLocked} publicModules={publicModules} />
+        <SidebarBody
+          active={active}
+          onSelect={onSelect}
+          navigationLocked={navigationLocked}
+          publicModules={publicModules}
+          unreadAnonymousCount={unreadAnonymousCount}
+        />
       </aside>
 
       <div className={cn('fixed inset-0 z-[60] lg:hidden', mobileOpen ? 'pointer-events-auto' : 'pointer-events-none')}>
@@ -264,6 +301,7 @@ export function Sidebar({
             active={active}
             navigationLocked={navigationLocked}
             publicModules={publicModules}
+            unreadAnonymousCount={unreadAnonymousCount}
             onSelect={(id) => {
               onSelect(id)
               onCloseMobile()
@@ -275,28 +313,40 @@ export function Sidebar({
   )
 }
 
-export function Header({ 
-  active, 
-  onSelect, 
-  onOpenMobile, 
-  mobileOpen 
-}: { 
+export function Header({
+  active,
+  onSelect,
+  onOpenMobile,
+  mobileOpen,
+  unreadAnonymousCount = 0,
+  onUnreadAnonymousCountChange,
+}: {
   active: TabId
   onSelect: (id: TabId) => void
   onOpenMobile: () => void
-  mobileOpen: boolean 
+  mobileOpen: boolean
+  unreadAnonymousCount?: number
+  onUnreadAnonymousCountChange?: (count: number) => void
 }) {
   return (
     <header className="sticky top-11 z-40 border-b border-border bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 px-4 md:px-6">
         <button
           onClick={onOpenMobile}
-          className="rounded-lg border border-border p-2 text-silver hover:border-neon/40 hover:text-neon lg:hidden cursor-pointer"
+          className="relative rounded-lg border border-border p-2 text-silver hover:border-neon/40 hover:text-neon lg:hidden cursor-pointer"
           aria-label="Menüyü aç"
           aria-expanded={mobileOpen}
           aria-controls="mobile-nav"
         >
           <Menu className="size-5" />
+          {unreadAnonymousCount > 0 && (
+            <span
+              className="absolute -top-1.5 -right-1.5 flex min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[10px] leading-none font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.85)]"
+              title={`${unreadAnonymousCount} okunmamış anonim mesaj`}
+            >
+              {unreadAnonymousCount > 9 ? '9+' : unreadAnonymousCount}
+            </span>
+          )}
         </button>
 
         <div className="flex min-w-0 items-center gap-3">
@@ -320,7 +370,10 @@ export function Header({
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          <AuthNavbarWidget onNavigate={onSelect} />
+          <AuthNavbarWidget
+            onNavigate={onSelect}
+            onUnreadAnonymousCountChange={onUnreadAnonymousCountChange}
+          />
         </div>
       </div>
     </header>

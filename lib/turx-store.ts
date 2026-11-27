@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { BlobNotFoundError, get, put } from '@vercel/blob'
 import { Resend } from 'resend'
 import type { AccountLinks, StreamNotice } from '@/lib/account-links'
@@ -13,7 +14,7 @@ import {
   normalizeRaidSystemStore,
   type RaidSystemStore,
 } from '@/lib/raid-loot-system'
-import { GM_EMAIL, isGuildMasterEmail, type GuildRank } from '@/lib/turx-identity'
+import { GM_EMAIL, isGuildMasterEmail, isGuildMasterRole, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
   username: string
@@ -129,6 +130,18 @@ export type StoredGuildMessage = {
   readBy: Record<string, string> // username.toLowerCase() -> readAt ISO timestamp
 }
 
+export type AnonymousRecipientScope = 'GM_AND_OFFICERS' | 'GM_ONLY'
+
+export type StoredAnonymousMessage = {
+  id: string
+  to: string
+  recipientScope: AnonymousRecipientScope
+  topic: string
+  message: string
+  createdAt: string
+  readBy: Record<string, string> // staff username.toLowerCase() -> readAt ISO timestamp
+}
+
 export type StoredArmoryFlaggedUser = {
   username: string
   email: string
@@ -164,6 +177,8 @@ export type GuildStore = {
   bankRequests?: StoredBankRequest[]
   bankLedger?: StoredBankTransaction[]
   messages?: StoredGuildMessage[]
+  anonymousMessages?: StoredAnonymousMessage[]
+  deletedAnonymousMessageIds?: Record<string, string>
   raidSystem?: RaidSystemStore
   armoryAudit?: StoredArmoryAuditState | null
   armoryRankMappings?: ArmoryRankMapping[]
@@ -202,6 +217,8 @@ export function emptyStore(): GuildStore {
     bankRequests: [],
     bankLedger: [],
     messages: [],
+    anonymousMessages: [],
+    deletedAnonymousMessageIds: {},
     raidSystem: defaultRaidSystemStore(),
     armoryAudit: null,
     armoryRankMappings: DEFAULT_ARMORY_RANK_MAPPINGS.map((m) => ({ ...m })),
@@ -244,6 +261,25 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     bankRequests: Array.isArray(data.bankRequests) ? data.bankRequests : [],
     bankLedger: Array.isArray(data.bankLedger) ? data.bankLedger : [],
     messages: Array.isArray(data.messages) ? data.messages : [],
+    anonymousMessages: Array.isArray(data.anonymousMessages)
+      ? data.anonymousMessages
+          .filter((m) => m && typeof m === 'object' && typeof m.id === 'string' && typeof m.message === 'string')
+          .map((m) => ({
+            id: m.id,
+            to: typeof m.to === 'string' && m.to.trim() ? m.to : 'Guild Master + Görevliler',
+            recipientScope: (m.recipientScope === 'GM_ONLY' || m.to === 'Sadece Guild Master'
+              ? 'GM_ONLY'
+              : 'GM_AND_OFFICERS') as AnonymousRecipientScope,
+            topic: typeof m.topic === 'string' && m.topic.trim() ? m.topic : 'Diğer',
+            message: m.message,
+            createdAt: typeof m.createdAt === 'string' && m.createdAt ? m.createdAt : new Date().toISOString(),
+            readBy: m.readBy && typeof m.readBy === 'object' ? { ...m.readBy } : {},
+          }))
+      : [],
+    deletedAnonymousMessageIds:
+      data.deletedAnonymousMessageIds && typeof data.deletedAnonymousMessageIds === 'object'
+        ? { ...data.deletedAnonymousMessageIds }
+        : {},
     raidSystem: normalizeRaidSystemStore(data.raidSystem),
     armoryAudit,
     armoryRankMappings: normalizeArmoryRankMappings(data.armoryRankMappings),
@@ -484,6 +520,33 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
 
   const mergedMessages = Array.from(msgMap.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
+  // Merge anonymous messages (respect deleted tombstones)
+  const deletedAnonymousMessageIds: Record<string, string> = {
+    ...(base.deletedAnonymousMessageIds || {}),
+    ...(target.deletedAnonymousMessageIds || {}),
+  }
+  const anonMap = new Map<string, StoredAnonymousMessage>()
+  for (const m of base.anonymousMessages || []) {
+    if (!m?.id || deletedAnonymousMessageIds[m.id]) continue
+    anonMap.set(m.id, { ...m, readBy: { ...(m.readBy || {}) } })
+  }
+  for (const m of target.anonymousMessages || []) {
+    if (!m?.id || deletedAnonymousMessageIds[m.id]) continue
+    const prev = anonMap.get(m.id)
+    if (!prev) {
+      anonMap.set(m.id, { ...m, readBy: { ...(m.readBy || {}) } })
+    } else {
+      anonMap.set(m.id, {
+        ...prev,
+        ...m,
+        readBy: { ...(prev.readBy || {}), ...(m.readBy || {}) },
+      })
+    }
+  }
+  const mergedAnonymousMessages = Array.from(anonMap.values()).sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  )
+
   return {
     users: [...userMap.values()],
     deletedUsers,
@@ -496,6 +559,8 @@ export function mergeGuildStores(current: GuildStore, incoming: Partial<GuildSto
     bankRequests: [...bankReqMap.values()],
     bankLedger: [...bankLedgerMap.values()],
     messages: mergedMessages,
+    anonymousMessages: mergedAnonymousMessages,
+    deletedAnonymousMessageIds,
     raidSystem: target.raidSystem ? normalizeRaidSystemStore(target.raidSystem) : normalizeRaidSystemStore(base.raidSystem),
     armoryAudit:
       target.armoryAudit && base.armoryAudit
@@ -950,4 +1015,121 @@ export function deleteMessageById(store: GuildStore, messageId: string): boolean
   store.messages = store.messages.filter((m) => m.id !== messageId)
   return store.messages.length < initialLen
 }
+
+export function canViewAnonymousMessage(
+  msg: Pick<StoredAnonymousMessage, 'recipientScope' | 'to'>,
+  role: string | null | undefined,
+  email?: string | null,
+): boolean {
+  if (isGuildMasterRole(role, email)) return true
+  return msg.recipientScope !== 'GM_ONLY' && msg.to !== 'Sadece Guild Master'
+}
+
+export function addAnonymousMessage(
+  store: GuildStore,
+  input: {
+    to: string
+    recipientScope: AnonymousRecipientScope
+    topic: string
+    message: string
+  },
+): StoredAnonymousMessage {
+  if (!store.anonymousMessages) store.anonymousMessages = []
+  const created: StoredAnonymousMessage = {
+    id: `anon_${Date.now()}_${randomBytes(4).toString('hex')}`,
+    to: input.to,
+    recipientScope: input.recipientScope,
+    topic: input.topic,
+    message: input.message,
+    createdAt: new Date().toISOString(),
+    readBy: {},
+  }
+  store.anonymousMessages.unshift(created)
+  return created
+}
+
+export function getVisibleAnonymousMessages(
+  store: GuildStore,
+  username: string,
+  role: string | null | undefined,
+  email?: string | null,
+): {
+  messages: Array<
+    StoredAnonymousMessage & {
+      isRead: boolean
+      readAt: string | null
+      readByList: Array<{ username: string; readAt: string }>
+    }
+  >
+  unreadCount: number
+  totalCount: number
+} {
+  const normUser = username.trim().toLowerCase()
+  const visible = (store.anonymousMessages || [])
+    .filter((msg) => canViewAnonymousMessage(msg, role, email))
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+  let unreadCount = 0
+  const enriched = visible.map((msg) => {
+    const readMap = msg.readBy || {}
+    const readAt = readMap[normUser] || null
+    const isRead = Boolean(readAt)
+    if (!isRead) unreadCount += 1
+    const readByList = Object.entries(readMap)
+      .filter(([, at]) => Boolean(at))
+      .map(([readerKey, at]) => {
+        const account = store.users.find((u) => u.username.toLowerCase() === readerKey)
+        return { username: account?.username || readerKey, readAt: at }
+      })
+      .sort((a, b) => b.readAt.localeCompare(a.readAt))
+    return {
+      ...msg,
+      isRead,
+      readAt,
+      readByList,
+    }
+  })
+
+  return {
+    messages: enriched,
+    unreadCount,
+    totalCount: enriched.length,
+  }
+}
+
+export function markAnonymousMessageRead(
+  store: GuildStore,
+  messageId: string,
+  username: string,
+  read: boolean,
+): { success: boolean; readAt: string | null } {
+  const normUser = username.trim().toLowerCase()
+  if (!store.anonymousMessages) store.anonymousMessages = []
+  const msg = store.anonymousMessages.find((m) => m.id === messageId)
+  if (!msg) return { success: false, readAt: null }
+  if (!msg.readBy) msg.readBy = {}
+  if (read) {
+    const now = new Date().toISOString()
+    if (!msg.readBy[normUser]) {
+      msg.readBy[normUser] = now
+    }
+    return { success: true, readAt: msg.readBy[normUser] }
+  }
+  msg.readBy[normUser] = ''
+  return { success: true, readAt: null }
+}
+
+export function deleteAnonymousMessageById(store: GuildStore, messageId: string): boolean {
+  if (!store.anonymousMessages) return false
+  const initialLen = store.anonymousMessages.length
+  store.anonymousMessages = store.anonymousMessages.filter((m) => m.id !== messageId)
+  if (store.anonymousMessages.length < initialLen) {
+    if (!store.deletedAnonymousMessageIds) store.deletedAnonymousMessageIds = {}
+    store.deletedAnonymousMessageIds[messageId] = new Date().toISOString()
+    return true
+  }
+  return false
+}
+
 

@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server'
 import { sessionFromRequest } from '@/lib/auth-email'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
-import { blobConfigured, loadGuildStore, resolveUserRole } from '@/lib/turx-store'
+import { blobConfigured, getVisibleAnonymousMessages, loadGuildStore, resolveUserRole } from '@/lib/turx-store'
 
 export const dynamic = 'force-dynamic'
 
 export type AdminActionItem = {
   id: string
-  category: 'armory' | 'applications' | 'bank' | 'raids'
+  category: 'armory' | 'applications' | 'bank' | 'raids' | 'anonymous'
   severity: 'high' | 'medium' | 'info'
   title: string
   description: string
   count: number
   targetTab: 'admin' | 'bank' | 'raid-signup'
-  targetSubTab?: 'members' | 'applications'
+  targetSubTab?: 'members' | 'applications' | 'anonymous'
   previewItems: string[]
 }
 
@@ -24,6 +24,7 @@ export async function GET(request: Request) {
         ok: true,
         totalCount: 0,
         highPriorityCount: 0,
+        unreadAnonymousCount: 0,
         lastArmoryCheckAt: null,
         items: [],
       })
@@ -40,8 +41,31 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Yetki yok.' }, { status: 403 })
     }
 
+    const callerRole = resolveUserRole(caller)
     const items: AdminActionItem[] = []
     const existingUsers = new Set(store.users.map((u) => u.username.toLowerCase()))
+
+    // 0. Okunmamış Anonim Mesajlar
+    const anonResult = getVisibleAnonymousMessages(store, caller.username, callerRole, caller.email)
+    const unreadAnonymousCount = anonResult.unreadCount
+    if (unreadAnonymousCount > 0) {
+      const unreadAnon = anonResult.messages.filter((m) => !m.isRead)
+      items.push({
+        id: 'unread-anonymous-messages',
+        category: 'anonymous',
+        severity: 'high',
+        title: `${unreadAnonymousCount} okunmamış anonim mesaj var`,
+        description:
+          'Anonim Mesaj Kutusu üzerinden gönderilen yeni mesajlar GM Kontrol Paneli gelen kutusunda okunmayı bekliyor.',
+        count: unreadAnonymousCount,
+        targetTab: 'admin',
+        targetSubTab: 'anonymous',
+        previewItems: unreadAnon.slice(0, 5).map((m) => {
+          const scopeTag = m.recipientScope === 'GM_ONLY' ? ' · Sadece GM' : ''
+          return `${m.topic}${scopeTag}`
+        }),
+      })
+    }
 
     // 1. WoW Armory TURX dışında görünen / silinmesi gereken kullanıcılar
     const flaggedUsers = (store.armoryAudit?.flaggedUsers || []).filter((f) =>
@@ -131,6 +155,7 @@ export async function GET(request: Request) {
         ok: true,
         totalCount,
         highPriorityCount,
+        unreadAnonymousCount,
         lastArmoryCheckAt: store.armoryAudit?.lastCheckedAt || null,
         armorySource: store.armoryAudit?.source || null,
         items,

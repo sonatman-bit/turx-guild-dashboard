@@ -23,6 +23,8 @@ import {
   Download,
   Upload,
   Mail,
+  MailOpen,
+  MessageSquareLock,
   Send,
   Eye,
   EyeOff,
@@ -196,11 +198,23 @@ interface AdminMessageDto {
   unreadUsers: Array<{ username: string; email: string; role: string }>
 }
 
+interface AdminAnonymousMessageDto {
+  id: string
+  to: string
+  recipientScope: 'GM_AND_OFFICERS' | 'GM_ONLY'
+  topic: string
+  message: string
+  createdAt: string
+  isRead: boolean
+  readAt: string | null
+  readByList: Array<{ username: string; readAt: string }>
+}
+
 export function AdminDashboardView() {
   const { user } = useAuth()
   const isGm = user?.role === 'Guild Master'
   const toast = useToast()
-  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance' | 'messages'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance' | 'messages' | 'anonymous'>('members')
   const [expandedAppId, setExpandedAppId] = useState<string | null>(null) // Detay açıp kapatmak için
 
   // Deneme Yayını (Beta) -> Canlıya Alma Kontrolleri (Sadece GM)
@@ -425,6 +439,14 @@ export function AdminDashboardView() {
   const [adminMessagesLoading, setAdminMessagesLoading] = useState(false)
   const [selectedReportMessage, setSelectedReportMessage] = useState<AdminMessageDto | null>(null)
 
+  // 5. Anonim Mesaj Kutusu Gelen Kutusu
+  const [anonymousMessages, setAnonymousMessages] = useState<AdminAnonymousMessageDto[]>([])
+  const [anonymousUnreadCount, setAnonymousUnreadCount] = useState(0)
+  const [anonymousLoading, setAnonymousLoading] = useState(false)
+  const [anonymousFilter, setAnonymousFilter] = useState<'all' | 'unread' | 'read'>('all')
+  const [anonymousBusyId, setAnonymousBusyId] = useState<string | null>(null)
+  const [anonymousMarkAllBusy, setAnonymousMarkAllBusy] = useState(false)
+
   // Mesaj gönderme formu
   const [msgTargetType, setMsgTargetType] = useState<'ALL' | 'RANK' | 'USER'>('ALL')
   const [msgTargetRank, setMsgTargetRank] = useState<string>('Görevli')
@@ -582,21 +604,27 @@ interface PersistedArmoryAudit {
       .catch(() => undefined)
 
     const pendingSub = typeof window !== 'undefined' ? sessionStorage.getItem('turx_admin_pending_subtab') : null
-    if (pendingSub === 'members' || pendingSub === 'applications') {
+    if (pendingSub === 'members' || pendingSub === 'applications' || pendingSub === 'anonymous') {
       setActiveTab(pendingSub)
       sessionStorage.removeItem('turx_admin_pending_subtab')
     }
     const onSubTab = (ev: Event) => {
       const next = (ev as CustomEvent<string>).detail
-      if (next === 'members' || next === 'applications') {
+      if (next === 'members' || next === 'applications' || next === 'anonymous') {
         setActiveTab(next)
       }
     }
+    const onAnonUpdated = () => {
+      loadAnonymousMessages()
+    }
     window.addEventListener('turx:admin-subtab', onSubTab)
+    window.addEventListener('turx:anonymous-messages-updated', onAnonUpdated)
 
     loadAttendance()
+    loadAnonymousMessages()
     return () => {
       window.removeEventListener('turx:admin-subtab', onSubTab)
+      window.removeEventListener('turx:anonymous-messages-updated', onAnonUpdated)
     }
   }, [])
 
@@ -1058,6 +1086,171 @@ interface PersistedArmoryAudit {
     }
   }
 
+  const loadAnonymousMessages = () => {
+    setAnonymousLoading(true)
+    fetch('/api/admin/anonymous', {
+      credentials: 'same-origin',
+      headers: authHeaders(),
+      cache: 'no-store',
+    })
+      .then(async (res) => {
+        if (!res.ok) return
+        const data = (await res.json().catch(() => ({}))) as {
+          messages?: AdminAnonymousMessageDto[]
+          unreadCount?: number
+        }
+        if (Array.isArray(data.messages)) {
+          setAnonymousMessages(data.messages)
+          setAnonymousUnreadCount(
+            typeof data.unreadCount === 'number'
+              ? data.unreadCount
+              : data.messages.filter((m) => !m.isRead).length,
+          )
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setAnonymousLoading(false))
+  }
+
+  useEffect(() => {
+    if (activeTab === 'anonymous') {
+      loadAnonymousMessages()
+    }
+  }, [activeTab])
+
+  const filteredAnonymousMessages = useMemo(() => {
+    if (anonymousFilter === 'unread') return anonymousMessages.filter((m) => !m.isRead)
+    if (anonymousFilter === 'read') return anonymousMessages.filter((m) => m.isRead)
+    return anonymousMessages
+  }, [anonymousMessages, anonymousFilter])
+
+  const handleToggleAnonymousRead = async (msgId: string, markRead: boolean) => {
+    setAnonymousBusyId(msgId)
+    try {
+      const res = await fetch('/api/admin/anonymous', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: markRead ? 'mark_read' : 'mark_unread', id: msgId }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; unreadCount?: number; error?: string }
+      if (!res.ok || !data.ok) {
+        toast({
+          variant: 'error',
+          title: 'Güncellenemedi',
+          description: data.error || 'Mesaj durumu değiştirilemedi.',
+        })
+        return
+      }
+      const nowIso = new Date().toISOString()
+      const currentUsername = user?.username || ''
+      setAnonymousMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== msgId) return m
+          const nextReadBy = markRead
+            ? [
+                { username: currentUsername, readAt: nowIso },
+                ...m.readByList.filter((r) => r.username.toLowerCase() !== currentUsername.toLowerCase()),
+              ]
+            : m.readByList.filter((r) => r.username.toLowerCase() !== currentUsername.toLowerCase())
+          return {
+            ...m,
+            isRead: markRead,
+            readAt: markRead ? nowIso : null,
+            readByList: nextReadBy,
+          }
+        }),
+      )
+      if (typeof data.unreadCount === 'number') {
+        setAnonymousUnreadCount(data.unreadCount)
+      }
+      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
+    } catch {
+      toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Mesaj durumu kaydedilemedi.' })
+    } finally {
+      setAnonymousBusyId(null)
+    }
+  }
+
+  const handleMarkAllAnonymousRead = async () => {
+    if (anonymousUnreadCount === 0) return
+    setAnonymousMarkAllBusy(true)
+    try {
+      const res = await fetch('/api/admin/anonymous', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_all_read' }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; unreadCount?: number; error?: string }
+      if (!res.ok || !data.ok) {
+        toast({
+          variant: 'error',
+          title: 'İşlem Başarısız',
+          description: data.error || 'Mesajlar okundu olarak işaretlenemedi.',
+        })
+        return
+      }
+      const nowIso = new Date().toISOString()
+      const currentUsername = user?.username || ''
+      setAnonymousMessages((prev) =>
+        prev.map((m) => {
+          if (m.isRead) return m
+          return {
+            ...m,
+            isRead: true,
+            readAt: nowIso,
+            readByList: [
+              { username: currentUsername, readAt: nowIso },
+              ...m.readByList.filter((r) => r.username.toLowerCase() !== currentUsername.toLowerCase()),
+            ],
+          }
+        }),
+      )
+      setAnonymousUnreadCount(typeof data.unreadCount === 'number' ? data.unreadCount : 0)
+      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
+      toast({
+        title: 'Tümü Okundu İşaretlendi',
+        description: 'Gelen kutusundaki tüm anonim mesajlar okundu olarak güncellendi.',
+      })
+    } catch {
+      toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Sunucuya ulaşılamadı.' })
+    } finally {
+      setAnonymousMarkAllBusy(false)
+    }
+  }
+
+  const handleDeleteAnonymousMessage = async (msgId: string) => {
+    if (!confirm('Bu anonim mesajı kalıcı olarak silmek istediğinize emin misiniz?')) return
+    setAnonymousBusyId(msgId)
+    try {
+      const res = await fetch(`/api/admin/anonymous?id=${encodeURIComponent(msgId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+        headers: authHeaders(),
+      })
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; unreadCount?: number; error?: string }
+      if (!res.ok || !data.ok) {
+        toast({
+          variant: 'error',
+          title: 'Silinemedi',
+          description: data.error || 'Anonim mesaj silinirken hata oluştu.',
+        })
+        return
+      }
+      setAnonymousMessages((prev) => prev.filter((m) => m.id !== msgId))
+      if (typeof data.unreadCount === 'number') {
+        setAnonymousUnreadCount(data.unreadCount)
+      }
+      window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
+      toast({ title: 'Anonim Mesaj Silindi', description: 'Mesaj kalıcı olarak kaldırıldı.' })
+    } catch {
+      toast({ variant: 'error', title: 'Bağlantı Hatası', description: 'Mesaj silinemedi.' })
+    } finally {
+      setAnonymousBusyId(null)
+    }
+  }
+
   const loadAdminMessages = () => {
     setAdminMessagesLoading(true)
     fetch('/api/admin/messages', { credentials: 'same-origin', headers: authHeaders() })
@@ -1209,6 +1402,36 @@ interface PersistedArmoryAudit {
         </div>
       </div>
 
+      {anonymousUnreadCount > 0 && activeTab !== 'anonymous' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/60 bg-gradient-to-r from-red-950/50 via-red-900/20 to-card px-4 py-3.5 shadow-[0_0_24px_rgba(239,68,68,0.16)]">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="relative flex size-9 shrink-0 items-center justify-center rounded-lg border border-red-400/50 bg-red-500/20 text-red-200">
+              <MessageSquareLock className="size-4.5" />
+              <span className="absolute -top-1 -right-1 flex size-2.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-85" />
+                <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
+              </span>
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-red-200">
+                {anonymousUnreadCount} Okunmamış Anonim Mesaj Var
+              </p>
+              <p className="text-xs text-silver/80">
+                Anonim Mesaj Kutusundan gönderilen yeni mesajlar GM Kontrol Panelinde okunmayı bekliyor.
+              </p>
+            </div>
+          </div>
+          <GoldButton
+            type="button"
+            onClick={() => setActiveTab('anonymous')}
+            className="text-xs py-1.5 px-3.5 shrink-0 cursor-pointer"
+          >
+            <MessageSquareLock className="size-3.5" />
+            Anonim Mesajları Aç
+          </GoldButton>
+        </div>
+      )}
+
       {isGm && publicModules && (
         <Panel className="border-purple-500/35">
           <PanelTitle
@@ -1285,7 +1508,7 @@ interface PersistedArmoryAudit {
         aria-label="GM Kontrol Merkezi Sekmeleri"
         className="overflow-x-auto rounded-2xl border border-border/80 bg-[#071422]/90 p-1.5 shadow-[0_6px_24px_rgba(0,0,0,0.3)] backdrop-blur-sm"
       >
-        <div className="grid min-w-[760px] grid-cols-7 gap-1">
+        <div className="grid min-w-[920px] grid-cols-8 gap-1">
           {(
             [
               {
@@ -1294,6 +1517,7 @@ interface PersistedArmoryAudit {
                 icon: Users,
                 count: members.length,
                 highlight: false,
+                urgent: false,
               },
               {
                 id: 'applications' as const,
@@ -1301,6 +1525,20 @@ interface PersistedArmoryAudit {
                 icon: FileText,
                 count: applications.filter((a) => a.status === 'PENDING').length,
                 highlight: applications.some((a) => a.status === 'PENDING'),
+                urgent: false,
+              },
+              {
+                id: 'anonymous' as const,
+                label: 'Anonim Mesajlar',
+                icon: MessageSquareLock,
+                count:
+                  anonymousUnreadCount > 0
+                    ? anonymousUnreadCount
+                    : anonymousMessages.length > 0
+                      ? anonymousMessages.length
+                      : null,
+                highlight: anonymousUnreadCount > 0,
+                urgent: anonymousUnreadCount > 0,
               },
               {
                 id: 'recruitment' as const,
@@ -1308,6 +1546,7 @@ interface PersistedArmoryAudit {
                 icon: Grid3x3,
                 count: null,
                 highlight: false,
+                urgent: false,
               },
               {
                 id: 'staff' as const,
@@ -1315,6 +1554,7 @@ interface PersistedArmoryAudit {
                 icon: ClipboardList,
                 count: null,
                 highlight: false,
+                urgent: false,
               },
               {
                 id: 'poll' as const,
@@ -1322,6 +1562,7 @@ interface PersistedArmoryAudit {
                 icon: Vote,
                 count: pollResults.total,
                 highlight: false,
+                urgent: false,
               },
               {
                 id: 'attendance' as const,
@@ -1329,6 +1570,7 @@ interface PersistedArmoryAudit {
                 icon: Calendar,
                 count: attendanceMembers.length > 0 ? attendanceMembers.length : null,
                 highlight: false,
+                urgent: false,
               },
               {
                 id: 'messages' as const,
@@ -1336,6 +1578,7 @@ interface PersistedArmoryAudit {
                 icon: Mail,
                 count: adminMessages.length > 0 ? adminMessages.length : null,
                 highlight: false,
+                urgent: false,
               },
             ]
           ).map((item) => {
@@ -1350,20 +1593,24 @@ interface PersistedArmoryAudit {
                   'relative flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-2.5 py-2.5 text-xs font-semibold transition-all whitespace-nowrap',
                   active
                     ? 'bg-gradient-to-b from-gold/22 to-gold/10 text-gold shadow-[inset_0_0_0_1px_rgba(212,175,55,0.5),0_4px_14px_rgba(212,175,55,0.14)]'
-                    : 'text-silver/75 hover:bg-white/[0.04] hover:text-foreground',
+                    : item.urgent
+                      ? 'bg-red-500/10 text-red-200 ring-1 ring-red-500/35 hover:bg-red-500/15'
+                      : 'text-silver/75 hover:bg-white/[0.04] hover:text-foreground',
                 )}
               >
-                <Icon className={cn('size-3.5 shrink-0', active ? 'text-gold' : 'text-muted-foreground')} />
+                <Icon className={cn('size-3.5 shrink-0', active ? 'text-gold' : item.urgent ? 'text-red-300' : 'text-muted-foreground')} />
                 <span className="truncate">{item.label}</span>
                 {item.count !== null && (
                   <span
                     className={cn(
                       'inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 font-mono text-[10px] leading-none font-bold',
-                      item.highlight
-                        ? 'bg-amber-400/25 text-amber-200 ring-1 ring-amber-400/50'
-                        : active
-                          ? 'bg-gold/25 text-gold'
-                          : 'bg-white/[0.07] text-muted-foreground',
+                      item.urgent
+                        ? 'bg-red-500 text-white shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse'
+                        : item.highlight
+                          ? 'bg-amber-400/25 text-amber-200 ring-1 ring-amber-400/50'
+                          : active
+                            ? 'bg-gold/25 text-gold'
+                            : 'bg-white/[0.07] text-muted-foreground',
                     )}
                   >
                     {item.count}
@@ -2732,6 +2979,214 @@ interface PersistedArmoryAudit {
             </Modal>
           )}
         </div>
+      )}
+
+      {/* SEKME 8: ANONİM MESAJ GELEN KUTUSU */}
+      {activeTab === 'anonymous' && (
+        <Panel className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+            <div>
+              <PanelTitle icon={MessageSquareLock}>
+                Anonim Mesaj Gelen Kutusu
+              </PanelTitle>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Anonim Mesaj Kutusu üzerinden gönderilen tüm öneri, şikayet ve geri bildirimler kimlik bilgisi olmadan burada karşılanır.
+                {!isGm && ' ("Sadece Guild Master" seçilen mesajlar yalnızca GM tarafından görülür.)'}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {anonymousUnreadCount > 0 && (
+                <GoldButton
+                  type="button"
+                  onClick={() => void handleMarkAllAnonymousRead()}
+                  disabled={anonymousMarkAllBusy}
+                  className="text-xs py-1.5 px-3 cursor-pointer"
+                >
+                  <CheckCheck className="size-3.5" />
+                  {anonymousMarkAllBusy ? 'İşaretleniyor...' : `Tümünü Okundu İşaretle (${anonymousUnreadCount})`}
+                </GoldButton>
+              )}
+              <GhostButton
+                type="button"
+                onClick={loadAnonymousMessages}
+                disabled={anonymousLoading}
+                className="text-xs py-1.5 px-3 cursor-pointer"
+              >
+                <RefreshCw className={cn('size-3.5', anonymousLoading && 'animate-spin')} />
+                Yenile
+              </GhostButton>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: 'all' as const, label: 'Tümü', count: anonymousMessages.length },
+                  { id: 'unread' as const, label: 'Okunmamış', count: anonymousUnreadCount },
+                  { id: 'read' as const, label: 'Okunmuş', count: anonymousMessages.length - anonymousUnreadCount },
+                ]
+              ).map((filterItem) => (
+                <button
+                  key={filterItem.id}
+                  type="button"
+                  onClick={() => setAnonymousFilter(filterItem.id)}
+                  className={cn(
+                    'inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+                    anonymousFilter === filterItem.id
+                      ? filterItem.id === 'unread' && filterItem.count > 0
+                        ? 'border-red-400/70 bg-red-500/20 text-red-200'
+                        : 'border-gold/60 bg-gold/15 text-gold'
+                      : 'border-border bg-background/50 text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  <span>{filterItem.label}</span>
+                  <span className="rounded-full bg-white/10 px-1.5 py-0.2 font-mono text-[10px]">
+                    {filterItem.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Lock className="size-3.5 text-gold/80" />
+              Gönderici kimliği, hesap adı ve IP adresi saklanmaz
+            </span>
+          </div>
+
+          {anonymousLoading && anonymousMessages.length === 0 ? (
+            <div className="py-10 text-center text-xs text-muted-foreground animate-pulse">
+              Anonim mesajlar yükleniyor...
+            </div>
+          ) : filteredAnonymousMessages.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-background/40 py-10 text-center">
+              <MailOpen className="size-8 text-muted-foreground/70" />
+              <p className="text-sm font-semibold text-silver">
+                {anonymousFilter === 'unread'
+                  ? 'Okunmamış anonim mesaj yok!'
+                  : anonymousFilter === 'read'
+                    ? 'Henüz okunmuş anonim mesaj bulunmuyor.'
+                    : 'Henüz anonim mesaj gönderilmemiş.'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Üyeler Anonim Mesaj Kutusundan mesaj gönderdiğinde burada okunmamış bildirim olarak görünecektir.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3.5">
+              {filteredAnonymousMessages.map((msg) => {
+                const isBusy = anonymousBusyId === msg.id
+                const isGmOnly = msg.recipientScope === 'GM_ONLY'
+                return (
+                  <article
+                    key={msg.id}
+                    className={cn(
+                      'flex flex-col gap-3 rounded-xl border p-4 transition',
+                      !msg.isRead
+                        ? 'border-red-400/55 bg-gradient-to-br from-red-950/30 via-[#091626] to-card shadow-[0_0_18px_rgba(239,68,68,0.12)]'
+                        : 'border-border bg-[#071422]/85',
+                    )}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!msg.isRead ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-red-400/70 bg-red-500/20 px-2.5 py-0.5 text-[10px] font-black tracking-wider text-red-200 uppercase">
+                            <span className="size-1.5 rounded-full bg-red-400 animate-ping" />
+                            Okunmamış
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300 uppercase">
+                            <CheckCircle2 className="size-3" />
+                            Okundu
+                          </span>
+                        )}
+
+                        <Badge className="border-gold/45 bg-gold/10 text-gold text-[11px]">
+                          {msg.topic}
+                        </Badge>
+
+                        <Badge
+                          className={cn(
+                            'text-[11px] inline-flex items-center gap-1',
+                            isGmOnly
+                              ? 'border-purple-400/50 bg-purple-500/15 text-purple-200'
+                              : 'border-neon/40 bg-neon/10 text-neon',
+                          )}
+                        >
+                          {isGmOnly ? <Lock className="size-3" /> : <Shield className="size-3" />}
+                          {isGmOnly ? 'Sadece Guild Master' : 'GM + Görevliler'}
+                        </Badge>
+                      </div>
+
+                      <span className="flex items-center gap-1 text-[11px] font-mono text-muted-foreground">
+                        <Clock className="size-3" />
+                        {new Date(msg.createdAt).toLocaleString('tr-TR', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+
+                    <div className="rounded-lg border border-border/70 bg-background/60 p-3.5 text-sm leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                      {msg.message}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <div className="text-[11px] text-muted-foreground">
+                        {msg.readByList.length > 0 ? (
+                          <span>
+                            Okuyan yetkililer:{' '}
+                            <strong className="text-silver">
+                              {msg.readByList.map((r) => r.username).join(', ')}
+                            </strong>
+                          </span>
+                        ) : (
+                          <span>Henüz hiçbir yetkili tarafından okunmadı</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {!msg.isRead ? (
+                          <GoldButton
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => void handleToggleAnonymousRead(msg.id, true)}
+                            className="text-xs py-1 px-3 cursor-pointer"
+                          >
+                            <CheckCircle2 className="size-3.5" />
+                            Okundu İşaretle
+                          </GoldButton>
+                        ) : (
+                          <GhostButton
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => void handleToggleAnonymousRead(msg.id, false)}
+                            className="text-xs py-1 px-3 cursor-pointer"
+                          >
+                            <Mail className="size-3.5" />
+                            Okunmadı Yap
+                          </GhostButton>
+                        )}
+                        <GhostButton
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => void handleDeleteAnonymousMessage(msg.id)}
+                          className="text-xs py-1 px-2.5 text-muted-foreground hover:text-destructive hover:border-destructive/40 hover:bg-destructive/10 cursor-pointer"
+                          title="Anonim Mesajı Sil"
+                        >
+                          <Trash2 className="size-3.5" />
+                          Sil
+                        </GhostButton>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </Panel>
       )}
 
       {isGm && (

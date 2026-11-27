@@ -32,17 +32,30 @@ export function FeedbackView() {
           message,
         }),
       })
-      const data = (await response.json().catch(() => ({}))) as { error?: string; email?: boolean; discord?: boolean }
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string
+        stored?: boolean
+        email?: boolean
+        discord?: boolean
+      }
       if (!response.ok) {
         throw new Error(data.error || 'Mesaj gönderilemedi.')
       }
       form.reset()
       setText('')
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('turx:anonymous-messages-updated'))
+        window.dispatchEvent(new CustomEvent('turx:admin-tasks-updated'))
+      }
       toast({
         title: 'Mesajınız anonim olarak iletildi',
-        description: data.email
-          ? 'Guild Master e-postasına gönderildi. Hotmail spam klasörünü de kontrol et.'
-          : 'E-posta yerine Discord yedeği ile iletildi.',
+        description: data.stored
+          ? data.email
+            ? 'GM Kontrol Paneline okunmamış bildirim olarak düştü ve Guild Master e-postasına iletildi.'
+            : 'GM Kontrol Paneline okunmamış mesaj olarak iletildi.'
+          : data.email
+            ? 'Guild Master e-postasına gönderildi.'
+            : 'Discord yedeği ile iletildi.',
       })
     } catch (err) {
       toast({

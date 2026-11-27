@@ -52,6 +52,7 @@ function DashboardShellInner() {
   const canOpenAdmin = canAccessAdminPanel(user?.role)
   const [tab, setTab] = useState<TabId>('overview')
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [unreadAnonymousCount, setUnreadAnonymousCount] = useState(0)
   const [publicModules, setPublicModules] = useState<PublicModuleFlags>({
     raidSignup: false,
     loot: false,
@@ -195,9 +196,17 @@ function DashboardShellInner() {
           onCloseMobile={closeMobile}
           navigationLocked={navigationLocked}
           publicModules={publicModules}
+          unreadAnonymousCount={canOpenAdmin ? unreadAnonymousCount : 0}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Header active={tab} onSelect={select} onOpenMobile={() => setMobileOpen(true)} mobileOpen={mobileOpen} />
+          <Header
+            active={tab}
+            onSelect={select}
+            onOpenMobile={() => setMobileOpen(true)}
+            mobileOpen={mobileOpen}
+            unreadAnonymousCount={canOpenAdmin ? unreadAnonymousCount : 0}
+            onUnreadAnonymousCountChange={setUnreadAnonymousCount}
+          />
 
           <main key={tab} className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-6 animate-in fade-in slide-in-from-bottom-2 md:px-6 md:py-8">
             {tab === 'overview' && (

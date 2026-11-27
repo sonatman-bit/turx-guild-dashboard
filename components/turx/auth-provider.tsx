@@ -395,19 +395,20 @@ export function openTurxAuthModal() {
 
 type AdminActionItemDto = {
   id: string
-  category: 'armory' | 'applications' | 'bank' | 'raids'
+  category: 'armory' | 'applications' | 'bank' | 'raids' | 'anonymous'
   severity: 'high' | 'medium' | 'info'
   title: string
   description: string
   count: number
   targetTab: 'admin' | 'bank' | 'raid-signup'
-  targetSubTab?: 'members' | 'applications'
+  targetSubTab?: 'members' | 'applications' | 'anonymous'
   previewItems: string[]
 }
 
 type AdminActionCenterDto = {
   totalCount: number
   highPriorityCount: number
+  unreadAnonymousCount?: number
   lastArmoryCheckAt: string | null
   armorySource?: 'cron' | 'manual' | null
   items: AdminActionItemDto[]
@@ -415,8 +416,10 @@ type AdminActionCenterDto = {
 
 export function AuthNavbarWidget({
   onNavigate,
+  onUnreadAnonymousCountChange,
 }: {
   onNavigate?: (tab: 'profile' | 'admin' | 'bank' | 'raid-signup') => void
+  onUnreadAnonymousCountChange?: (count: number) => void
 }) {
   const { user, login, logout, signup, resetPasswordForEmail, hydrateFromServerSession } = useAuth()
   const [mounted, setMounted] = useState(false)
@@ -485,7 +488,15 @@ export function AuthNavbarWidget({
 
   useEffect(() => {
     if (!user || !isStaff) {
-      setAdminCenter({ totalCount: 0, highPriorityCount: 0, lastArmoryCheckAt: null, armorySource: null, items: [] })
+      setAdminCenter({
+        totalCount: 0,
+        highPriorityCount: 0,
+        unreadAnonymousCount: 0,
+        lastArmoryCheckAt: null,
+        armorySource: null,
+        items: [],
+      })
+      onUnreadAnonymousCountChange?.(0)
       return
     }
 
@@ -500,6 +511,11 @@ export function AuthNavbarWidget({
           const data = (await res.json().catch(() => null)) as AdminActionCenterDto | null
           if (data && Array.isArray(data.items)) {
             setAdminCenter(data)
+            const anonCount =
+              typeof data.unreadAnonymousCount === 'number'
+                ? data.unreadAnonymousCount
+                : data.items.find((i) => i.category === 'anonymous')?.count ?? 0
+            onUnreadAnonymousCountChange?.(anonCount)
           }
         })
         .catch(() => undefined)
@@ -507,15 +523,17 @@ export function AuthNavbarWidget({
 
     fetchAdminTasks()
     window.addEventListener('turx:admin-tasks-updated', fetchAdminTasks)
+    window.addEventListener('turx:anonymous-messages-updated', fetchAdminTasks)
     window.addEventListener('focus', fetchAdminTasks)
     const timer = setInterval(fetchAdminTasks, 60_000)
 
     return () => {
       window.removeEventListener('turx:admin-tasks-updated', fetchAdminTasks)
+      window.removeEventListener('turx:anonymous-messages-updated', fetchAdminTasks)
       window.removeEventListener('focus', fetchAdminTasks)
       clearInterval(timer)
     }
-  }, [user?.username, isStaff])
+  }, [user?.username, isStaff, onUnreadAnonymousCountChange])
 
   const [authModalOpen, setAuthModalOpen] = useState(false)
 
@@ -1321,9 +1339,9 @@ export function AuthNavbarWidget({
 
                     {item.previewItems.length > 0 && (
                       <ul className="flex flex-wrap gap-1.5 pt-1">
-                        {item.previewItems.map((line) => (
+                        {item.previewItems.map((line, idx) => (
                           <li
-                            key={line}
+                            key={`${item.id}-${idx}`}
                             className="rounded-md border border-border/80 bg-background/70 px-2 py-0.5 text-[11px] text-silver"
                           >
                             {line}

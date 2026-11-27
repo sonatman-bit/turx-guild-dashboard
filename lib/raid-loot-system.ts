@@ -69,6 +69,8 @@ export type RaidSubRoster = {
   name: string
   leader?: string
   color?: string
+  scoredBy?: string
+  scoredAt?: string
 }
 
 export const ROSTER_COLOR_PRESETS = [
@@ -101,6 +103,8 @@ export type RaidEvent = {
   publishedBy?: string
   archivedAt?: string
   archivedBy?: string
+  benchScoredBy?: string
+  benchScoredAt?: string
 }
 
 export type RaidPhase = {

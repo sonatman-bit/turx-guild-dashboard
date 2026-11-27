@@ -7,6 +7,7 @@ import {
   CalendarPlus,
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Info,
   Layers,
@@ -165,7 +166,15 @@ const OUTCOME_OPTIONS: { value: AttendanceOutcome; label: string; tone: string }
   { value: 'NONE', label: 'Puan Dışı', tone: 'text-muted-foreground border-border bg-transparent' },
 ]
 
-function outcomeBadge(outcome: AttendanceOutcome) {
+function outcomeBadge(outcome: AttendanceOutcome, flags?: AttendanceFlags) {
+  if (flags && flags.late && flags.missingPrep) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1">
+        <Badge className="text-amber-300 border-amber-500/40 bg-amber-500/10">Geç Kaldı (-2p)</Badge>
+        <Badge className="text-orange-300 border-orange-500/40 bg-orange-500/10">Eksik Hazırlık (-2p)</Badge>
+      </span>
+    )
+  }
   const found = OUTCOME_OPTIONS.find((o) => o.value === outcome) || OUTCOME_OPTIONS[OUTCOME_OPTIONS.length - 1]
   return <Badge className={found.tone}>{found.label}</Badge>
 }
@@ -634,6 +643,26 @@ export function RaidSignupView() {
                       'Katılım durumu ve puan önizlemesi güncellendi.',
                     )
                   }
+                  onBatchSetOutcome={(updates, msg) =>
+                    void runAction(
+                      {
+                        action: 'set_attendance_outcome',
+                        eventId: selectedEvent.id,
+                        updates: updates.map((u) => ({
+                          signupId: u.signupId,
+                          flags: u.flags,
+                          outcome: deriveOutcomeFromFlags(u.flags),
+                        })),
+                      },
+                      msg,
+                    )
+                  }
+                  onMarkRosterScored={(rosterId, scored) =>
+                    void runAction(
+                      { action: 'mark_roster_scored', eventId: selectedEvent.id, rosterId, scored },
+                      scored ? 'Grup puanlaması onaylandı.' : 'Grup puanlama onayı kaldırıldı.',
+                    )
+                  }
                   onOpenArchive={() => setArchiveModalEvent(selectedEvent)}
                   onOpenAddMember={() => {
                     setManualAddUsername(guildMembers[0]?.username || '')
@@ -660,80 +689,152 @@ export function RaidSignupView() {
               <Archive className="mx-auto size-10 text-muted-foreground/60" />
               <p className="mt-3 font-display text-lg font-bold text-foreground">Henüz arşivlenmiş raid yok</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Bir raid tamamlanıp Officer tarafından "Tamamla & Arşivle" dendiğinde tüm katılımcılar (Bench dahil) ve aldıkları puan/cezalar burada saklanır.
+                Bir raid tamamlanıp Officer tarafından &quot;Tamamla &amp; Arşivle&quot; dendiğinde tüm katılımcılar (Bench dahil) ve aldıkları puan/cezalar burada saklanır.
               </p>
             </Panel>
           ) : (
-            archivedEvents.map((ev) => (
-              <Panel key={ev.id}>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-display text-lg font-bold text-gold">{ev.raidName}</h3>
-                      <Badge className="border-gold/30 bg-gold/10 text-gold">{ev.size}-Man</Badge>
-                      <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">Arşivlendi</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Raid Tarihi: {formatTrDateTime(ev.scheduledAt)} · Arşivleyen: {ev.archivedBy || '—'}
-                    </p>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Toplam Kayıt: <strong className="text-foreground">{ev.signups.length}</strong> · Grup Sayısı:{' '}
-                    <strong className="text-foreground">{ev.rosters.length}</strong>
-                  </div>
-                </div>
+            archivedEvents.map((ev) => {
+              const archiveGroups: {
+                id: string
+                name: string
+                color: string
+                scoredBy?: string
+                members: RaidEventSignup[]
+              }[] = [
+                ...ev.rosters.map((r, rIdx) => ({
+                  id: r.id,
+                  name: r.name,
+                  color: r.color || ROSTER_COLOR_PRESETS[rIdx % ROSTER_COLOR_PRESETS.length].hex,
+                  scoredBy: r.scoredBy,
+                  members: ev.signups.filter((s) => s.assignment === r.id),
+                })),
+              ]
+              const archivedBench = ev.signups.filter((s) => s.assignment === 'BENCH')
+              if (archivedBench.length > 0) {
+                archiveGroups.push({
+                  id: 'BENCH',
+                  name: 'Yedek / Bench',
+                  color: '#22d3ee',
+                  scoredBy: ev.benchScoredBy,
+                  members: archivedBench,
+                })
+              }
+              const knownIds = new Set([...ev.rosters.map((r) => r.id), 'BENCH'])
+              const archivedPool = ev.signups.filter((s) => !knownIds.has(s.assignment))
+              if (archivedPool.length > 0) {
+                archiveGroups.push({
+                  id: 'POOL',
+                  name: 'Atanmamış Havuz / İptal',
+                  color: '#94a3b8',
+                  members: archivedPool,
+                })
+              }
 
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="border-b border-border/60 text-muted-foreground uppercase">
-                        <th className="py-2 pr-3">Karakter</th>
-                        <th className="py-2 pr-3">Grup</th>
-                        <th className="py-2 pr-3">Konfirme</th>
-                        <th className="py-2 pr-3">Sonuç</th>
-                        <th className="py-2 pr-3 text-right">İmza/Konf.</th>
-                        <th className="py-2 pr-3 text-right">Raid</th>
-                        <th className="py-2 pr-3 text-right">Ceza</th>
-                        <th className="py-2 text-right">Net Puan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/40">
-                      {ev.signups.map((s) => {
-                        const bd = s.pointsBreakdown || calculateSignupPoints(s, ev.size, rules)
-                        const rosterName =
-                          s.assignment === 'BENCH'
-                            ? 'Yedek (Bench)'
-                            : s.assignment === 'POOL'
-                              ? 'Havuz'
-                              : ev.rosters.find((r) => r.id === s.assignment)?.name || s.assignment
-                        return (
-                          <tr key={s.id} className="hover:bg-white/[0.02]">
-                            <td className="py-2 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                              <span className="inline-flex items-center gap-1.5">
-                                <span>{s.characterName}</span>
-                                <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
-                              </span>
-                              <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
-                            </td>
-                            <td className="py-2 pr-3 text-silver">{rosterName}</td>
-                            <td className="py-2 pr-3 text-muted-foreground">{s.confirmStatus}</td>
-                            <td className="py-2 pr-3">{outcomeBadge(s.attendanceOutcome)}</td>
-                            <td className="py-2 pr-3 text-right font-mono text-cyan-300">+{bd.signup + bd.confirm}</td>
-                            <td className="py-2 pr-3 text-right font-mono text-emerald-300">+{bd.raid}</td>
-                            <td className="py-2 pr-3 text-right font-mono text-rose-400">
-                              {bd.penalty < 0 ? bd.penalty : '0'}
-                            </td>
-                            <td className="py-2 text-right font-mono font-bold text-gold">
-                              {bd.total > 0 ? `+${bd.total}` : bd.total}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </Panel>
-            ))
+              return (
+                <Panel key={ev.id}>
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-display text-lg font-bold text-gold">{ev.raidName}</h3>
+                        <Badge className="border-gold/30 bg-gold/10 text-gold">{ev.size}-Man</Badge>
+                        <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">Arşivlendi</Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Raid Tarihi: {formatTrDateTime(ev.scheduledAt)} · Arşivleyen: {ev.archivedBy || '—'}
+                      </p>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Toplam Kayıt: <strong className="text-foreground">{ev.signups.length}</strong> · Grup Sayısı:{' '}
+                      <strong className="text-foreground">{ev.rosters.length}</strong>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-4">
+                    {archiveGroups.map((grp) => (
+                      <div
+                        key={grp.id}
+                        className="relative overflow-hidden rounded-xl border bg-[#071422]/85 p-3.5"
+                        style={{ borderColor: `${grp.color}45` }}
+                      >
+                        <div
+                          className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
+                          style={{ backgroundColor: grp.color }}
+                        />
+                        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="size-2.5 rounded-full"
+                              style={{ backgroundColor: grp.color, boxShadow: `0 0 8px ${grp.color}` }}
+                            />
+                            <h4 className="font-display text-sm font-bold" style={{ color: grp.color }}>
+                              {grp.name}
+                            </h4>
+                            <span className="text-[11px] text-muted-foreground">({grp.members.length} kişi)</span>
+                          </div>
+                          {grp.scoredBy && (
+                            <Badge className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-300">
+                              ✓ Puanlayan: {grp.scoredBy}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {grp.members.length === 0 ? (
+                          <p className="py-2 text-xs text-muted-foreground">Bu grupta kayıtlı oyuncu yok.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="border-b border-border/50 text-muted-foreground uppercase">
+                                  <th className="py-1.5 pr-3">Karakter</th>
+                                  <th className="py-1.5 pr-3">Konfirme</th>
+                                  <th className="py-1.5 pr-3">Sonuç</th>
+                                  <th className="py-1.5 pr-3 text-right">İmza/Konf.</th>
+                                  <th className="py-1.5 pr-3 text-right">Raid/Yedek</th>
+                                  <th className="py-1.5 pr-3 text-right">Ceza</th>
+                                  <th className="py-1.5 text-right">Net Puan</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border/35">
+                                {grp.members.map((s) => {
+                                  const bd = s.pointsBreakdown || calculateSignupPoints(s, ev.size, rules)
+                                  return (
+                                    <tr key={s.id} className="hover:bg-white/[0.02]">
+                                      <td className="py-2 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
+                                        <span className="inline-flex items-center gap-1.5">
+                                          <span>{s.characterName}</span>
+                                          <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
+                                        </span>
+                                        <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
+                                      </td>
+                                      <td className="py-2 pr-3 text-muted-foreground">
+                                        {s.confirmStatus === 'CONFIRMED'
+                                          ? 'Konfirme'
+                                          : s.confirmStatus === 'DECLINED_EXCUSED'
+                                            ? 'Mazeretli İptal'
+                                            : 'Konfirme Yok'}
+                                      </td>
+                                      <td className="py-2 pr-3">{outcomeBadge(s.attendanceOutcome, s.attendanceFlags)}</td>
+                                      <td className="py-2 pr-3 text-right font-mono text-cyan-300">+{bd.signup + bd.confirm}</td>
+                                      <td className="py-2 pr-3 text-right font-mono text-emerald-300">+{bd.raid}</td>
+                                      <td className="py-2 pr-3 text-right font-mono text-rose-400">
+                                        {bd.penalty < 0 ? bd.penalty : '0'}
+                                      </td>
+                                      <td className="py-2 text-right font-mono font-bold text-gold">
+                                        {bd.total > 0 ? `+${bd.total}` : bd.total}
+                                      </td>
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              )
+            })
           )}
         </div>
       )}
@@ -1011,6 +1112,8 @@ function EventWorkspace({
   onAssign,
   onPublish,
   onSetOutcome,
+  onBatchSetOutcome,
+  onMarkRosterScored,
   onOpenArchive,
   onOpenAddMember,
   onDeleteEvent,
@@ -1044,6 +1147,8 @@ function EventWorkspace({
   onAssign: (signupId: string, assignment: string) => void
   onPublish: () => void
   onSetOutcome: (signupId: string, flags: AttendanceFlags) => void
+  onBatchSetOutcome: (updates: { signupId: string; flags: AttendanceFlags }[], successMsg: string) => void
+  onMarkRosterScored: (rosterId: string, scored: boolean) => void
   onOpenArchive: () => void
   onOpenAddMember: () => void
   onDeleteEvent: () => void
@@ -1052,6 +1157,8 @@ function EventWorkspace({
   const [editingRosterId, setEditingRosterId] = useState<string | null>(null)
   const [editRosterName, setEditRosterName] = useState('')
   const [editRosterColor, setEditRosterColor] = useState('#d4af37')
+  const [postraidGroupFilter, setPostraidGroupFilter] = useState<string>('all')
+  const [collapsedPostraidGroups, setCollapsedPostraidGroups] = useState<Record<string, boolean>>({})
   const signupExpired = new Date(event.signupDeadline).getTime() <= Date.now()
   const confirmExpired = new Date(event.confirmDeadline).getTime() <= Date.now()
 
@@ -1458,230 +1565,451 @@ function EventWorkspace({
         </div>
       )}
 
-      {/* Mode 2: Post-Raid Attendance Processing & Archiving (Officer/GM) */}
-      {viewMode === 'postraid' && isOfficer && (
-        <Panel className="border-gold/35">
-          <PanelTitle
-            icon={Archive}
-            action={
-              <GoldButton disabled={busy} onClick={onOpenArchive}>
-                <Archive className="size-4" />
-                Tamamla, Puanları İşle & Arşivle
-              </GoldButton>
-            }
-          >
-            Raid Sonu Katılım İşleme — {event.raidName}
-          </PanelTitle>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Her oyuncu için son katılım durumunu seçin (Bench bekleyenler için &quot;Bench Hazır&quot; seçildiğinde +{rules.benchReadyPoints ?? 6}p otomatik hesaplanır). Arşivle dediğinizde puanlar Devam Takibi tablosuna eklenir.
-          </p>
+      {/* Mode 2: Post-Raid Attendance Processing & Archiving (Officer/GM) — Grouped by Roster */}
+      {viewMode === 'postraid' && isOfficer && (() => {
+        const scoredRostersCount = event.rosters.filter((r) => Boolean(r.scoredBy)).length
+        const allRostersScored = event.rosters.length > 0 && scoredRostersCount === event.rosters.length
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-border/70 text-muted-foreground uppercase">
-                  <th className="py-2 pr-3">Karakter</th>
-                  <th className="py-2 pr-3">Grup</th>
-                  <th className="py-2 pr-3">Konfirmasyon</th>
-                  <th className="py-2 pr-3">Raid Sonu Durumu (Tik ile Seçin)</th>
-                  <th className="py-2 text-right">Hesaplanan Puan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {event.signups.map((s) => {
-                  const defaultOutcome: AttendanceOutcome =
-                    s.attendanceOutcome !== 'NONE'
-                      ? s.attendanceOutcome
-                      : s.confirmStatus === 'DECLINED_EXCUSED'
-                        ? 'EXCUSED'
-                        : s.assignment === 'BENCH'
-                          ? s.confirmStatus === 'CONFIRMED'
-                            ? 'BENCH_READY'
-                            : 'BENCH_ABSENT'
-                          : s.assignment !== 'POOL'
-                            ? 'ATTENDED'
-                            : 'NONE'
-                  const activeFlags: AttendanceFlags = s.attendanceFlags
-                    ? s.attendanceFlags
-                    : resolveAttendanceFlags({ attendanceOutcome: defaultOutcome })
-                  const previewBreakdown = calculateSignupPoints(
-                    {
-                      ...s,
-                      attendanceOutcome: deriveOutcomeFromFlags(activeFlags),
-                      attendanceFlags: activeFlags,
-                    },
-                    event.size,
-                    rules,
-                  )
-                  const rosterIdx = event.rosters.findIndex((r) => r.id === s.assignment)
-                  const assignedRoster = rosterIdx >= 0 ? event.rosters[rosterIdx] : null
-                  const groupName =
-                    s.assignment === 'BENCH'
-                      ? 'Bench'
-                      : s.assignment === 'POOL'
-                        ? 'Havuz'
-                        : assignedRoster?.name || s.assignment
-                  const groupColor = assignedRoster
-                    ? assignedRoster.color || ROSTER_COLOR_PRESETS[rosterIdx % ROSTER_COLOR_PRESETS.length].hex
-                    : undefined
+        const postraidSections: {
+          id: string
+          kind: 'roster' | 'bench' | 'pool'
+          name: string
+          color: string
+          scoredBy?: string
+          members: RaidEventSignup[]
+        }[] = [
+          ...event.rosters.map((r, rIdx) => ({
+            id: r.id,
+            kind: 'roster' as const,
+            name: r.name,
+            color: r.color || ROSTER_COLOR_PRESETS[rIdx % ROSTER_COLOR_PRESETS.length].hex,
+            scoredBy: r.scoredBy,
+            members: event.signups.filter((s) => s.assignment === r.id),
+          })),
+          {
+            id: 'BENCH',
+            kind: 'bench' as const,
+            name: 'Yedek / Bench',
+            color: '#22d3ee',
+            scoredBy: event.benchScoredBy,
+            members: benchSignups,
+          },
+          ...(poolSignups.length > 0
+            ? [
+                {
+                  id: 'POOL',
+                  kind: 'pool' as const,
+                  name: 'Atanmamış Havuz / İptal',
+                  color: '#94a3b8',
+                  members: poolSignups,
+                },
+              ]
+            : []),
+        ]
 
-                  const toggleFlag = (key: keyof AttendanceFlags) => {
-                    const nextVal = !activeFlags[key]
-                    let next: AttendanceFlags = { ...activeFlags }
-                    if (key === 'attended') {
-                      next = nextVal ? { attended: true } : {}
-                    } else if (key === 'benchReady') {
-                      next = nextVal ? { benchReady: true } : {}
-                    } else if (key === 'late') {
-                      next = nextVal
-                        ? { attended: true, late: true, missingPrep: Boolean(activeFlags.missingPrep) }
-                        : { attended: Boolean(activeFlags.attended || activeFlags.missingPrep), missingPrep: Boolean(activeFlags.missingPrep) }
-                    } else if (key === 'missingPrep') {
-                      next = nextVal
-                        ? { attended: true, late: Boolean(activeFlags.late), missingPrep: true }
-                        : { attended: Boolean(activeFlags.attended || activeFlags.late), late: Boolean(activeFlags.late) }
-                    } else if (key === 'excused') {
-                      next = nextVal ? { excused: true } : {}
-                    } else if (key === 'noShow') {
-                      next = nextVal ? { noShow: true } : {}
-                    }
-                    onSetOutcome(s.id, next)
-                  }
+        const visibleSections =
+          postraidGroupFilter === 'all'
+            ? postraidSections
+            : postraidSections.filter((sec) => sec.id === postraidGroupFilter)
 
-                  const checkItems: {
-                    key: keyof AttendanceFlags
-                    label: string
-                    pts: string
-                    activeCls: string
-                    accentCls: string
-                  }[] = [
-                    {
-                      key: 'attended',
-                      label: 'Katıldı',
-                      pts: `+${rules.raid10}p`,
-                      activeCls: 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200',
-                      accentCls: 'accent-emerald-400',
-                    },
-                    {
-                      key: 'benchReady',
-                      label: 'Yedek',
-                      pts: `+${rules.benchReadyPoints ?? 6}p`,
-                      activeCls: 'border-gold/60 bg-gold/15 text-gold',
-                      accentCls: 'accent-amber-400',
-                    },
-                    {
-                      key: 'late',
-                      label: 'Geç',
-                      pts: `${rules.latePenalty}p`,
-                      activeCls: 'border-amber-500/60 bg-amber-500/15 text-amber-200',
-                      accentCls: 'accent-amber-400',
-                    },
-                    {
-                      key: 'missingPrep',
-                      label: 'Eksik',
-                      pts: `${rules.missingPrepPenalty}p`,
-                      activeCls: 'border-orange-500/60 bg-orange-500/15 text-orange-200',
-                      accentCls: 'accent-orange-400',
-                    },
-                    {
-                      key: 'excused',
-                      label: 'Mazeret',
-                      pts: '0p',
-                      activeCls: 'border-slate-400/60 bg-slate-500/20 text-slate-200',
-                      accentCls: 'accent-slate-400',
-                    },
-                    {
-                      key: 'noShow',
-                      label: 'No-Show',
-                      pts: `${rules.noShowPenalty}p`,
-                      activeCls: 'border-rose-500/60 bg-rose-500/15 text-rose-200',
-                      accentCls: 'accent-rose-500',
-                    },
-                  ]
+        return (
+          <div className="space-y-4">
+            <Panel className="border-gold/35">
+              <PanelTitle
+                icon={Archive}
+                action={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      className={
+                        allRostersScored
+                          ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                          : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                      }
+                    >
+                      Onaylanan Gruplar: {scoredRostersCount} / {event.rosters.length}
+                    </Badge>
+                    <GoldButton disabled={busy} onClick={onOpenArchive}>
+                      <Archive className="size-4" />
+                      Tamamla, Puanları İşle &amp; Arşivle
+                    </GoldButton>
+                  </div>
+                }
+              >
+                Raid Sonu Katılım İşleme — {event.raidName}
+              </PanelTitle>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Her officer aşağıdan kendi grubunu seçip oyuncuların puanlamasını ayrı ayrı yapabilir ve{' '}
+                <strong className="text-emerald-300">&quot;Grubu Onayla&quot;</strong> ile tamamlayabilir. Tüm gruplar hazır olduğunda raid arşivlenir ve puanlar Devam Takibine işlenir.
+              </p>
 
+              {/* Quick Group Filter Bar */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPostraidGroupFilter('all')}
+                  className={cn(
+                    'cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+                    postraidGroupFilter === 'all'
+                      ? 'border-gold/60 bg-gold/15 text-gold'
+                      : 'border-border bg-[#071422] text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  Tüm Gruplar ({event.signups.length})
+                </button>
+                {postraidSections.map((sec) => {
+                  const selected = postraidGroupFilter === sec.id
                   return (
-                    <tr key={s.id} className="hover:bg-white/[0.02]">
-                      <td className="py-2.5 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                        <span className="inline-flex items-center gap-1.5">
-                          <span>{s.characterName}</span>
-                          <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
-                        </span>
-                        <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
-                      </td>
-                      <td className="py-2.5 pr-3 font-semibold text-silver" style={groupColor ? { color: groupColor } : undefined}>
-                        {groupName}
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        <Badge
-                          className={
-                            s.confirmStatus === 'CONFIRMED'
-                              ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                              : s.confirmStatus === 'DECLINED_EXCUSED'
-                                ? 'border-slate-500/40 bg-slate-500/10 text-slate-300'
-                                : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                          }
-                        >
-                          {s.confirmStatus === 'CONFIRMED'
-                            ? 'Konfirme'
-                            : s.confirmStatus === 'DECLINED_EXCUSED'
-                              ? 'Mazeretli İptal'
-                              : 'Konfirme Yok'}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {checkItems.map((item) => {
-                            const checked = Boolean(activeFlags[item.key])
-                            return (
-                              <label
-                                key={item.key}
-                                className={cn(
-                                  'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold transition select-none',
-                                  busy && 'pointer-events-none opacity-50',
-                                  checked
-                                    ? item.activeCls
-                                    : 'border-border/60 bg-[#071422]/80 text-muted-foreground hover:border-border hover:text-silver',
-                                )}
-                              >
-                                <input
-                                  type="checkbox"
-                                  disabled={busy}
-                                  checked={checked}
-                                  onChange={() => toggleFlag(item.key)}
-                                  className={cn('size-3.5 cursor-pointer', item.accentCls)}
-                                />
-                                <span>{item.label}</span>
-                                <span className="font-mono text-[10px] opacity-80">{item.pts}</span>
-                              </label>
-                            )
-                          })}
-                        </div>
-                      </td>
-                      <td className="py-2.5 text-right font-mono font-bold">
-                        <span
-                          className={
-                            previewBreakdown.total > 0
-                              ? 'text-emerald-300'
-                              : previewBreakdown.total < 0
-                                ? 'text-rose-400'
-                                : 'text-muted-foreground'
-                          }
-                        >
-                          {previewBreakdown.total > 0 ? `+${previewBreakdown.total}` : previewBreakdown.total}p
-                        </span>
-                        <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
-                          (İmza/K:{previewBreakdown.signup + previewBreakdown.confirm}, Raid:{previewBreakdown.raid}
-                          {previewBreakdown.penalty < 0 ? `, Ceza:${previewBreakdown.penalty}` : ''})
-                        </span>
-                      </td>
-                    </tr>
+                    <button
+                      key={sec.id}
+                      type="button"
+                      onClick={() => setPostraidGroupFilter(sec.id)}
+                      className={cn(
+                        'inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+                        selected
+                          ? 'bg-white/10 text-foreground'
+                          : 'border-border bg-[#071422] text-muted-foreground hover:text-foreground',
+                      )}
+                      style={selected ? { borderColor: sec.color, color: sec.color } : undefined}
+                    >
+                      <span
+                        className="size-2 rounded-full"
+                        style={{ backgroundColor: sec.color }}
+                      />
+                      <span>{sec.name}</span>
+                      <span className="opacity-70">({sec.members.length})</span>
+                      {sec.scoredBy && <CheckCircle2 className="size-3.5 text-emerald-400" />}
+                    </button>
                   )
                 })}
-              </tbody>
-            </table>
+              </div>
+            </Panel>
+
+            {/* Separate Scoring Card Per Group */}
+            {visibleSections.map((sec) => {
+              const isCollapsed = Boolean(collapsedPostraidGroups[sec.id])
+              const isScored = Boolean(sec.scoredBy)
+
+              return (
+                <Panel
+                  key={sec.id}
+                  className="relative overflow-hidden"
+                  style={{ borderColor: `${sec.color}55` }}
+                >
+                  <div
+                    className="pointer-events-none absolute inset-x-0 top-0 h-1"
+                    style={{ backgroundColor: sec.color }}
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsedPostraidGroups((prev) => ({ ...prev, [sec.id]: !prev[sec.id] }))
+                      }
+                      aria-expanded={!isCollapsed}
+                      className="group flex cursor-pointer items-center gap-2 text-left"
+                    >
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: sec.color, boxShadow: `0 0 8px ${sec.color}` }}
+                      />
+                      <h3 className="font-display text-base font-bold" style={{ color: sec.color }}>
+                        {sec.name}
+                      </h3>
+                      <ChevronDown
+                        className={cn(
+                          'size-4 text-muted-foreground transition-transform duration-200 group-hover:text-foreground',
+                          isCollapsed && '-rotate-90',
+                        )}
+                      />
+                      <span className="text-xs text-muted-foreground">({sec.members.length} oyuncu)</span>
+                      {isScored && (
+                        <Badge className="border-emerald-500/40 bg-emerald-500/15 text-[11px] text-emerald-300">
+                          <CheckCircle2 className="size-3" />
+                          Onaylandı · {sec.scoredBy}
+                        </Badge>
+                      )}
+                    </button>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {sec.kind === 'roster' && sec.members.length > 0 && (
+                        <GhostButton
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            onBatchSetOutcome(
+                              sec.members.map((m) => ({
+                                signupId: m.id,
+                                flags:
+                                  m.confirmStatus === 'DECLINED_EXCUSED'
+                                    ? { excused: true }
+                                    : { attended: true },
+                              })),
+                              `${sec.name} üyeleri "Katıldı (+${rules.raid10}p)" olarak işaretlendi.`,
+                            )
+                          }
+                          className="px-2.5 py-1.5 text-[11px]"
+                        >
+                          <Check className="size-3.5" />
+                          Tümünü Katıldı (+{rules.raid10}p)
+                        </GhostButton>
+                      )}
+                      {sec.kind === 'bench' && sec.members.length > 0 && (
+                        <GhostButton
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            onBatchSetOutcome(
+                              sec.members.map((m) => ({
+                                signupId: m.id,
+                                flags:
+                                  m.confirmStatus === 'DECLINED_EXCUSED'
+                                    ? { excused: true }
+                                    : { benchReady: true },
+                              })),
+                              `Bench üyeleri "Yedek (+${rules.benchReadyPoints ?? 6}p)" olarak işaretlendi.`,
+                            )
+                          }
+                          className="px-2.5 py-1.5 text-[11px]"
+                        >
+                          <Check className="size-3.5" />
+                          Tümünü Yedek (+{rules.benchReadyPoints ?? 6}p)
+                        </GhostButton>
+                      )}
+                      {(sec.kind === 'roster' || sec.kind === 'bench') && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onMarkRosterScored(sec.id, !isScored)}
+                          className={cn(
+                            'inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50',
+                            isScored
+                              ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30'
+                              : 'border-gold/50 bg-gold/15 text-gold hover:bg-gold/25',
+                          )}
+                        >
+                          <CheckCircle2 className="size-3.5" />
+                          {isScored ? 'Onayı Kaldır' : sec.kind === 'bench' ? 'Bench Onayla' : 'Grubu Onayla'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isCollapsed && (
+                    <div className="mt-3">
+                      {sec.members.length === 0 ? (
+                        <p className="py-4 text-center text-xs text-muted-foreground">
+                          Bu grupta atanmış oyuncu yok.
+                        </p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-border/60 text-muted-foreground uppercase">
+                                <th className="py-2 pr-3">Karakter</th>
+                                <th className="py-2 pr-3">Konfirmasyon</th>
+                                <th className="py-2 pr-3">Raid Sonu Durumu (Tik ile Seçin)</th>
+                                <th className="py-2 text-right">Hesaplanan Puan</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/40">
+                              {sec.members.map((s) => {
+                                const defaultOutcome: AttendanceOutcome =
+                                  s.attendanceOutcome !== 'NONE'
+                                    ? s.attendanceOutcome
+                                    : s.confirmStatus === 'DECLINED_EXCUSED'
+                                      ? 'EXCUSED'
+                                      : s.assignment === 'BENCH'
+                                        ? s.confirmStatus === 'CONFIRMED'
+                                          ? 'BENCH_READY'
+                                          : 'BENCH_ABSENT'
+                                        : s.assignment !== 'POOL'
+                                          ? 'ATTENDED'
+                                          : 'NONE'
+                                const activeFlags: AttendanceFlags = s.attendanceFlags
+                                  ? s.attendanceFlags
+                                  : resolveAttendanceFlags({ attendanceOutcome: defaultOutcome })
+                                const previewBreakdown = calculateSignupPoints(
+                                  {
+                                    ...s,
+                                    attendanceOutcome: deriveOutcomeFromFlags(activeFlags),
+                                    attendanceFlags: activeFlags,
+                                  },
+                                  event.size,
+                                  rules,
+                                )
+
+                                const toggleFlag = (key: keyof AttendanceFlags) => {
+                                  const nextVal = !activeFlags[key]
+                                  let next: AttendanceFlags = { ...activeFlags }
+                                  if (key === 'attended') {
+                                    next = nextVal ? { attended: true } : {}
+                                  } else if (key === 'benchReady') {
+                                    next = nextVal ? { benchReady: true } : {}
+                                  } else if (key === 'late') {
+                                    next = nextVal
+                                      ? { attended: true, late: true, missingPrep: Boolean(activeFlags.missingPrep) }
+                                      : {
+                                          attended: Boolean(activeFlags.attended || activeFlags.missingPrep),
+                                          missingPrep: Boolean(activeFlags.missingPrep),
+                                        }
+                                  } else if (key === 'missingPrep') {
+                                    next = nextVal
+                                      ? { attended: true, late: Boolean(activeFlags.late), missingPrep: true }
+                                      : {
+                                          attended: Boolean(activeFlags.attended || activeFlags.late),
+                                          late: Boolean(activeFlags.late),
+                                        }
+                                  } else if (key === 'excused') {
+                                    next = nextVal ? { excused: true } : {}
+                                  } else if (key === 'noShow') {
+                                    next = nextVal ? { noShow: true } : {}
+                                  }
+                                  onSetOutcome(s.id, next)
+                                }
+
+                                const checkItems: {
+                                  key: keyof AttendanceFlags
+                                  label: string
+                                  pts: string
+                                  activeCls: string
+                                  accentCls: string
+                                }[] = [
+                                  {
+                                    key: 'attended',
+                                    label: 'Katıldı',
+                                    pts: `+${rules.raid10}p`,
+                                    activeCls: 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200',
+                                    accentCls: 'accent-emerald-400',
+                                  },
+                                  {
+                                    key: 'benchReady',
+                                    label: 'Yedek',
+                                    pts: `+${rules.benchReadyPoints ?? 6}p`,
+                                    activeCls: 'border-gold/60 bg-gold/15 text-gold',
+                                    accentCls: 'accent-amber-400',
+                                  },
+                                  {
+                                    key: 'late',
+                                    label: 'Geç',
+                                    pts: `${rules.latePenalty}p`,
+                                    activeCls: 'border-amber-500/60 bg-amber-500/15 text-amber-200',
+                                    accentCls: 'accent-amber-400',
+                                  },
+                                  {
+                                    key: 'missingPrep',
+                                    label: 'Eksik',
+                                    pts: `${rules.missingPrepPenalty}p`,
+                                    activeCls: 'border-orange-500/60 bg-orange-500/15 text-orange-200',
+                                    accentCls: 'accent-orange-400',
+                                  },
+                                  {
+                                    key: 'excused',
+                                    label: 'Mazeret',
+                                    pts: '0p',
+                                    activeCls: 'border-slate-400/60 bg-slate-500/20 text-slate-200',
+                                    accentCls: 'accent-slate-400',
+                                  },
+                                  {
+                                    key: 'noShow',
+                                    label: 'No-Show',
+                                    pts: `${rules.noShowPenalty}p`,
+                                    activeCls: 'border-rose-500/60 bg-rose-500/15 text-rose-200',
+                                    accentCls: 'accent-rose-500',
+                                  },
+                                ]
+
+                                return (
+                                  <tr key={s.id} className="hover:bg-white/[0.02]">
+                                    <td
+                                      className="py-2.5 pr-3 font-semibold"
+                                      style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}
+                                    >
+                                      <span className="inline-flex items-center gap-1.5">
+                                        <span>{s.characterName}</span>
+                                        <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
+                                      </span>
+                                      <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                                        ({s.spec})
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 pr-3">
+                                      <Badge
+                                        className={
+                                          s.confirmStatus === 'CONFIRMED'
+                                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                                            : s.confirmStatus === 'DECLINED_EXCUSED'
+                                              ? 'border-slate-500/40 bg-slate-500/10 text-slate-300'
+                                              : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                                        }
+                                      >
+                                        {s.confirmStatus === 'CONFIRMED'
+                                          ? 'Konfirme'
+                                          : s.confirmStatus === 'DECLINED_EXCUSED'
+                                            ? 'Mazeretli İptal'
+                                            : 'Konfirme Yok'}
+                                      </Badge>
+                                    </td>
+                                    <td className="py-2.5 pr-3">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        {checkItems.map((item) => {
+                                          const checked = Boolean(activeFlags[item.key])
+                                          return (
+                                            <label
+                                              key={item.key}
+                                              className={cn(
+                                                'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold transition select-none',
+                                                busy && 'pointer-events-none opacity-50',
+                                                checked
+                                                  ? item.activeCls
+                                                  : 'border-border/60 bg-[#071422]/80 text-muted-foreground hover:border-border hover:text-silver',
+                                              )}
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                disabled={busy}
+                                                checked={checked}
+                                                onChange={() => toggleFlag(item.key)}
+                                                className={cn('size-3.5 cursor-pointer', item.accentCls)}
+                                              />
+                                              <span>{item.label}</span>
+                                              <span className="font-mono text-[10px] opacity-80">{item.pts}</span>
+                                            </label>
+                                          )
+                                        })}
+                                      </div>
+                                    </td>
+                                    <td className="py-2.5 text-right font-mono font-bold">
+                                      <span
+                                        className={
+                                          previewBreakdown.total > 0
+                                            ? 'text-emerald-300'
+                                            : previewBreakdown.total < 0
+                                              ? 'text-rose-400'
+                                              : 'text-muted-foreground'
+                                        }
+                                      >
+                                        {previewBreakdown.total > 0 ? `+${previewBreakdown.total}` : previewBreakdown.total}p
+                                      </span>
+                                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+                                        (İmza/K:{previewBreakdown.signup + previewBreakdown.confirm}, Raid:{previewBreakdown.raid}
+                                        {previewBreakdown.penalty < 0 ? `, Ceza:${previewBreakdown.penalty}` : ''})
+                                      </span>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Panel>
+              )
+            })}
           </div>
-        </Panel>
-      )}
+        )
+      })()}
     </div>
   )
 }

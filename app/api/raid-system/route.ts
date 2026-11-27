@@ -710,6 +710,63 @@ export async function POST(request: Request) {
           break
         }
 
+        case 'mark_roster_scored': {
+          requireOfficer()
+          const eventId = String(body.eventId || '')
+          const rosterId = String(body.rosterId || '')
+          const scored = Boolean(body.scored)
+          const ev = rs.events.find((e) => e.id === eventId)
+          if (!ev) throw new Error('EVENT_NOT_FOUND')
+
+          if (rosterId === 'BENCH') {
+            if (scored) {
+              for (const s of ev.signups) {
+                if (s.assignment !== 'BENCH') continue
+                if (!s.attendanceFlags && s.attendanceOutcome === 'NONE') {
+                  if (s.confirmStatus === 'DECLINED_EXCUSED') {
+                    s.attendanceFlags = { excused: true }
+                    s.attendanceOutcome = 'EXCUSED'
+                  } else if (s.confirmStatus === 'CONFIRMED') {
+                    s.attendanceFlags = { benchReady: true }
+                    s.attendanceOutcome = 'BENCH_READY'
+                  }
+                }
+                s.pointsBreakdown = calculateSignupPoints(s, ev.size, rs.settings.pointRules)
+              }
+              ev.benchScoredBy = session.username
+              ev.benchScoredAt = nowIso
+            } else {
+              ev.benchScoredBy = undefined
+              ev.benchScoredAt = undefined
+            }
+            break
+          }
+
+          const roster = ev.rosters.find((r) => r.id === rosterId)
+          if (!roster) throw new Error('ROSTER_NOT_FOUND')
+          if (scored) {
+            for (const s of ev.signups) {
+              if (s.assignment !== rosterId) continue
+              if (!s.attendanceFlags && s.attendanceOutcome === 'NONE') {
+                if (s.confirmStatus === 'DECLINED_EXCUSED') {
+                  s.attendanceFlags = { excused: true }
+                  s.attendanceOutcome = 'EXCUSED'
+                } else {
+                  s.attendanceFlags = { attended: true }
+                  s.attendanceOutcome = 'ATTENDED'
+                }
+              }
+              s.pointsBreakdown = calculateSignupPoints(s, ev.size, rs.settings.pointRules)
+            }
+            roster.scoredBy = session.username
+            roster.scoredAt = nowIso
+          } else {
+            roster.scoredBy = undefined
+            roster.scoredAt = undefined
+          }
+          break
+        }
+
         case 'finalize_and_archive': {
           requireOfficer()
           const eventId = String(body.eventId || '')

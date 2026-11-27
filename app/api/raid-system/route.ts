@@ -10,6 +10,7 @@ import {
   getActiveLootRoundState,
   getItemPriorityTiers,
   getRoundTierAwards,
+  hasCharacterReceivedItem,
   normalizePriorityTiers,
   normalizeRaidSystemStore,
   RAID_CATALOG,
@@ -955,7 +956,7 @@ export async function POST(request: Request) {
             itemSlot: String(body.itemSlot || 'Item').trim(),
             icon: typeof body.icon === 'string' && body.icon.trim() ? body.icon.trim() : undefined,
             tooltip: body.tooltip && typeof body.tooltip === 'object' ? (body.tooltip as WowItemTooltipData) : undefined,
-            unique: Boolean(body.unique),
+            unique: true,
             discovered: body.discovered !== false,
             notes: typeof body.notes === 'string' ? body.notes.trim() : '',
             wowheadUrl: typeof body.wowheadUrl === 'string' ? body.wowheadUrl.trim() : '',
@@ -985,7 +986,7 @@ export async function POST(request: Request) {
           if (body.tooltip && typeof body.tooltip === 'object') item.tooltip = body.tooltip as WowItemTooltipData
           if (typeof body.notes === 'string') item.notes = body.notes.trim()
           if (typeof body.wowheadUrl === 'string') item.wowheadUrl = body.wowheadUrl.trim()
-          if (typeof body.unique === 'boolean') item.unique = body.unique
+          item.unique = true
           if (typeof body.discovered === 'boolean') item.discovered = body.discovered
 
           const hasNewTiers = Array.isArray(body.priorityTiers) && body.priorityTiers.length > 0
@@ -1053,6 +1054,12 @@ export async function POST(request: Request) {
             note?: string
           }
           if (!awardInput.characterName) throw new Error('CHAR_REQUIRED')
+
+          const awardCharName = awardInput.characterName.trim()
+          const awardUsername = awardInput.username || awardCharName
+          if (hasCharacterReceivedItem(item, awardUsername, awardCharName)) {
+            throw new Error('ALREADY_RECEIVED_ITEM')
+          }
 
           const state = getActiveLootRoundState(item)
           let targetRoundIndex = typeof body.roundIndex === 'number' ? body.roundIndex : state.roundIndex
@@ -1363,6 +1370,7 @@ export async function POST(request: Request) {
       LOOT_FIELDS_REQUIRED: ['Item adı, boss adı ve en az 1 öncelik sırası zorunludur.', 400],
       LOOT_NOT_FOUND: ['Loot kaydı bulunamadı.', 404],
       INVALID_SLOT: ['Geçersiz öncelik sırası.', 400],
+      ALREADY_RECEIVED_ITEM: ['Bu oyuncu bu itemı daha önce aldı (aynı item aynı oyuncuya 2. kez verilemez).', 400],
       CANNOT_CHANGE_STAFF_RANK: ['GM ve Görevli rütbeleri buradan değiştirilemez.', 403],
       UNKNOWN_ACTION: ['Bilinmeyen aksiyon.', 400],
     }

@@ -107,7 +107,6 @@ export function LootDistributionView() {
   const [formItemLevel, setFormItemLevel] = useState('60')
   const [formStatsText, setFormStatsText] = useState('')
   const [formEffectsText, setFormEffectsText] = useState('')
-  const [formUnique, setFormUnique] = useState(true)
   const [formNotes, setFormNotes] = useState('')
   const [formWowheadUrl, setFormWowheadUrl] = useState('')
   const [formPriorityTiers, setFormPriorityTiers] = useState<LootPriorityTier[]>([
@@ -353,7 +352,6 @@ export function LootDistributionView() {
     setFormItemLevel('60')
     setFormStatsText('')
     setFormEffectsText('')
-    setFormUnique(true)
     setFormNotes('')
     setFormWowheadUrl('')
     setFormPriorityTiers(LOOT_PRIORITY_PRESETS[0].order.map((sp) => ({ specs: [sp], quota: defQuota })))
@@ -372,7 +370,6 @@ export function LootDistributionView() {
     setFormItemLevel(String(item.tooltip?.itemLevel || 60))
     setFormStatsText((item.tooltip?.stats || []).join('\n'))
     setFormEffectsText((item.tooltip?.effects || []).join('\n'))
-    setFormUnique(Boolean(item.unique))
     setFormNotes(item.notes || '')
     setFormWowheadUrl(item.wowheadUrl || '')
     setFormPriorityTiers(getItemPriorityTiers(item).map((t) => ({ specs: [...t.specs], quota: t.quota })))
@@ -421,7 +418,7 @@ export function LootDistributionView() {
             itemSlot: formItemSlot,
             icon: formIcon,
             tooltip: tooltipPayload,
-            unique: formUnique,
+            unique: true,
             discovered: true,
             notes: formNotes,
             wowheadUrl: formWowheadUrl,
@@ -436,7 +433,7 @@ export function LootDistributionView() {
             itemSlot: formItemSlot,
             icon: formIcon,
             tooltip: tooltipPayload,
-            unique: formUnique,
+            unique: true,
             discovered: true,
             notes: formNotes,
             wowheadUrl: formWowheadUrl,
@@ -454,6 +451,13 @@ export function LootDistributionView() {
     const charName = chosen?.characterName || awardCustomName.trim()
     if (!charName) {
       toast({ title: 'Karakter Seçin', description: 'Loot alacak oyuncuyu seçin veya karakter adı yazın.' })
+      return
+    }
+    if (hasCharacterReceivedItem(awardTarget.item, chosen?.username || charName, charName)) {
+      toast({
+        title: 'Zaten Aldı',
+        description: `${charName} bu itemı daha önce aldı. Aynı item aynı oyuncuya 2. kez verilemez.`,
+      })
       return
     }
     const ok = await runAction(
@@ -807,11 +811,6 @@ export function LootDistributionView() {
                                     <div className="flex flex-wrap items-center gap-2.5">
                                       <WowItemHeaderWithTooltip item={item} />
                                       <Badge className="border-border bg-white/5 text-silver">{item.itemSlot}</Badge>
-                                      {item.unique && (
-                                        <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-300">
-                                          Unique
-                                        </Badge>
-                                      )}
                                       {item.discovered === false && (
                                         <Badge className="border-purple-400/30 bg-purple-500/10 text-purple-300">
                                           Canlı Keşif Şablonu
@@ -1258,17 +1257,21 @@ export function LootDistributionView() {
                     <button
                       type="button"
                       key={c.username}
+                      disabled={c.alreadyOwns}
                       onClick={() => {
+                        if (c.alreadyOwns) return
                         setAwardSelectedUsername(c.username)
                         setAwardCustomName('')
                       }}
                       className={cn(
-                        'flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs transition',
-                        selected
-                          ? 'border-gold bg-gold/15'
-                          : c.matches
-                            ? 'border-neon/25 bg-[#071422] hover:border-neon/60'
-                            : 'border-border/50 bg-[#071422]/50 opacity-65 hover:opacity-100',
+                        'flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-xs transition',
+                        c.alreadyOwns
+                          ? 'cursor-not-allowed border-rose-500/25 bg-rose-500/[0.04] opacity-45'
+                          : selected
+                            ? 'cursor-pointer border-gold bg-gold/15'
+                            : c.matches
+                              ? 'cursor-pointer border-neon/25 bg-[#071422] hover:border-neon/60'
+                              : 'cursor-pointer border-border/50 bg-[#071422]/50 opacity-65 hover:opacity-100',
                       )}
                     >
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -1665,18 +1668,6 @@ export function LootDistributionView() {
                 + Yeni Öncelik Sırası Ekle
               </GhostButton>
             </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-silver">
-              <input
-                type="checkbox"
-                checked={formUnique}
-                onChange={(e) => setFormUnique(e.target.checked)}
-                className="size-4 accent-[#00f2fe]"
-              />
-              Unique Item (Aynı kişiye 2. kez verilemez uyarısı)
-            </label>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">

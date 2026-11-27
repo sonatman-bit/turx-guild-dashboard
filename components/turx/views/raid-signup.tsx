@@ -5,10 +5,12 @@ import {
   Archive,
   CalendarClock,
   CalendarPlus,
+  Check,
   CheckCircle2,
   Clock,
   Info,
   Layers,
+  Pencil,
   Plus,
   Send,
   ShieldAlert,
@@ -24,9 +26,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { CLASS_COLORS, type WowClass } from '@/lib/guild-data'
 import {
   calculateSignupPoints,
+  deriveOutcomeFromFlags,
   formatCountdown,
   formatTrDateTime,
   RAID_CATALOG,
+  resolveAttendanceFlags,
+  ROSTER_COLOR_PRESETS,
+  type AttendanceFlags,
   type AttendanceOutcome,
   type PrepChecklist,
   type RaidEvent,
@@ -592,6 +598,12 @@ export function RaidSignupView() {
                       `Yeni grup (Grup ${selectedEvent.rosters.length + 1}) oluşturuldu.`,
                     )
                   }
+                  onUpdateRoster={(rosterId, updates) =>
+                    void runAction(
+                      { action: 'update_roster', eventId: selectedEvent.id, rosterId, ...updates },
+                      'Grup adı ve rengi güncellendi.',
+                    )
+                  }
                   onRemoveRoster={(rosterId) =>
                     void runAction(
                       { action: 'remove_roster', eventId: selectedEvent.id, rosterId },
@@ -610,9 +622,15 @@ export function RaidSignupView() {
                       'Tüm gruplar ve Bench yayınlandı! Oyuncular konfirmasyon verebilir.',
                     )
                   }
-                  onSetOutcome={(signupId, outcome) =>
+                  onSetOutcome={(signupId, flags) =>
                     void runAction(
-                      { action: 'set_attendance_outcome', eventId: selectedEvent.id, signupId, outcome },
+                      {
+                        action: 'set_attendance_outcome',
+                        eventId: selectedEvent.id,
+                        signupId,
+                        flags,
+                        outcome: deriveOutcomeFromFlags(flags),
+                      },
                       'Katılım durumu ve puan önizlemesi güncellendi.',
                     )
                   }
@@ -988,6 +1006,7 @@ function EventWorkspace({
   onOpenConfirm,
   onOpenDecline,
   onAddRoster,
+  onUpdateRoster,
   onRemoveRoster,
   onAssign,
   onPublish,
@@ -1020,15 +1039,19 @@ function EventWorkspace({
   onOpenConfirm: () => void
   onOpenDecline: () => void
   onAddRoster: () => void
+  onUpdateRoster: (rosterId: string, updates: { name?: string; color?: string }) => void
   onRemoveRoster: (rosterId: string) => void
   onAssign: (signupId: string, assignment: string) => void
   onPublish: () => void
-  onSetOutcome: (signupId: string, outcome: AttendanceOutcome) => void
+  onSetOutcome: (signupId: string, flags: AttendanceFlags) => void
   onOpenArchive: () => void
   onOpenAddMember: () => void
   onDeleteEvent: () => void
 }) {
   const [viewMode, setViewMode] = useState<'rosters' | 'postraid'>('rosters')
+  const [editingRosterId, setEditingRosterId] = useState<string | null>(null)
+  const [editRosterName, setEditRosterName] = useState('')
+  const [editRosterColor, setEditRosterColor] = useState('#d4af37')
   const signupExpired = new Date(event.signupDeadline).getTime() <= Date.now()
   const confirmExpired = new Date(event.confirmDeadline).getTime() <= Date.now()
 
@@ -1227,7 +1250,7 @@ function EventWorkspace({
                 icon={UserMinus}
                 action={<Badge className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300">{benchSignups.length}</Badge>}
               >
-                Yedek / Bench (Hazır = Eşit Puan)
+                Yedek / Bench (Hazır = +{rules.benchReadyPoints ?? 6}p)
               </PanelTitle>
               {benchSignups.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Henüz bench atanmadı.</p>
@@ -1253,37 +1276,158 @@ function EventWorkspace({
           {/* Right: Multiple Sub-Rosters (Grup 1, Grup 2, ...) */}
           <div className="space-y-5 xl:col-span-8">
             <div className="grid gap-4 md:grid-cols-2">
-              {event.rosters.map((roster) => {
+              {event.rosters.map((roster, rosterIndex) => {
                 const members = event.signups.filter((s) => s.assignment === roster.id)
                 const tanks = members.filter((m) => m.role === 'TANK')
                 const healers = members.filter((m) => m.role === 'HEALER')
                 const dps = members.filter((m) => m.role === 'MELEE' || m.role === 'RANGED')
                 const confirmedCount = members.filter((m) => m.confirmStatus === 'CONFIRMED').length
+                const rosterColor =
+                  roster.color || ROSTER_COLOR_PRESETS[rosterIndex % ROSTER_COLOR_PRESETS.length].hex
+                const isEditingThis = editingRosterId === roster.id
+
+                const saveRosterEdit = () => {
+                  const trimmed = editRosterName.trim()
+                  if (!trimmed) return
+                  onUpdateRoster(roster.id, { name: trimmed, color: editRosterColor })
+                  setEditingRosterId(null)
+                }
 
                 return (
-                  <Panel key={roster.id} className="border-gold/25">
-                    <div className="mb-3 flex items-center justify-between gap-2 border-b border-border/60 pb-2.5">
-                      <div>
-                        <h3 className="font-display text-base font-bold text-gold">{roster.name}</h3>
-                        <p className="text-[11px] text-muted-foreground">
-                          {members.length}/{event.size} Oyuncu · <span className="text-emerald-300">{confirmedCount} Konfirme</span>
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-[11px]">
-                        <Badge className="border-sky-500/30 bg-sky-500/10 text-sky-300">T:{tanks.length}</Badge>
-                        <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">H:{healers.length}</Badge>
-                        <Badge className="border-rose-500/30 bg-rose-500/10 text-rose-300">D:{dps.length}</Badge>
-                        {isOfficer && event.rosters.length > 1 && (
-                          <button
-                            disabled={busy}
-                            onClick={() => onRemoveRoster(roster.id)}
-                            className="ml-1 cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400"
-                            title="Grubu sil"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        )}
-                      </div>
+                  <Panel
+                    key={roster.id}
+                    className="relative overflow-hidden"
+                    style={{ borderColor: `${rosterColor}55` }}
+                  >
+                    <div
+                      className="pointer-events-none absolute inset-x-0 top-0 h-1"
+                      style={{ backgroundColor: rosterColor }}
+                    />
+                    <div className="mb-3 border-b border-border/60 pb-2.5">
+                      {isEditingThis && isOfficer ? (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editRosterName}
+                              maxLength={48}
+                              autoFocus
+                              placeholder="Grup adı..."
+                              onChange={(e) => setEditRosterName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  saveRosterEdit()
+                                } else if (e.key === 'Escape') {
+                                  setEditingRosterId(null)
+                                }
+                              }}
+                              className={cn(inputClass, 'h-8 flex-1 px-2.5 py-1 text-xs font-semibold')}
+                            />
+                            <button
+                              type="button"
+                              disabled={busy || !editRosterName.trim()}
+                              onClick={saveRosterEdit}
+                              className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
+                              title="Kaydet"
+                            >
+                              <Check className="size-3.5" />
+                              Kaydet
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingRosterId(null)}
+                              className="h-8 cursor-pointer rounded-lg border border-border px-2 text-xs text-muted-foreground hover:text-foreground"
+                            >
+                              İptal
+                            </button>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="mr-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+                              Renk:
+                            </span>
+                            {ROSTER_COLOR_PRESETS.map((preset) => {
+                              const selected = editRosterColor.toLowerCase() === preset.hex.toLowerCase()
+                              return (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  onClick={() => setEditRosterColor(preset.hex)}
+                                  title={preset.label}
+                                  className={cn(
+                                    'size-5 cursor-pointer rounded-full border-2 transition-transform hover:scale-110',
+                                    selected ? 'scale-110 border-white shadow-[0_0_8px_rgba(255,255,255,0.6)]' : 'border-black/40',
+                                  )}
+                                  style={{ backgroundColor: preset.hex }}
+                                />
+                              )
+                            })}
+                            <label
+                              className="ml-1 inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/80 bg-[#071422] px-1.5 py-0.5 text-[10px] text-silver hover:border-neon/50"
+                              title="Özel renk seç"
+                            >
+                              <input
+                                type="color"
+                                value={editRosterColor}
+                                onChange={(e) => setEditRosterColor(e.target.value)}
+                                className="size-3.5 cursor-pointer border-0 bg-transparent p-0"
+                              />
+                              Özel
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="size-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: rosterColor, boxShadow: `0 0 8px ${rosterColor}` }}
+                              />
+                              <h3
+                                className="truncate font-display text-base font-bold"
+                                style={{ color: rosterColor }}
+                              >
+                                {roster.name}
+                              </h3>
+                              {isOfficer && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setEditingRosterId(roster.id)
+                                    setEditRosterName(roster.name)
+                                    setEditRosterColor(rosterColor)
+                                  }}
+                                  className="cursor-pointer rounded p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+                                  title="Grup adını ve rengini düzenle"
+                                >
+                                  <Pencil className="size-3.5" />
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                              {members.length}/{event.size} Oyuncu · <span className="text-emerald-300">{confirmedCount} Konfirme</span>
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
+                            <Badge className="border-sky-500/30 bg-sky-500/10 text-sky-300">T:{tanks.length}</Badge>
+                            <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">H:{healers.length}</Badge>
+                            <Badge className="border-rose-500/30 bg-rose-500/10 text-rose-300">D:{dps.length}</Badge>
+                            {isOfficer && event.rosters.length > 1 && (
+                              <button
+                                disabled={busy}
+                                onClick={() => onRemoveRoster(roster.id)}
+                                className="ml-1 cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400"
+                                title="Grubu sil"
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {members.length === 0 ? (
@@ -1329,7 +1473,7 @@ function EventWorkspace({
             Raid Sonu Katılım İşleme — {event.raidName}
           </PanelTitle>
           <p className="mb-4 text-xs text-muted-foreground">
-            Her oyuncu için son katılım durumunu seçin (Bench bekleyenler için "Bench Hazır" seçildiğinde eşit raid puanı otomatik hesaplanır). Arşivle dediğinizde puanlar Devam Takibi tablosuna eklenir.
+            Her oyuncu için son katılım durumunu seçin (Bench bekleyenler için &quot;Bench Hazır&quot; seçildiğinde +{rules.benchReadyPoints ?? 6}p otomatik hesaplanır). Arşivle dediğinizde puanlar Devam Takibi tablosuna eklenir.
           </p>
 
           <div className="overflow-x-auto">
@@ -1339,13 +1483,13 @@ function EventWorkspace({
                   <th className="py-2 pr-3">Karakter</th>
                   <th className="py-2 pr-3">Grup</th>
                   <th className="py-2 pr-3">Konfirmasyon</th>
-                  <th className="py-2 pr-3">Raid Sonu Durumu</th>
+                  <th className="py-2 pr-3">Raid Sonu Durumu (Tik ile Seçin)</th>
                   <th className="py-2 text-right">Hesaplanan Puan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
                 {event.signups.map((s) => {
-                  const previewOutcome: AttendanceOutcome =
+                  const defaultOutcome: AttendanceOutcome =
                     s.attendanceOutcome !== 'NONE'
                       ? s.attendanceOutcome
                       : s.confirmStatus === 'DECLINED_EXCUSED'
@@ -1357,17 +1501,103 @@ function EventWorkspace({
                           : s.assignment !== 'POOL'
                             ? 'ATTENDED'
                             : 'NONE'
+                  const activeFlags: AttendanceFlags = s.attendanceFlags
+                    ? s.attendanceFlags
+                    : resolveAttendanceFlags({ attendanceOutcome: defaultOutcome })
                   const previewBreakdown = calculateSignupPoints(
-                    { ...s, attendanceOutcome: previewOutcome },
+                    {
+                      ...s,
+                      attendanceOutcome: deriveOutcomeFromFlags(activeFlags),
+                      attendanceFlags: activeFlags,
+                    },
                     event.size,
                     rules,
                   )
+                  const rosterIdx = event.rosters.findIndex((r) => r.id === s.assignment)
+                  const assignedRoster = rosterIdx >= 0 ? event.rosters[rosterIdx] : null
                   const groupName =
                     s.assignment === 'BENCH'
                       ? 'Bench'
                       : s.assignment === 'POOL'
                         ? 'Havuz'
-                        : event.rosters.find((r) => r.id === s.assignment)?.name || s.assignment
+                        : assignedRoster?.name || s.assignment
+                  const groupColor = assignedRoster
+                    ? assignedRoster.color || ROSTER_COLOR_PRESETS[rosterIdx % ROSTER_COLOR_PRESETS.length].hex
+                    : undefined
+
+                  const toggleFlag = (key: keyof AttendanceFlags) => {
+                    const nextVal = !activeFlags[key]
+                    let next: AttendanceFlags = { ...activeFlags }
+                    if (key === 'attended') {
+                      next = nextVal ? { attended: true } : {}
+                    } else if (key === 'benchReady') {
+                      next = nextVal ? { benchReady: true } : {}
+                    } else if (key === 'late') {
+                      next = nextVal
+                        ? { attended: true, late: true, missingPrep: Boolean(activeFlags.missingPrep) }
+                        : { attended: Boolean(activeFlags.attended || activeFlags.missingPrep), missingPrep: Boolean(activeFlags.missingPrep) }
+                    } else if (key === 'missingPrep') {
+                      next = nextVal
+                        ? { attended: true, late: Boolean(activeFlags.late), missingPrep: true }
+                        : { attended: Boolean(activeFlags.attended || activeFlags.late), late: Boolean(activeFlags.late) }
+                    } else if (key === 'excused') {
+                      next = nextVal ? { excused: true } : {}
+                    } else if (key === 'noShow') {
+                      next = nextVal ? { noShow: true } : {}
+                    }
+                    onSetOutcome(s.id, next)
+                  }
+
+                  const checkItems: {
+                    key: keyof AttendanceFlags
+                    label: string
+                    pts: string
+                    activeCls: string
+                    accentCls: string
+                  }[] = [
+                    {
+                      key: 'attended',
+                      label: 'Katıldı',
+                      pts: `+${rules.raid10}p`,
+                      activeCls: 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200',
+                      accentCls: 'accent-emerald-400',
+                    },
+                    {
+                      key: 'benchReady',
+                      label: 'Yedek',
+                      pts: `+${rules.benchReadyPoints ?? 6}p`,
+                      activeCls: 'border-gold/60 bg-gold/15 text-gold',
+                      accentCls: 'accent-amber-400',
+                    },
+                    {
+                      key: 'late',
+                      label: 'Geç',
+                      pts: `${rules.latePenalty}p`,
+                      activeCls: 'border-amber-500/60 bg-amber-500/15 text-amber-200',
+                      accentCls: 'accent-amber-400',
+                    },
+                    {
+                      key: 'missingPrep',
+                      label: 'Eksik',
+                      pts: `${rules.missingPrepPenalty}p`,
+                      activeCls: 'border-orange-500/60 bg-orange-500/15 text-orange-200',
+                      accentCls: 'accent-orange-400',
+                    },
+                    {
+                      key: 'excused',
+                      label: 'Mazeret',
+                      pts: '0p',
+                      activeCls: 'border-slate-400/60 bg-slate-500/20 text-slate-200',
+                      accentCls: 'accent-slate-400',
+                    },
+                    {
+                      key: 'noShow',
+                      label: 'No-Show',
+                      pts: `${rules.noShowPenalty}p`,
+                      activeCls: 'border-rose-500/60 bg-rose-500/15 text-rose-200',
+                      accentCls: 'accent-rose-500',
+                    },
+                  ]
 
                   return (
                     <tr key={s.id} className="hover:bg-white/[0.02]">
@@ -1378,7 +1608,9 @@ function EventWorkspace({
                         </span>
                         <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
                       </td>
-                      <td className="py-2.5 pr-3 text-silver">{groupName}</td>
+                      <td className="py-2.5 pr-3 font-semibold text-silver" style={groupColor ? { color: groupColor } : undefined}>
+                        {groupName}
+                      </td>
                       <td className="py-2.5 pr-3">
                         <Badge
                           className={
@@ -1397,18 +1629,33 @@ function EventWorkspace({
                         </Badge>
                       </td>
                       <td className="py-2.5 pr-3">
-                        <select
-                          disabled={busy}
-                          value={previewOutcome}
-                          onChange={(e) => onSetOutcome(s.id, e.target.value as AttendanceOutcome)}
-                          className="rounded-lg border border-input bg-[#071422] px-2.5 py-1.5 text-xs text-foreground focus:border-neon focus:outline-none"
-                        >
-                          {OUTCOME_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {checkItems.map((item) => {
+                            const checked = Boolean(activeFlags[item.key])
+                            return (
+                              <label
+                                key={item.key}
+                                className={cn(
+                                  'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-semibold transition select-none',
+                                  busy && 'pointer-events-none opacity-50',
+                                  checked
+                                    ? item.activeCls
+                                    : 'border-border/60 bg-[#071422]/80 text-muted-foreground hover:border-border hover:text-silver',
+                                )}
+                              >
+                                <input
+                                  type="checkbox"
+                                  disabled={busy}
+                                  checked={checked}
+                                  onChange={() => toggleFlag(item.key)}
+                                  className={cn('size-3.5 cursor-pointer', item.accentCls)}
+                                />
+                                <span>{item.label}</span>
+                                <span className="font-mono text-[10px] opacity-80">{item.pts}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
                       </td>
                       <td className="py-2.5 text-right font-mono font-bold">
                         <span

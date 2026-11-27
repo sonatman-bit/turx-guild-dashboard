@@ -4,10 +4,12 @@ import type { WowClass } from '@/lib/guild-data'
 import {
   calculateSignupPoints,
   cloneStarterLootItems,
+  deriveOutcomeFromFlags,
   getActiveLootRoundState,
   normalizeRaidSystemStore,
   RAID_CATALOG,
   type AttendanceAdjustment,
+  type AttendanceFlags,
   type AttendanceOutcome,
   type BoeLogEntry,
   type BopRecipeDrop,
@@ -166,16 +168,20 @@ function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): Membe
       if (breakdown.confirm > 0) row.confirmCount += 1
       if (breakdown.penalty < 0) row.totalPenalties += breakdown.penalty
 
-      if (s.attendanceOutcome === 'ATTENDED' || s.attendanceOutcome === 'LATE' || s.attendanceOutcome === 'MISSING_PREP') {
+      const f = s.attendanceFlags
+      const attendedRaid = f
+        ? Boolean(f.attended || f.late || f.missingPrep)
+        : s.attendanceOutcome === 'ATTENDED' || s.attendanceOutcome === 'LATE' || s.attendanceOutcome === 'MISSING_PREP'
+      if (attendedRaid) {
         if (ev.size === 10) row.raid10Count += 1
         else if (ev.size === 20) row.raid20Count += 1
         else row.raid40Count += 1
       }
-      if (s.attendanceOutcome === 'BENCH_READY') row.benchReadyCount += 1
-      if (s.attendanceOutcome === 'LATE') row.lateCount += 1
-      if (s.attendanceOutcome === 'MISSING_PREP') row.missingPrepCount += 1
-      if (s.attendanceOutcome === 'NO_SHOW') row.noShowCount += 1
-      if (s.attendanceOutcome === 'EXCUSED') row.excusedCount += 1
+      if (f ? Boolean(f.benchReady) : s.attendanceOutcome === 'BENCH_READY') row.benchReadyCount += 1
+      if (f ? Boolean(f.late) : s.attendanceOutcome === 'LATE') row.lateCount += 1
+      if (f ? Boolean(f.missingPrep) : s.attendanceOutcome === 'MISSING_PREP') row.missingPrepCount += 1
+      if (f ? Boolean(f.noShow) : s.attendanceOutcome === 'NO_SHOW') row.noShowCount += 1
+      if (f ? Boolean(f.excused) : s.attendanceOutcome === 'EXCUSED') row.excusedCount += 1
 
       row.history.push({
         eventId: ev.id,
@@ -548,12 +554,38 @@ export async function POST(request: Request) {
           const ev = rs.events.find((e) => e.id === eventId)
           if (!ev) throw new Error('EVENT_NOT_FOUND')
           const nextNum = ev.rosters.length + 1
-          const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim() : `Grup ${nextNum}`
+          const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 48) : `Grup ${nextNum}`
+          const defaultColors = ['#d4af37', '#00f2fe', '#34d399', '#38bdf8', '#a78bfa', '#fb7185', '#fbbf24', '#fb923c']
+          const rawColor = typeof body.color === 'string' ? body.color.trim() : ''
+          const color = /^#[0-9a-fA-F]{6}$/.test(rawColor)
+            ? rawColor
+            : defaultColors[(nextNum - 1) % defaultColors.length]
           ev.rosters.push({
             id: `roster-${Date.now()}-${nextNum}`,
             name,
             leader: typeof body.leader === 'string' ? body.leader.trim() : undefined,
+            color,
           })
+          break
+        }
+
+        case 'update_roster': {
+          requireOfficer()
+          const eventId = String(body.eventId || '')
+          const rosterId = String(body.rosterId || '')
+          const ev = rs.events.find((e) => e.id === eventId)
+          if (!ev) throw new Error('EVENT_NOT_FOUND')
+          const roster = ev.rosters.find((r) => r.id === rosterId)
+          if (!roster) throw new Error('ROSTER_NOT_FOUND')
+          if (typeof body.name === 'string' && body.name.trim()) {
+            roster.name = body.name.trim().slice(0, 48)
+          }
+          if (typeof body.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(body.color.trim())) {
+            roster.color = body.color.trim()
+          }
+          if (typeof body.leader === 'string') {
+            roster.leader = body.leader.trim() || undefined
+          }
           break
         }
 
@@ -650,11 +682,14 @@ export async function POST(request: Request) {
           const ev = rs.events.find((e) => e.id === eventId)
           if (!ev) throw new Error('EVENT_NOT_FOUND')
           const updates = Array.isArray(body.updates)
-            ? (body.updates as { signupId: string; outcome: AttendanceOutcome; note?: string }[])
+            ? (body.updates as { signupId: string; outcome?: AttendanceOutcome; flags?: AttendanceFlags; note?: string }[])
             : [
                 {
                   signupId: String(body.signupId || ''),
-                  outcome: (body.outcome || 'NONE') as AttendanceOutcome,
+                  outcome: (body.outcome || undefined) as AttendanceOutcome | undefined,
+                  flags: (body.flags && typeof body.flags === 'object' ? body.flags : undefined) as
+                    | AttendanceFlags
+                    | undefined,
                   note: typeof body.note === 'string' ? body.note : undefined,
                 },
               ]
@@ -662,7 +697,13 @@ export async function POST(request: Request) {
           for (const upd of updates) {
             const entry = ev.signups.find((s) => s.id === upd.signupId)
             if (!entry) continue
-            entry.attendanceOutcome = upd.outcome
+            if (upd.flags) {
+              entry.attendanceFlags = upd.flags
+              entry.attendanceOutcome = deriveOutcomeFromFlags(upd.flags)
+            } else {
+              entry.attendanceFlags = undefined
+              entry.attendanceOutcome = upd.outcome || 'NONE'
+            }
             if (typeof upd.note === 'string') entry.officerNote = upd.note
             entry.pointsBreakdown = calculateSignupPoints(entry, ev.size, rs.settings.pointRules)
           }
@@ -1096,6 +1137,7 @@ export async function POST(request: Request) {
       CHAR_REQUIRED: ['Karakter bilgisi zorunludur.', 400],
       DATE_REQUIRED: ['Raid tarih ve saati zorunludur.', 400],
       LAST_ROSTER: ['En az bir roster grubu kalmalıdır.', 400],
+      ROSTER_NOT_FOUND: ['Grup bulunamadı.', 404],
       SIGNUP_NOT_FOUND: ['Kayıtlı oyuncu bulunamadı.', 404],
       MEMBER_NOT_FOUND: ['Guild üyesi bulunamadı.', 404],
       LOOT_FIELDS_REQUIRED: ['Item adı, boss adı ve en az 1 öncelik sırası zorunludur.', 400],

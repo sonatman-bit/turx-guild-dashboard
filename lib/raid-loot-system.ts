@@ -16,6 +16,15 @@ export type AttendanceOutcome =
   | 'EXCUSED'
   | 'BENCH_ABSENT'
 
+export type AttendanceFlags = {
+  attended?: boolean
+  benchReady?: boolean
+  late?: boolean
+  missingPrep?: boolean
+  excused?: boolean
+  noShow?: boolean
+}
+
 export type PrepChecklist = {
   onTime15m: boolean
   fullConsumables: boolean
@@ -50,6 +59,7 @@ export type RaidEventSignup = {
   declineReason?: string
   prepChecklist?: PrepChecklist
   attendanceOutcome: AttendanceOutcome
+  attendanceFlags?: AttendanceFlags
   pointsBreakdown?: PointBreakdown
   officerNote?: string
 }
@@ -58,7 +68,19 @@ export type RaidSubRoster = {
   id: string
   name: string
   leader?: string
+  color?: string
 }
+
+export const ROSTER_COLOR_PRESETS = [
+  { id: 'gold', label: 'Altın', hex: '#d4af37' },
+  { id: 'neon', label: 'Turkuaz', hex: '#00f2fe' },
+  { id: 'emerald', label: 'Zümrüt', hex: '#34d399' },
+  { id: 'azure', label: 'Mavi', hex: '#38bdf8' },
+  { id: 'violet', label: 'Mor', hex: '#a78bfa' },
+  { id: 'rose', label: 'Gül', hex: '#fb7185' },
+  { id: 'amber', label: 'Kehribar', hex: '#fbbf24' },
+  { id: 'orange', label: 'Turuncu', hex: '#fb923c' },
+] as const
 
 export type RaidEvent = {
   id: string
@@ -1491,8 +1513,40 @@ export function raidBasePoints(size: 10 | 20 | 40, rules: PointRules): number {
   return rules.raid10
 }
 
+export function resolveAttendanceFlags(
+  signup: Pick<RaidEventSignup, 'attendanceOutcome' | 'attendanceFlags'>,
+): AttendanceFlags {
+  if (signup.attendanceFlags) return signup.attendanceFlags
+  switch (signup.attendanceOutcome) {
+    case 'ATTENDED':
+      return { attended: true }
+    case 'BENCH_READY':
+      return { benchReady: true }
+    case 'LATE':
+      return { attended: true, late: true }
+    case 'MISSING_PREP':
+      return { attended: true, missingPrep: true }
+    case 'EXCUSED':
+      return { excused: true }
+    case 'NO_SHOW':
+      return { noShow: true }
+    default:
+      return {}
+  }
+}
+
+export function deriveOutcomeFromFlags(flags: AttendanceFlags): AttendanceOutcome {
+  if (flags.noShow) return 'NO_SHOW'
+  if (flags.excused) return 'EXCUSED'
+  if (flags.benchReady) return 'BENCH_READY'
+  if (flags.late) return 'LATE'
+  if (flags.missingPrep) return 'MISSING_PREP'
+  if (flags.attended) return 'ATTENDED'
+  return 'NONE'
+}
+
 /**
- * Pure transparent calculation of a signup's points based on rules and outcome.
+ * Pure transparent calculation of a signup's points based on rules and outcome/flags.
  */
 export function calculateSignupPoints(
   signup: RaidEventSignup,
@@ -1500,6 +1554,50 @@ export function calculateSignupPoints(
   rules: PointRules,
 ): PointBreakdown {
   const base = raidBasePoints(size, rules)
+
+  if (signup.attendanceFlags) {
+    const f = signup.attendanceFlags
+    if (f.excused) {
+      return {
+        signup: 0,
+        confirm: 0,
+        raid: 0,
+        penalty: rules.excusedDeclinePenalty,
+        total: rules.excusedDeclinePenalty,
+      }
+    }
+    if (f.noShow) {
+      return {
+        signup: 0,
+        confirm: 0,
+        raid: 0,
+        penalty: rules.noShowPenalty,
+        total: rules.noShowPenalty,
+      }
+    }
+    const participated = Boolean(f.attended || f.benchReady || f.late || f.missingPrep)
+    if (!participated) {
+      return { signup: 0, confirm: 0, raid: 0, penalty: 0, total: 0 }
+    }
+    const signupPts = rules.signup
+    const confirmPts = signup.confirmStatus === 'CONFIRMED' ? rules.confirm : 0
+    const raidPts = f.benchReady
+      ? typeof rules.benchReadyPoints === 'number'
+        ? rules.benchReadyPoints
+        : rules.benchReadyEqual
+          ? base
+          : 0
+      : base
+    const penalty = (f.late ? rules.latePenalty : 0) + (f.missingPrep ? rules.missingPrepPenalty : 0)
+    return {
+      signup: signupPts,
+      confirm: confirmPts,
+      raid: raidPts,
+      penalty,
+      total: signupPts + confirmPts + raidPts + penalty,
+    }
+  }
+
   const outcome = signup.attendanceOutcome
 
   if (outcome === 'NONE') {

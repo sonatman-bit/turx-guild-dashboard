@@ -97,6 +97,7 @@ export type PointRules = {
   signup: number
   confirm: number
   benchReadyEqual: boolean
+  benchReadyPoints?: number
   latePenalty: number
   noShowPenalty: number
   excusedDeclinePenalty: number
@@ -466,15 +467,16 @@ export const RAID_CATALOG: {
 
 export const DEFAULT_POINT_RULES: PointRules = {
   raid10: 4,
-  raid20: 6,
-  raid40: 10,
+  raid20: 4,
+  raid40: 4,
   signup: 1,
   confirm: 1,
-  benchReadyEqual: true,
-  latePenalty: -5,
-  noShowPenalty: -10,
+  benchReadyEqual: false,
+  benchReadyPoints: 6,
+  latePenalty: -2,
+  noShowPenalty: -6,
   excusedDeclinePenalty: 0,
-  missingPrepPenalty: -3,
+  missingPrepPenalty: -2,
 }
 
 export const DEFAULT_RAIDER_TARGET_40: RaiderTargetSlot[] = [
@@ -1430,6 +1432,17 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
   if (!raw || typeof raw !== 'object') return defaults
 
   const rawSettings = raw.settings || ({} as Partial<RaidSystemSettings>)
+  const rawPr = rawSettings.pointRules
+  const isLegacyDefaultPointRules = Boolean(
+    rawPr &&
+      rawPr.benchReadyPoints === undefined &&
+      rawPr.raid10 === 4 &&
+      rawPr.raid20 === 6 &&
+      rawPr.raid40 === 10 &&
+      rawPr.latePenalty === -5 &&
+      rawPr.noShowPenalty === -10 &&
+      rawPr.missingPrepPenalty === -3,
+  )
   const settings: RaidSystemSettings = {
     publicModules: {
       raidSignup: Boolean(rawSettings.publicModules?.raidSignup),
@@ -1439,10 +1452,12 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
       bank: Boolean(rawSettings.publicModules?.bank),
     },
     activePhaseId: rawSettings.activePhaseId || defaults.settings.activePhaseId,
-    pointRules: {
-      ...defaults.settings.pointRules,
-      ...(rawSettings.pointRules || {}),
-    },
+    pointRules: isLegacyDefaultPointRules
+      ? { ...defaults.settings.pointRules }
+      : {
+          ...defaults.settings.pointRules,
+          ...(rawPr || {}),
+        },
     roadmapVideoUrl: typeof rawSettings.roadmapVideoUrl === 'string' ? rawSettings.roadmapVideoUrl : '',
     raiderCutoffDate: rawSettings.raiderCutoffDate || defaults.settings.raiderCutoffDate,
     raiderTarget40:
@@ -1531,7 +1546,12 @@ export function calculateSignupPoints(
   let penalty = 0
 
   if (outcome === 'BENCH_READY') {
-    raidPts = rules.benchReadyEqual ? base : 0
+    raidPts =
+      typeof rules.benchReadyPoints === 'number'
+        ? rules.benchReadyPoints
+        : rules.benchReadyEqual
+          ? base
+          : 0
   } else if (outcome === 'LATE') {
     penalty = rules.latePenalty
   } else if (outcome === 'MISSING_PREP') {
@@ -1651,11 +1671,14 @@ export type MemberAttendanceRow = {
   level: number
   guildRank: string
   totalPoints: number
+  signupCount: number
+  confirmCount: number
   raid10Count: number
   raid20Count: number
   raid40Count: number
   benchReadyCount: number
   lateCount: number
+  missingPrepCount: number
   noShowCount: number
   excusedCount: number
   totalPenalties: number

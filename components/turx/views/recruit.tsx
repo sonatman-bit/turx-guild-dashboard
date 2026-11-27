@@ -92,12 +92,12 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
       'Sert yüzde uçurumları yerine 10 / 20 / 40 kişilik raid ağırlıklarına göre şeffaf puan birikir. Düzenli katılım, hazırlık ve raid disiplini doğrudan ödüllendirilir.',
     bullets: [
       {
-        title: 'Ağırlıklı Raid & Kayıt Puanları',
-        desc: '10-man (+4p), 20-man (+6p) ve 40-man (+10p) raid puanına ek olarak zamanında imza (+1p) ve konfirmasyon (+1p) puanı kazanılır.',
+        title: 'Raid & Kayıt Puanları',
+        desc: 'Tüm raidlerde eşit tam katılım (+4p) puanına ek olarak zamanında imza (+1p) ve konfirmasyon (+1p) puanı kazanılır.',
       },
       {
-        title: 'Bench (Yedek) Tam Puan & Üst Üste 2 Sınırı',
-        desc: 'Raid saatinde oyunda/Discord’da hazır bekleyen yedek oyuncular raide girmiş gibi tam puan alır. Suistimali önlemek için kendi isteğiyle üst üste en fazla 2 kez benche yazılınabilir (Officer rotasyonu hariç).',
+        title: 'Bench (Yedek) +6p & Üst Üste 2 Sınırı',
+        desc: 'Raid saatinde oyunda/Discord’da hazır bekleyen yedek oyuncular raid katılımından +6 puan alır. Suistimali önlemek için kendi isteğiyle üst üste en fazla 2 kez benche yazılınabilir (Officer rotasyonu hariç).',
       },
       {
         title: 'Mazeretli Erken İptal (0p Ceza)',
@@ -105,7 +105,7 @@ const TURX_LOOT_GUIDE: LootGuideTab[] = [
       },
       {
         title: 'Disiplin Cezaları',
-        desc: 'Konfirmasyon verip habersiz gelmeme (No-Show) -10p, geç kalma -5p ve eksik hazırlık (consumable/repair) -3p olarak yansıtılır.',
+        desc: 'Konfirmasyon verip habersiz gelmeme (No-Show) -6p, geç kalma -2p ve eksik hazırlık (consumable, taktik vb. · min. %75 log takibi) -2p olarak yansıtılır.',
       },
     ],
   },

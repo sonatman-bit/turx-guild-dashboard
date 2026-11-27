@@ -108,11 +108,14 @@ function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): Membe
       level: m.level,
       guildRank: m.guildRank,
       totalPoints: 0,
+      signupCount: 0,
+      confirmCount: 0,
       raid10Count: 0,
       raid20Count: 0,
       raid40Count: 0,
       benchReadyCount: 0,
       lateCount: 0,
+      missingPrepCount: 0,
       noShowCount: 0,
       excusedCount: 0,
       totalPenalties: 0,
@@ -140,11 +143,14 @@ function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): Membe
           level: s.level || 60,
           guildRank: 'Turx',
           totalPoints: 0,
+          signupCount: 0,
+          confirmCount: 0,
           raid10Count: 0,
           raid20Count: 0,
           raid40Count: 0,
           benchReadyCount: 0,
           lateCount: 0,
+          missingPrepCount: 0,
           noShowCount: 0,
           excusedCount: 0,
           totalPenalties: 0,
@@ -156,6 +162,8 @@ function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): Membe
 
       const breakdown = s.pointsBreakdown || calculateSignupPoints(s, ev.size, rules)
       row.totalPoints += breakdown.total
+      if (breakdown.signup > 0) row.signupCount += 1
+      if (breakdown.confirm > 0) row.confirmCount += 1
       if (breakdown.penalty < 0) row.totalPenalties += breakdown.penalty
 
       if (s.attendanceOutcome === 'ATTENDED' || s.attendanceOutcome === 'LATE' || s.attendanceOutcome === 'MISSING_PREP') {
@@ -165,6 +173,7 @@ function computeAttendanceLeaderboard(store: GuildStore, phaseId: string): Membe
       }
       if (s.attendanceOutcome === 'BENCH_READY') row.benchReadyCount += 1
       if (s.attendanceOutcome === 'LATE') row.lateCount += 1
+      if (s.attendanceOutcome === 'MISSING_PREP') row.missingPrepCount += 1
       if (s.attendanceOutcome === 'NO_SHOW') row.noShowCount += 1
       if (s.attendanceOutcome === 'EXCUSED') row.excusedCount += 1
 

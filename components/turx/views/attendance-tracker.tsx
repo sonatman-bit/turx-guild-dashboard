@@ -1,17 +1,24 @@
 'use client'
 
 import {
+  AlertTriangle,
+  Ban,
+  CheckCheck,
   ChevronDown,
   ChevronRight,
+  Clock,
   Crown,
   Eye,
   EyeOff,
   Lock,
+  PenLine,
   Plus,
   Search,
   Settings,
   ShieldCheck,
   Sliders,
+  Sparkles,
+  Swords,
   Trash2,
   Trophy,
   Unlock,
@@ -22,6 +29,7 @@ import { CLASS_COLORS } from '@/lib/guild-data'
 import {
   characterMatchesSpecLabel,
   formatTrDateTime,
+  type AttendanceOutcome,
   type PointRules,
   type PublicModuleFlags,
   type RaiderTargetSlot,
@@ -41,6 +49,17 @@ import {
   PointsPill,
   SectionHeader,
 } from '../ui'
+
+const OUTCOME_LABELS: Record<AttendanceOutcome, string> = {
+  ATTENDED: 'Tam Katılım',
+  BENCH_READY: 'Yedek Bekleme',
+  LATE: 'Geç Kalma',
+  MISSING_PREP: 'Eksik Hazırlık',
+  NO_SHOW: 'No-Show',
+  EXCUSED: 'Mazeretli İptal',
+  BENCH_ABSENT: 'Yedek (Hazır Değil)',
+  NONE: 'Puan Dışı',
+}
 
 export function AttendanceTrackerView() {
   const toast = useToast()
@@ -206,6 +225,80 @@ export function AttendanceTrackerView() {
         }
       />
 
+      {/* Puanlama Sistemi Özet Şeridi */}
+      <div className="space-y-2.5">
+        <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="panel flex items-center gap-3 p-3.5">
+            <PenLine className="size-5 shrink-0 text-neon" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                Raid İmza <span className="ml-1 font-mono text-neon">+{rs.settings.pointRules.signup} puan</span>
+              </p>
+              <p className="text-muted-foreground">Zamanında raid kaydı</p>
+            </div>
+          </div>
+          <div className="panel flex items-center gap-3 p-3.5">
+            <CheckCheck className="size-5 shrink-0 text-cyan-300" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                İmza Konfirmasyon <span className="ml-1 font-mono text-cyan-300">+{rs.settings.pointRules.confirm} puan</span>
+              </p>
+              <p className="text-muted-foreground">Kilit öncesi katılım onayı</p>
+            </div>
+          </div>
+          <div className="panel flex items-center gap-3 p-3.5">
+            <Swords className="size-5 shrink-0 text-emerald-400" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                Raid Tam Katılım <span className="ml-1 font-mono text-emerald-300">+{rs.settings.pointRules.raid10} puan</span>
+              </p>
+              <p className="text-muted-foreground">Tüm raidler eşit (10 / 20 / 40-man)</p>
+            </div>
+          </div>
+          <div className="panel flex items-center gap-3 border-gold/35 p-3.5">
+            <Sparkles className="size-5 shrink-0 text-gold" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                Yedek Bekleme (Bench){' '}
+                <span className="ml-1 font-mono text-gold">+{rs.settings.pointRules.benchReadyPoints ?? 6} puan</span>
+              </p>
+              <p className="text-muted-foreground">Raid katılımından</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-2.5 sm:grid-cols-3">
+          <div className="panel flex items-center gap-3 border-amber-500/25 p-3.5">
+            <Clock className="size-5 shrink-0 text-amber-400" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                Geç Kalma <span className="ml-1 font-mono text-amber-300">{rs.settings.pointRules.latePenalty} puan</span>
+              </p>
+              <p className="text-muted-foreground">Raid saatinden sonra katılım</p>
+            </div>
+          </div>
+          <div className="panel flex items-center gap-3 border-orange-500/25 p-3.5">
+            <AlertTriangle className="size-5 shrink-0 text-orange-400" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                Eksik Hazırlık{' '}
+                <span className="ml-1 font-mono text-orange-300">{rs.settings.pointRules.missingPrepPenalty} ceza</span>
+              </p>
+              <p className="text-muted-foreground">Consumable, taktik vb. · Log takibi ile izlenir (min. %75)</p>
+            </div>
+          </div>
+          <div className="panel flex items-center gap-3 border-rose-500/30 p-3.5">
+            <Ban className="size-5 shrink-0 text-rose-400" />
+            <div className="min-w-0 text-xs">
+              <p className="font-semibold text-foreground">
+                No-Show <span className="ml-1 font-mono text-rose-300">{rs.settings.pointRules.noShowPenalty} ceza</span>
+              </p>
+              <p className="text-muted-foreground">Sistem ceza puanı (habersiz gelmeme)</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* SUB-TAB 1: ATTENDANCE LEADERBOARD */}
       {subTab === 'leaderboard' && (
         <Panel>
@@ -255,9 +348,10 @@ export function AttendanceTrackerView() {
                   <th className="py-2.5 pr-2">#</th>
                   <th className="py-2.5 pr-3">Karakter (Main)</th>
                   <th className="py-2.5 pr-3">Rütbe</th>
-                  <th className="py-2.5 pr-3 text-center">10m / 20m / 40m</th>
-                  <th className="py-2.5 pr-3 text-center">Bench Hazır</th>
-                  <th className="py-2.5 pr-3 text-center">Geç / No-Show</th>
+                  <th className="py-2.5 pr-3 text-center">İmza / Konf.</th>
+                  <th className="py-2.5 pr-3 text-center">Raid Katılım</th>
+                  <th className="py-2.5 pr-3 text-center">Yedek (Bench)</th>
+                  <th className="py-2.5 pr-3 text-center">Geç / Eksik / No-Show</th>
                   <th className="py-2.5 pr-3 text-right">Cezalar</th>
                   <th className="py-2.5 text-right">Toplam Puan</th>
                 </tr>
@@ -265,13 +359,14 @@ export function AttendanceTrackerView() {
               <tbody className="divide-y divide-border/40">
                 {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="py-10 text-center text-muted-foreground">
+                    <td colSpan={9} className="py-10 text-center text-muted-foreground">
                       Gösterilecek karakter kaydı bulunamadı.
                     </td>
                   </tr>
                 ) : (
                   filteredRows.map((row, idx) => {
                     const isExpanded = expandedUser === row.username
+                    const totalRaidCount = row.raid10Count + row.raid20Count + row.raid40Count
                     return (
                       <>
                         <tr
@@ -314,14 +409,30 @@ export function AttendanceTrackerView() {
                               {row.guildRank}
                             </Badge>
                           </td>
-                          <td className="py-3 pr-3 text-center font-mono text-silver">
-                            {row.raid10Count} / {row.raid20Count} / {row.raid40Count}
+                          <td className="py-3 pr-3 text-center font-mono text-cyan-300">
+                            {row.signupCount ?? 0} / {row.confirmCount ?? 0}
                           </td>
-                          <td className="py-3 pr-3 text-center font-mono text-cyan-300">{row.benchReadyCount}</td>
+                          <td
+                            className="py-3 pr-3 text-center font-mono font-semibold text-emerald-300"
+                            title={`10m: ${row.raid10Count} · 20m: ${row.raid20Count} · 40m: ${row.raid40Count}`}
+                          >
+                            {totalRaidCount}
+                          </td>
+                          <td className="py-3 pr-3 text-center font-mono font-semibold text-gold">
+                            {row.benchReadyCount}
+                          </td>
                           <td className="py-3 pr-3 text-center font-mono">
-                            <span className="text-amber-300">{row.lateCount}</span>
+                            <span className="text-amber-300" title="Geç Kalma">
+                              {row.lateCount}
+                            </span>
                             {' / '}
-                            <span className="text-rose-400">{row.noShowCount}</span>
+                            <span className="text-orange-400" title="Eksik Hazırlık">
+                              {row.missingPrepCount ?? 0}
+                            </span>
+                            {' / '}
+                            <span className="text-rose-400" title="No-Show">
+                              {row.noShowCount}
+                            </span>
                           </td>
                           <td className="py-3 pr-3 text-right font-mono text-rose-400">
                             {row.totalPenalties < 0 ? row.totalPenalties : '0'}
@@ -333,7 +444,7 @@ export function AttendanceTrackerView() {
 
                         {isExpanded && (
                           <tr key={`${row.username}-detail`} className="bg-[#06101c]">
-                            <td colSpan={8} className="px-4 py-3">
+                            <td colSpan={9} className="px-4 py-3">
                               <p className="mb-2 text-[11px] font-semibold tracking-wider text-neon uppercase">
                                 Tarihsel Raid & Puan Dökümü — {row.characterName}
                               </p>
@@ -351,9 +462,11 @@ export function AttendanceTrackerView() {
                                         <span className="ml-2 text-muted-foreground">{formatTrDateTime(h.date)}</span>
                                       </div>
                                       <div className="flex items-center gap-3 font-mono">
-                                        <span className="text-muted-foreground">{h.outcome}</span>
-                                        <span className="text-cyan-300">İmza/K:+{h.breakdown.signup + h.breakdown.confirm}</span>
-                                        <span className="text-emerald-300">Raid:+{h.breakdown.raid}</span>
+                                        <span className="text-silver">{OUTCOME_LABELS[h.outcome] || h.outcome}</span>
+                                        <span className="text-cyan-300">İmza:+{h.breakdown.signup} · Konf:+{h.breakdown.confirm}</span>
+                                        <span className="text-emerald-300">
+                                          {h.outcome === 'BENCH_READY' ? 'Yedek' : 'Raid'}:+{h.breakdown.raid}
+                                        </span>
                                         {h.breakdown.penalty < 0 && (
                                           <span className="text-rose-400">Ceza:{h.breakdown.penalty}</span>
                                         )}
@@ -649,24 +762,25 @@ export function AttendanceTrackerView() {
           {/* Point Rules Configuration */}
           <Panel className="border-gold/30">
             <PanelTitle icon={Settings}>Puanlama Kuralları (Sadece GM)</PanelTitle>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {(
                 [
                   ['raid10', '10-Man Raid Puanı'],
                   ['raid20', '20-Man Raid Puanı'],
                   ['raid40', '40-Man Raid Puanı'],
+                  ['benchReadyPoints', 'Yedek Bekleme (Bench) Puanı'],
                   ['signup', 'İmza Atma Puanı'],
                   ['confirm', 'Konfirmasyon Puanı'],
                   ['latePenalty', 'Geç Kalma Cezası (eksi)'],
-                  ['noShowPenalty', 'Gelmeme / No-Show (eksi)'],
                   ['missingPrepPenalty', 'Eksik Hazırlık Cezası (eksi)'],
+                  ['noShowPenalty', 'Gelmeme / No-Show (eksi)'],
                 ] as const
               ).map(([key, label]) => (
                 <Field key={key} label={label}>
                   <input
                     type="number"
                     className={inputClass}
-                    value={effectiveRules[key]}
+                    value={effectiveRules[key] ?? (key === 'benchReadyPoints' ? 6 : 0)}
                     onChange={(e) =>
                       setRulesDraft({
                         ...effectiveRules,

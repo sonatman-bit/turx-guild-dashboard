@@ -13,7 +13,6 @@ import {
   Send,
   ShieldAlert,
   Sparkles,
-  Timer,
   Trash2,
   UserCheck,
   UserMinus,
@@ -150,13 +149,13 @@ function CountdownValue({
 }
 
 const OUTCOME_OPTIONS: { value: AttendanceOutcome; label: string; tone: string }[] = [
-  { value: 'ATTENDED', label: 'Katıldı (Tam)', tone: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
-  { value: 'BENCH_READY', label: 'Bench Hazır (=Tam Puan)', tone: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' },
-  { value: 'LATE', label: 'Geç Kaldı (-5p)', tone: 'text-amber-300 border-amber-500/40 bg-amber-500/10' },
-  { value: 'MISSING_PREP', label: 'Eksik Hazırlık (-3p)', tone: 'text-orange-300 border-orange-500/40 bg-orange-500/10' },
+  { value: 'ATTENDED', label: 'Katıldı (+4p)', tone: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
+  { value: 'BENCH_READY', label: 'Bench Hazır (+6p)', tone: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' },
+  { value: 'LATE', label: 'Geç Kaldı (-2p)', tone: 'text-amber-300 border-amber-500/40 bg-amber-500/10' },
+  { value: 'MISSING_PREP', label: 'Eksik Hazırlık (-2p)', tone: 'text-orange-300 border-orange-500/40 bg-orange-500/10' },
   { value: 'EXCUSED', label: 'Mazeretli İptal (0p)', tone: 'text-slate-300 border-slate-500/40 bg-slate-500/10' },
   { value: 'BENCH_ABSENT', label: 'Bench (Hazır Değil)', tone: 'text-slate-400 border-slate-600/40 bg-slate-700/20' },
-  { value: 'NO_SHOW', label: 'Gelmedi / No-Show (-10p)', tone: 'text-rose-300 border-rose-500/40 bg-rose-500/10' },
+  { value: 'NO_SHOW', label: 'Gelmedi / No-Show (-6p)', tone: 'text-rose-300 border-rose-500/40 bg-rose-500/10' },
   { value: 'NONE', label: 'Puan Dışı', tone: 'text-muted-foreground border-border bg-transparent' },
 ]
 
@@ -467,44 +466,6 @@ export function RaidSignupView() {
           <WeeklyRaidTimeline rules={rules} />
         </Panel>
       )}
-
-      {/* Quick rules reminder bar */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="panel flex items-center gap-3 p-3.5">
-          <Timer className="size-5 shrink-0 text-neon" />
-          <div className="text-xs">
-            <p className="font-semibold text-foreground">≥7 Gün Açılış · T-3 Roster · -24s Kilit</p>
-            <p className="text-muted-foreground">İmza +{rules.signup}p · Konfirmasyon +{rules.confirm}p</p>
-          </div>
-        </div>
-        <div className="panel flex items-center gap-3 p-3.5">
-          <Sparkles className="size-5 shrink-0 text-gold" />
-          <div className="text-xs">
-            <p className="font-semibold text-foreground">
-              10m: +{rules.raid10}p · 20m: +{rules.raid20}p · 40m: +{rules.raid40}p
-            </p>
-            <p className="text-muted-foreground">
-              {rules.benchReadyEqual ? 'Hazır bekleyen Bench = Tam Raid Puanı' : 'Bench puanı ayrı hesaplanır'}
-            </p>
-          </div>
-        </div>
-        <div className="panel flex items-center gap-3 p-3.5">
-          <Clock className="size-5 shrink-0 text-amber-400" />
-          <div className="text-xs">
-            <p className="font-semibold text-foreground">15 Dk Önce Hazır Ol</p>
-            <p className="text-muted-foreground">Full Consumables · %100 Repair · Full Spells</p>
-          </div>
-        </div>
-        <div className="panel flex items-center gap-3 p-3.5">
-          <ShieldAlert className="size-5 shrink-0 text-rose-400" />
-          <div className="text-xs">
-            <p className="font-semibold text-foreground">
-              Geç: {rules.latePenalty}p · No-Show: {rules.noShowPenalty}p
-            </p>
-            <p className="text-muted-foreground">Süresinde mazeretli iptal: {rules.excusedDeclinePenalty}p</p>
-          </div>
-        </div>
-      </div>
 
       {subTab === 'active' && (
         <>
@@ -1040,6 +1001,7 @@ function EventWorkspace({
     signup: number
     confirm: number
     benchReadyEqual: boolean
+    benchReadyPoints?: number
     latePenalty: number
     noShowPenalty: number
     excusedDeclinePenalty: number

@@ -107,11 +107,11 @@ const DEMO_STEPS: DemoStep[] = [
 const FAQ_ITEMS = [
   {
     q: 'Officer kararıyla Bench (Yedek) kalırsam puan kaybeder miyim? Gönüllü bench sınırı var mı?',
-    a: 'Hayır! Officer kararıyla veya kendi kararınızla Bench bekleyen ve raid saatinde oyunda/Discord\'da hazır bulunan oyuncular, Officer takibiyle raide girmiş gibi EŞİT (tam) raid puanı alır. Ancak suistimali önlemek adına aynı oyuncu kendi isteğiyle üst üste 2 kez benche yazılamaz (Officer kararıyla yapılan rotasyon bu sınıra dahil değildir). Raid saatinde çağrıldığında ulaşılamayan yedek oyunculara ceza puanı uygulanır.',
+    a: 'Hayır! Officer kararıyla veya kendi kararınızla Bench bekleyen ve raid saatinde oyunda/Discord\'da hazır bulunan oyuncular, Officer takibiyle raid katılımından +6 puan alır. Ancak suistimali önlemek adına aynı oyuncu kendi isteğiyle üst üste 2 kez benche yazılamaz (Officer kararıyla yapılan rotasyon bu sınıra dahil değildir). Raid saatinde çağrıldığında ulaşılamayan yedek oyunculara ceza puanı uygulanır.',
   },
   {
-    q: 'Raide imza attım ama işim çıktı, -10 ceza yer miyim?',
-    a: 'Konfirmasyon kapanış süresinden (raidten 24 saat öncesinden) ÖNCE sistemden "Mazeretli İptal" bildirirseniz ceza puanı (0p) uygulanmaz. -10 puan cezası yalnızca konfirmasyon verip gelmeyen veya haber vermeden kaybolan (No-Show) oyunculara uygulanır.',
+    q: 'Raide imza attım ama işim çıktı, -6 ceza yer miyim?',
+    a: 'Konfirmasyon kapanış süresinden (raidten 24 saat öncesinden) ÖNCE sistemden "Mazeretli İptal" bildirirseniz ceza puanı (0p) uygulanmaz. -6 puan cezası yalnızca konfirmasyon verip gelmeyen veya haber vermeden kaybolan (No-Show) oyunculara uygulanır.',
   },
   {
     q: 'Loot sırasında benim sınıfım var ama ben o gün raidde değildim, hakkım yanar mı?',

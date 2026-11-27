@@ -179,7 +179,7 @@ export function WeeklyRaidTimeline({
       bullets: [
         { icon: Send, text: 'İmza kapanır kapanmaz roster açıklanır' },
         { icon: Sparkles, text: 'Grup 1, 2, 3... + Bench' },
-        { icon: ShieldCheck, text: 'Bench hazır = Tam puan' },
+        { icon: ShieldCheck, text: `Bench hazır = +${rules.benchReadyPoints ?? 6}p` },
       ],
     },
     {
@@ -670,7 +670,11 @@ export function WeeklyRaidTimeline({
             Bench Hazır
           </span>
           <span className="rounded-md bg-emerald-500/20 px-1.5 py-0.5 font-mono text-[11px] font-bold text-emerald-300">
-            {rules.benchReadyEqual ? '= Tam Puan' : 'Ayrı'}
+            {typeof rules.benchReadyPoints === 'number'
+              ? `+${rules.benchReadyPoints}p`
+              : rules.benchReadyEqual
+                ? '= Tam Puan'
+                : 'Ayrı'}
           </span>
         </div>
 

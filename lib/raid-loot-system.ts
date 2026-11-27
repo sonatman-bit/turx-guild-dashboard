@@ -21,6 +21,7 @@ export type PrepChecklist = {
   fullConsumables: boolean
   fullRepair: boolean
   fullSpells: boolean
+  bossTactics?: boolean
 }
 
 export type PointBreakdown = {

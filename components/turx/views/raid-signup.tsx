@@ -198,6 +198,7 @@ export function RaidSignupView() {
     fullConsumables: true,
     fullRepair: true,
     fullSpells: true,
+    bossTactics: true,
   })
   const [declineReason, setDeclineReason] = useState('')
   const [openNextWeekOnArchive, setOpenNextWeekOnArchive] = useState(true)
@@ -331,21 +332,27 @@ export function RaidSignupView() {
 
   const handleConfirmSubmit = async () => {
     if (!confirmModalEvent) return
-    const allChecked = Object.values(prepChecklist).every(Boolean)
+    const allChecked =
+      prepChecklist.onTime15m &&
+      prepChecklist.fullConsumables &&
+      prepChecklist.fullRepair &&
+      prepChecklist.fullSpells &&
+      Boolean(prepChecklist.bossTactics)
     if (!allChecked) {
       toast({
         title: 'Hazırlık Onayı Eksik',
-        description: 'Konfirmasyon için 4 raid hazırlık şartını onaylamanız gerekir.',
+        description: 'Konfirmasyon için 5 raid hazırlık şartını onaylamanız gerekir.',
       })
       return
     }
+    const confirmPts = rs?.settings.pointRules.confirm ?? 1
     const ok = await runAction(
       {
         action: 'confirm',
         eventId: confirmModalEvent.id,
         prepChecklist,
       },
-      'Katılımınız teyit edildi (+1p). Raid saatinden 15 dk önce alanda görüşürüz!',
+      `Katılımınız teyit edildi (+${confirmPts} puan). Raid saatinden 15 dk önce alanda görüşürüz!`,
     )
     if (ok) setConfirmModalEvent(null)
   }
@@ -795,7 +802,7 @@ export function RaidSignupView() {
         title="Katılım Konfirmasyonu & Hazırlık Kontrolü"
         description={
           confirmModalEvent
-            ? `${confirmModalEvent.raidName} (${formatTrDateTime(confirmModalEvent.scheduledAt)}) için katılımınızı teyit edin (+${rules.confirm}p).`
+            ? `${confirmModalEvent.raidName} (${formatTrDateTime(confirmModalEvent.scheduledAt)}) için katılımınızı teyit edin (+${rules.confirm} puan).`
             : undefined
         }
       >
@@ -806,6 +813,7 @@ export function RaidSignupView() {
               ['fullConsumables', 'Full Consumables (Flask, Elixir, Potions, Buff Food) eksiksiz getireceğim.'],
               ['fullRepair', 'Ekipmanım %100 Repair durumunda olacak.'],
               ['fullSpells', 'Tüm sınıf yeteneklerim (Full Class Spells Trained) güncel.'],
+              ['bossTactics', 'Boss taktiklerini biliyorum.'],
             ] as const
           ).map(([key, label]) => (
             <label
@@ -814,7 +822,7 @@ export function RaidSignupView() {
             >
               <input
                 type="checkbox"
-                checked={prepChecklist[key]}
+                checked={Boolean(prepChecklist[key])}
                 onChange={(e) => setPrepChecklist((prev) => ({ ...prev, [key]: e.target.checked }))}
                 className="mt-0.5 size-4 accent-[#00f2fe]"
               />
@@ -827,7 +835,7 @@ export function RaidSignupView() {
             </GhostButton>
             <GoldButton type="button" disabled={busy} onClick={() => void handleConfirmSubmit()}>
               <CheckCircle2 className="size-4" />
-              Katılımımı Teyit Et (+{rules.confirm}p)
+              Katılımımı Teyit Et (+{rules.confirm} puan)
             </GoldButton>
           </div>
         </div>

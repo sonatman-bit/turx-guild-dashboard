@@ -27,6 +27,7 @@ import { DEFAULT_POINT_RULES, getSpecColor } from '@/lib/raid-loot-system'
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
+import { LootPhilosophyBanner } from '../loot-philosophy-banner'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Panel, PanelTitle, SectionHeader } from '../ui'
 import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
@@ -524,6 +525,8 @@ export function RoadmapView() {
           </div>
         }
       />
+
+      <LootPhilosophyBanner />
 
       {/* Optional Intro Video Section */}
       {videoEmbed ? (

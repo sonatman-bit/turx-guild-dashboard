@@ -39,6 +39,7 @@ import {
 } from '@/lib/raid-loot-system'
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
+import { LootPhilosophyBanner } from '../loot-philosophy-banner'
 import { useToast } from '../toast'
 import {
   Badge,
@@ -527,6 +528,8 @@ export function LootDistributionView() {
           </div>
         }
       />
+
+      <LootPhilosophyBanner />
 
       {subTab === 'items' && (
         <>

@@ -11,8 +11,15 @@ function isOfficerOrGm(username: string, store: Awaited<ReturnType<typeof loadGu
   return isGuildMasterEmail(user.email) || user.role === 'Guild Master' || user.role === 'Görevli' || user.role === 'Officer'
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const session = sessionFromRequest(request)
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Guild Bank yalnızca kayıtlı lonca üyelerine açıktır.', requests: [], ledger: [] },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
     if (!blobConfigured()) {
       return NextResponse.json({ requests: [], ledger: [] })
     }

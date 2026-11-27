@@ -596,17 +596,16 @@ export function AttendanceTrackerView() {
               Deneme Yayını (Beta) → Canlıya Alma Kontrolleri (Sadece GM)
             </PanelTitle>
             <p className="mb-4 text-xs text-muted-foreground">
-              Kapalı olan modüller sol menüde yalnızca <strong>GM ve Officerlar</strong> tarafından görülür. Toplantı sonrası istediğiniz modülü (örneğin önce <em>Road Map</em> sunumunu, sonra tüm sistemi) tek tıkla tüm guild üyelerine açabilirsiniz.
+              Kapalı olan üye modülleri sol menüde yalnızca <strong>GM ve Officerlar</strong> tarafından görülür. Açtığınız modüller yalnızca giriş yapmış TURX guild üyelerine görünür (Road Map herkese açıktır).
             </p>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {(
                 [
-                  ['roadmap', 'Road Map Sunumu', 'Oyuncular için interaktif sistem rehberi'],
                   ['raidSignup', 'Raid Kayıt', 'İmza takvimi, çoklu roster ve konfirmasyon'],
                   ['loot', 'Loot Sistemi', 'Şeffaf öncelik sıraları, BoE ve BoP tarifler'],
                   ['attendance', 'Devam Takibi', 'Puan sıralaması ve 1 Ocak 40-Man hedefi'],
-                  ['bank', 'Guild Bankası', 'Malzeme talebi ve lonca banka defteri'],
+                  ['bank', 'Guild Bank', 'Malzeme talebi ve lonca banka defteri'],
                 ] as const
               ).map(([key, title, desc]) => {
                 const isPublic = rs.settings.publicModules[key]

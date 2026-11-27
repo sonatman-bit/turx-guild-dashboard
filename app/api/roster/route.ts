@@ -98,19 +98,16 @@ export async function GET(request: Request) {
       )
     }
 
-    // Full Guild Kadrosu is restricted to registered/logged-in members
+    // Optional session: external visitors can view Guild Kadrosu (emails remain hidden)
     const session = sessionFromRequest(request)
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Guild Kadrosu yalnızca kayıtlı lonca üyelerine açıktır.', members: [] },
-        { status: 401, headers: { 'Cache-Control': 'no-store' } },
-      )
-    }
 
-    const isGmOrOfficer = store.users.some(
-      (u) =>
-        u.username.toLowerCase() === session.username.toLowerCase() &&
-        (isGuildMasterEmail(u.email) || u.role === 'Officer' || u.role === 'Görevli' || u.role === 'Guild Master'),
+    const isGmOrOfficer = Boolean(
+      session &&
+        store.users.some(
+          (u) =>
+            u.username.toLowerCase() === session.username.toLowerCase() &&
+            (isGuildMasterEmail(u.email) || u.role === 'Officer' || u.role === 'Görevli' || u.role === 'Guild Master'),
+        ),
     )
 
     const lookup: Array<{ firstName: string; lastName: string; wowClass: WowClass }> = []

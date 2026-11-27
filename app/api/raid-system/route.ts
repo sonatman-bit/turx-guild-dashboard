@@ -233,32 +233,8 @@ export async function GET(request: Request) {
       )
     }
 
-    const anyPublic = Object.values(rs.settings.publicModules).some(Boolean)
-    if (!caller.isOfficer && !anyPublic) {
-      return NextResponse.json(
-        {
-          locked: true,
-          publicModules: rs.settings.publicModules,
-          isGm: false,
-          isOfficer: false,
-        },
-        { headers: { 'Cache-Control': 'no-store' } },
-      )
-    }
-
-    // External (non-registered) visitors may only view Road Map settings when Road Map is public
+    // External (non-registered) visitors may view public Road Map settings & acknowledgement count
     if (!caller.account) {
-      if (!rs.settings.publicModules.roadmap) {
-        return NextResponse.json(
-          {
-            locked: true,
-            publicModules: rs.settings.publicModules,
-            isGm: false,
-            isOfficer: false,
-          },
-          { headers: { 'Cache-Control': 'no-store' } },
-        )
-      }
       return NextResponse.json(
         {
           locked: false,
@@ -278,6 +254,41 @@ export async function GET(request: Request) {
               characterName: '',
               acknowledgedAt: '',
             })),
+          },
+          attendanceLeaderboard: [],
+          guildMembers: [],
+        },
+        { headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+
+    const anyMemberModulePublic = Boolean(
+      rs.settings.publicModules.raidSignup ||
+        rs.settings.publicModules.loot ||
+        rs.settings.publicModules.attendance ||
+        rs.settings.publicModules.bank,
+    )
+    if (!caller.isOfficer && !anyMemberModulePublic) {
+      const ownLower = caller.account.username.toLowerCase()
+      return NextResponse.json(
+        {
+          locked: false,
+          publicModules: rs.settings.publicModules,
+          isGm: false,
+          isOfficer: false,
+          activePhaseId: rs.settings.activePhaseId,
+          raidSystem: {
+            ...rs,
+            events: [],
+            lootItems: [],
+            boeLogs: [],
+            bopRecipes: [],
+            adjustments: [],
+            roadmapAcks: rs.roadmapAcks.map((ack) =>
+              ack.username.toLowerCase() === ownLower
+                ? ack
+                : { username: '', characterName: '', acknowledgedAt: '' },
+            ),
           },
           attendanceLeaderboard: [],
           guildMembers: [],

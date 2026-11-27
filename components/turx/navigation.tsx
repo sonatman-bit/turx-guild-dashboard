@@ -38,24 +38,27 @@ export type TabId =
   | 'profile'
   | 'admin'
 
+export type NavSection = 'public' | 'member' | 'staff'
+
 export const NAV_ITEMS: {
   id: TabId
   label: string
   short: string
   icon: React.ComponentType<{ className?: string }>
+  section: NavSection
   moduleFlag?: keyof PublicModuleFlags
 }[] = [
-  { id: 'overview', label: 'Genel Bakış', short: 'Dashboard', icon: LayoutDashboard },
-  { id: 'roster', label: 'Guild Kadrosu', short: 'Roster & Analitik', icon: Users },
-  { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus },
-  { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText },
-  { id: 'bank', label: 'Guild Bankası', short: 'Malzeme Talebi', icon: Coins, moduleFlag: 'bank' },
-  { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock },
-  { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, moduleFlag: 'raidSignup' },
-  { id: 'loot', label: 'Loot Sistemi', short: 'Öncelik & BoE/BoP', icon: Award, moduleFlag: 'loot' },
-  { id: 'attendance', label: 'Devam Takibi', short: 'Puan & 40-Man Raider', icon: ClipboardList, moduleFlag: 'attendance' },
-  { id: 'roadmap', label: 'Road Map', short: 'Sistem Sunumu & Rehber', icon: Map, moduleFlag: 'roadmap' },
-  { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield },
+  { id: 'overview', label: 'Genel Bakış', short: 'Dashboard', icon: LayoutDashboard, section: 'public' },
+  { id: 'roadmap', label: 'Road Map', short: 'Sistem Sunumu & Rehber', icon: Map, section: 'public' },
+  { id: 'roster', label: 'Guild Kadrosu', short: 'Roster & Analitik', icon: Users, section: 'public' },
+  { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus, section: 'public' },
+  { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText, section: 'public' },
+  { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock, section: 'public' },
+  { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, section: 'member', moduleFlag: 'raidSignup' },
+  { id: 'loot', label: 'Loot Sistemi', short: 'Öncelik & BoE/BoP', icon: Award, section: 'member', moduleFlag: 'loot' },
+  { id: 'attendance', label: 'Devam Takibi', short: 'Puan & 40-Man Raider', icon: ClipboardList, section: 'member', moduleFlag: 'attendance' },
+  { id: 'bank', label: 'Guild Bank', short: 'Malzeme Talebi', icon: Coins, section: 'member', moduleFlag: 'bank' },
+  { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield, section: 'staff' },
 ]
 
 function NavList({
@@ -75,14 +78,13 @@ function NavList({
   const isLoggedIn = mounted && Boolean(user)
   const showAdmin = mounted && canAccessAdminPanel(user?.role)
   const items = NAV_ITEMS.filter((item) => {
-    if (item.id === 'admin') return showAdmin
-    if (item.id === 'roster') return isLoggedIn
-    if (item.moduleFlag) {
-      if (item.id === 'roadmap') {
-        return showAdmin || Boolean(publicModules.roadmap)
+    if (item.section === 'staff') return showAdmin
+    if (item.section === 'member') {
+      if (!isLoggedIn) return false
+      if (item.moduleFlag) {
+        return showAdmin || Boolean(publicModules[item.moduleFlag])
       }
-      // Raid Kayıt, Loot Dağıtımı, Devam Takibi: yalnızca kayıtlı kullanıcılara görünür
-      return isLoggedIn && (showAdmin || Boolean(publicModules[item.moduleFlag]))
+      return true
     }
     return true
   })
@@ -100,43 +102,66 @@ function NavList({
           </p>
         </div>
       )}
-      {items.map(({ id, label, short, icon: Icon, moduleFlag }) => {
+      {items.map((item, idx) => {
+        const { id, label, short, icon: Icon, section, moduleFlag } = item
+        const prevSection = idx > 0 ? items[idx - 1].section : null
+        const showMemberDivider = section === 'member' && prevSection === 'public'
+        const showStaffDivider = section === 'staff' && prevSection !== null && prevSection !== 'staff'
         const isActive = active === id
         const itemLocked = navigationLocked && id !== 'profile'
         const isBetaOnly = Boolean(moduleFlag && !publicModules[moduleFlag])
         return (
-          <button
-            key={id}
-            onClick={() => onSelect(id)}
-            disabled={itemLocked}
-            aria-disabled={itemLocked || undefined}
-            aria-current={isActive ? 'page' : undefined}
-            title={itemLocked ? 'Önce profilini tamamla' : undefined}
-            className={cn(
-              'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
-              itemLocked
-                ? 'cursor-not-allowed opacity-45'
-                : isActive
-                  ? 'cursor-pointer bg-gradient-to-r from-neon/15 to-transparent text-foreground'
-                  : 'cursor-pointer text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
+          <div key={id} className="flex flex-col">
+            {showMemberDivider && (
+              <div className="my-2 flex items-center gap-2 px-3">
+                <span className="h-px flex-1 bg-border/70" />
+                <span className="text-[10px] font-semibold tracking-widest text-muted-foreground/80 uppercase">
+                  Üye Alanı
+                </span>
+                <span className="h-px flex-1 bg-border/70" />
+              </div>
             )}
-          >
-            {isActive && (
-              <span className="absolute top-1/2 left-0 h-6 w-0.5 -translate-y-1/2 rounded-full bg-neon shadow-[0_0_10px_#00f2fe]" />
+            {showStaffDivider && (
+              <div className="my-2 flex items-center gap-2 px-3">
+                <span className="h-px flex-1 bg-gold/30" />
+                <span className="text-[10px] font-semibold tracking-widest text-gold/80 uppercase">
+                  Yönetim
+                </span>
+                <span className="h-px flex-1 bg-gold/30" />
+              </div>
             )}
-            <Icon className={cn('size-5 shrink-0', isActive ? 'text-neon' : 'text-muted-foreground group-hover:text-silver')} />
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="flex items-center gap-1.5">
-                <span className="truncate text-sm font-medium">{label}</span>
-                {isBetaOnly && (
-                  <span className="rounded border border-gold/40 bg-gold/15 px-1.5 py-0.2 text-[9px] font-bold tracking-wider text-gold uppercase">
-                    BETA
-                  </span>
-                )}
+            <button
+              onClick={() => onSelect(id)}
+              disabled={itemLocked}
+              aria-disabled={itemLocked || undefined}
+              aria-current={isActive ? 'page' : undefined}
+              title={itemLocked ? 'Önce profilini tamamla' : undefined}
+              className={cn(
+                'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
+                itemLocked
+                  ? 'cursor-not-allowed opacity-45'
+                  : isActive
+                    ? 'cursor-pointer bg-gradient-to-r from-neon/15 to-transparent text-foreground'
+                    : 'cursor-pointer text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
+              )}
+            >
+              {isActive && (
+                <span className="absolute top-1/2 left-0 h-6 w-0.5 -translate-y-1/2 rounded-full bg-neon shadow-[0_0_10px_#00f2fe]" />
+              )}
+              <Icon className={cn('size-5 shrink-0', isActive ? 'text-neon' : 'text-muted-foreground group-hover:text-silver')} />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate text-sm font-medium">{label}</span>
+                  {isBetaOnly && (
+                    <span className="rounded border border-gold/40 bg-gold/15 px-1.5 py-0.2 text-[9px] font-bold tracking-wider text-gold uppercase">
+                      BETA
+                    </span>
+                  )}
+                </span>
+                <span className="truncate text-[11px] text-muted-foreground">{short}</span>
               </span>
-              <span className="truncate text-[11px] text-muted-foreground">{short}</span>
-            </span>
-          </button>
+            </button>
+          </div>
         )
       })}
     </nav>

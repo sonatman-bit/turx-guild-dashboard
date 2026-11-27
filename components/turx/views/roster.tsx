@@ -181,23 +181,27 @@ export function RosterView() {
         if (!cancelled) setDefaultMembers([])
       })
 
-    fetch('/api/raid-system', { credentials: 'same-origin', headers: authHeaders(), cache: 'no-store' })
-      .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as {
-          locked?: boolean
-          isOfficer?: boolean
-          publicModules?: { attendance?: boolean }
-          attendanceLeaderboard?: { username: string; totalPoints: number }[]
-        }
-        if (!response.ok || cancelled || data.locked) return
-        if (!data.isOfficer && !data.publicModules?.attendance) return
-        const map = new Map<string, number>()
-        for (const row of data.attendanceLeaderboard || []) {
-          map.set(row.username.toLowerCase(), row.totalPoints)
-        }
-        setPointsByUser(map)
-      })
-      .catch(() => undefined)
+    if (!user) {
+      setPointsByUser(null)
+    } else {
+      fetch('/api/raid-system', { credentials: 'same-origin', headers: authHeaders(), cache: 'no-store' })
+        .then(async (response) => {
+          const data = (await response.json().catch(() => ({}))) as {
+            locked?: boolean
+            isOfficer?: boolean
+            publicModules?: { attendance?: boolean }
+            attendanceLeaderboard?: { username: string; totalPoints: number }[]
+          }
+          if (!response.ok || cancelled || data.locked) return
+          if (!data.isOfficer && !data.publicModules?.attendance) return
+          const map = new Map<string, number>()
+          for (const row of data.attendanceLeaderboard || []) {
+            map.set(row.username.toLowerCase(), row.totalPoints)
+          }
+          setPointsByUser(map)
+        })
+        .catch(() => undefined)
+    }
 
     return () => {
       cancelled = true

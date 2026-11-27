@@ -24,15 +24,15 @@ import { StrategyView } from './views/strategy'
 
 const TAB_IDS: TabId[] = [
   'overview',
+  'roadmap',
   'roster',
   'applications',
   'strategy',
+  'anonymous',
   'raid-signup',
   'loot',
   'attendance',
-  'roadmap',
   'bank',
-  'anonymous',
   'profile',
   'admin',
 ]
@@ -41,7 +41,6 @@ const MODULE_TAB_MAP: Partial<Record<TabId, keyof PublicModuleFlags>> = {
   'raid-signup': 'raidSignup',
   loot: 'loot',
   attendance: 'attendance',
-  roadmap: 'roadmap',
   bank: 'bank',
 }
 
@@ -102,10 +101,8 @@ function DashboardShellInner() {
   const canAccessTab = useCallback(
     (id: TabId) => {
       if (id === 'admin') return canOpenAdmin
-      if (id === 'roster') return Boolean(user)
       const modKey = MODULE_TAB_MAP[id]
       if (modKey) {
-        if (id === 'roadmap') return canOpenAdmin || Boolean(publicModules.roadmap)
         return Boolean(user) && (canOpenAdmin || Boolean(publicModules[modKey]))
       }
       return true

@@ -45,7 +45,7 @@ export function BankView() {
   const isOfficerOrGm = user?.role === 'Guild Master' || user?.role === 'Görevli' || user?.role === 'Officer'
 
   const loadBankData = () => {
-    fetch('/api/bank')
+    fetch('/api/bank', { credentials: 'same-origin', headers: authHeaders(), cache: 'no-store' })
       .then(async (res) => {
         const data = (await res.json().catch(() => ({}))) as {
           requests?: BankRequestDto[]

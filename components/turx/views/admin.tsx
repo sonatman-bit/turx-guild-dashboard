@@ -61,6 +61,7 @@ import type { GuildRank } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { StaffRoleBadge } from '../staff-role-icons'
 import { useToast } from '../toast'
+import { useSiteCopy } from '../site-copy-provider'
 import { Badge, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
 type DayKey = 'pzt' | 'sal' | 'crs' | 'per' | 'cum' | 'cmt' | 'paz'
@@ -212,6 +213,7 @@ interface AdminAnonymousMessageDto {
 
 export function AdminDashboardView() {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const isGm = user?.role === 'Guild Master'
   const toast = useToast()
   const [activeTab, setActiveTab] = useState<'members' | 'applications' | 'recruitment' | 'staff' | 'poll' | 'attendance' | 'messages' | 'anonymous'>('members')
@@ -1363,9 +1365,9 @@ interface PersistedArmoryAudit {
   return (
     <div className="flex flex-col gap-8 pb-10">
       <SectionHeader
-        eyebrow="Yetkili Yönetim Paneli"
-        title="GM & Görevli Kontrol Merkezi"
-        description="Hesap bazlı rütbe yönetimi yapın ve detaylı guild başvuru bilgilerini denetleyin."
+        eyebrow={copy('admin.eyebrow')}
+        title={copy('admin.title')}
+        description={copy('admin.description')}
         action={
           <div className="flex flex-wrap items-center gap-2">
             {isGm && (

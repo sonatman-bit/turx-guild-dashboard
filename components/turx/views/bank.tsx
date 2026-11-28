@@ -6,6 +6,7 @@ import { authHeaders } from '@/lib/client-session'
 import { BANK_ITEMS } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
@@ -36,6 +37,7 @@ interface BankLedgerDto {
 export function BankView() {
   const toast = useToast()
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const [open, setOpen] = useState(false)
   const [preset, setPreset] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -136,9 +138,9 @@ export function BankView() {
   return (
     <div className="flex flex-col gap-6">
       <SectionHeader
-        eyebrow="Guild Bank"
-        title="Guild Bankası & Malzeme Talebi"
-        description="Raid consumable stokları ve lonca fonu. Talepler Görevli ekibi tarafından 24 saat içinde onaylanır."
+        eyebrow={copy('bank.eyebrow')}
+        title={copy('bank.title')}
+        description={copy('bank.description')}
         action={
           <GoldButton onClick={() => openRequest()}>
             <PackagePlus className="size-4" /> Malzeme Talep Et
@@ -149,7 +151,7 @@ export function BankView() {
       {isOfficerOrGm && pendingRequests.length > 0 && (
         <Panel className="border-gold/40 bg-gold/5">
           <PanelTitle icon={ShieldAlert} action={<Badge className="border-gold/50 text-gold">{pendingRequests.length} Bekleyen</Badge>}>
-            Subay Onay Havuzu (Bekleyen Malzeme Talepleri)
+            {copy('bank.pending.title')}
           </PanelTitle>
           <ul className="mt-3 divide-y divide-border/60">
             {pendingRequests.map((req) => (
@@ -186,7 +188,7 @@ export function BankView() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Panel className="glow-border flex flex-col justify-between bg-gradient-to-br from-gold/10 to-card">
-          <PanelTitle icon={Coins}>Gold Bakiyesi</PanelTitle>
+          <PanelTitle icon={Coins}>{copy('bank.gold.title')}</PanelTitle>
           <p className="font-display text-5xl font-black text-gold tabular-nums text-glow-gold">
             0<span className="ml-1 text-2xl">g</span>
           </p>

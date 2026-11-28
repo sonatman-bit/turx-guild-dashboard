@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { classIconUrl, type ArmorySnapshot } from '@/lib/wow-armory'
 import { useAuth, type GuildRank } from '../auth-provider'
 import { RosterSummarySection, type RosterSummaryStats } from '../roster-summary'
+import { useSiteCopy } from '../site-copy-provider'
 import { Badge, Panel, PanelTitle, PointsPill, RankPill, SectionHeader, inputClass } from '../ui'
 
 type ExtendedRole = 'TANK' | 'HEALER' | 'MELEE' | 'RANGED'
@@ -222,6 +223,7 @@ function HiddenBadge({ label = 'Gizli' }: { label?: string }) {
 
 export function RosterView() {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
 
   const [query, setQuery] = useState('')
   const [cls, setCls] = useState<WowClass | 'all'>('all')
@@ -384,9 +386,9 @@ export function RosterView() {
   return (
     <div className="flex flex-col gap-6 pb-10">
       <SectionHeader
-        eyebrow="Phase 1 Hazırlıkları"
-        title="Guild Kadrosu & Roster Yönetimi"
-        description="WoW: Forever Alliance lonca kadrosu — Main karakterler ve Alt karakterler ayrı listeler halinde takip edilir"
+        eyebrow={copy('roster.eyebrow')}
+        title={copy('roster.title')}
+        description={copy('roster.description')}
       />
 
       <RosterSummarySection stats={summaryStats} />

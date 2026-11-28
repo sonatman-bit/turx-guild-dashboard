@@ -54,6 +54,7 @@ import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { LootPhilosophyBanner } from '../loot-philosophy-banner'
 import { RosterTemplatePanel } from '../roster-template-panel'
+import { useSiteCopy } from '../site-copy-provider'
 import { SpecIconPicker, SpecMiniIcon } from '../spec-icon-picker'
 import { useToast } from '../toast'
 import {
@@ -73,6 +74,7 @@ import { WowItemHeaderWithTooltip, WowItemIcon } from '../wow-item-tooltip'
 
 export function LootDistributionView() {
   const toast = useToast()
+  const { copy } = useSiteCopy()
   const { data, loading, busy, error, postAction } = useRaidSystem()
 
   const [subTab, setSubTab] = useState<'items' | 'boe-bop'>('items')
@@ -607,9 +609,9 @@ export function LootDistributionView() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow={`${activePhase?.name || 'Phase 1'} · ORTAK LOOT LİSTESİ`}
-        title="Loot Sistemi & Öncelik Rotasyonu"
-        description="Tüm lonca ve tüm raid grupları tek ortak öncelik listesiyle takip edilir. Varsayılan kota: 10-man 1 · 20-man 2 · 40-man 4 (item bazında özelleştirilebilir). Aynı öncelikte eşit paylaşımlı spec'ler Devam Puanı (eşitse zar) ile belirlenir."
+        eyebrow={`${activePhase?.name || 'Phase 1'} · ${copy('loot.eyebrowSuffix')}`}
+        title={copy('loot.title')}
+        description={copy('loot.description')}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-lg border border-border bg-[#071422] p-1">

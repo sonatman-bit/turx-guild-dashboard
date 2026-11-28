@@ -7,6 +7,7 @@ import { DISCORD_INVITE_URL } from '@/lib/guild-presence'
 import { openTurxAuthModal, useAuth } from './auth-provider'
 import { TurxLogo } from './logo'
 import type { TabId } from './navigation'
+import { useSiteCopy } from './site-copy-provider'
 import type { DiscordOfficer, DiscordVoiceChannel, DiscordWidgetResponse } from '@/app/api/discord-widget/route'
 
 const FALLBACK_DATA: DiscordWidgetResponse = {
@@ -38,6 +39,7 @@ function StatusDot({ status }: { status: 'online' | 'idle' | 'dnd' | 'offline' |
 
 export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }) {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const [discordData, setDiscordData] = useState<DiscordWidgetResponse>(FALLBACK_DATA)
 
   useEffect(() => {
@@ -96,7 +98,7 @@ export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3.5 py-1 text-xs font-semibold tracking-[0.2em] text-gold uppercase shadow-[0_0_12px_rgba(212,175,55,0.2)]">
               <Shield className="size-3.5 text-gold" />
-              <span>WOW: FOREVER · EU · PVE · NORMAL · ALLIANCE</span>
+              <span>{copy('overview.hero.badge')}</span>
             </div>
           </div>
 
@@ -114,18 +116,17 @@ export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }
             </div>
             <div>
               <h1 className="font-display text-4xl font-black tracking-widest text-transparent sm:text-5xl lg:text-6xl bg-clip-text bg-gradient-to-b from-[#fff2b3] via-[#d4af37] to-[#8a6d1c] drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]">
-                TURX
+                {copy('overview.hero.title')}
               </h1>
               <p className="font-display text-xs font-bold tracking-[0.35em] text-cyan-400/90 sm:text-sm">
-                TURKISH ALLIANCE GUILD
+                {copy('overview.hero.subtitle')}
               </p>
             </div>
           </div>
 
           {/* Guild Description Manifesto */}
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-silver/95 text-pretty sm:text-lg">
-            Azeroth &amp; Kalimdor raid gecelerinde birlikte keyifli vakit geçiren bir Türk Topluluğu.
-            Düzenli kadro, başarı odaklı raidler ve herkes için yuva olabilecek sıcak bir ortam.
+          <p className="mt-5 max-w-xl whitespace-pre-line text-base leading-relaxed text-silver/95 text-pretty sm:text-lg">
+            {copy('overview.hero.manifesto')}
           </p>
 
           {/* CTA Buttons */}
@@ -135,7 +136,7 @@ export function HeroLanding({ onNavigate }: { onNavigate: (tab: TabId) => void }
               onClick={() => onNavigate('applications')}
               className="group relative inline-flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-[#d4af37] via-[#f3d779] to-[#b38e22] px-7 py-3.5 font-display text-sm font-extrabold tracking-wider text-[#08121e] uppercase shadow-[0_0_25px_rgba(212,175,55,0.4)] transition-all hover:scale-[1.02] hover:shadow-[0_0_35px_rgba(212,175,55,0.6)] active:scale-95"
             >
-              <span>BAŞVURU YAP</span>
+              <span>{copy('overview.hero.ctaApply')}</span>
               <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
             </button>
 

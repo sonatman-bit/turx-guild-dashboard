@@ -55,6 +55,7 @@ import { useLiveNow, useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import { RaidCalendarGrid } from '../raid-calendar-grid'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import {
   Badge,
@@ -397,6 +398,7 @@ function defaultRaidScheduleMs(raidId = 'barrow') {
 
 export function RaidSignupView() {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const toast = useToast()
   const { data, loading, busy, error, postAction } = useRaidSystem()
 
@@ -801,9 +803,9 @@ export function RaidSignupView() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="TURX RAID TAKVİMİ · PAZARTESİ BAŞLANGIÇLI"
-        title="Raid Kayıt & 4 Rol Panosu"
-        description="Gelecek raidler takvimde yeşil ışıklı, geçmiş ve arşivlenen raidler kırmızı flu görünür. Bir etkinliğe tıklayıp 4 rol sütunlu kadroyu inceleyebilir, imza ve konfirmasyon verebilirsiniz."
+        eyebrow={copy('raid-signup.eyebrow')}
+        title={copy('raid-signup.title')}
+        description={copy('raid-signup.description')}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <GhostButton
@@ -837,7 +839,7 @@ export function RaidSignupView() {
               </Badge>
             }
           >
-            Bir Haftalık Raid Döngüsü
+            {copy('raid-signup.cycle.title')}
           </PanelTitle>
           <WeeklyRaidTimeline rules={rules} />
         </Panel>
@@ -860,12 +862,12 @@ export function RaidSignupView() {
         <Panel className="border-dashed border-border/80 py-12 text-center">
           <CalendarClock className="mx-auto size-10 text-muted-foreground/60" />
           <p className="mt-3 font-display text-lg font-bold text-foreground">
-            Takvimde henüz etkinlik yok
+            {copy('raid-signup.empty.title')}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {isOfficer
               ? 'Gelecek bir gün kutusunun sağ üstündeki + düğmesiyle veya yukarıdaki "Yeni Raid Aç" butonuyla takvime raid ekleyebilirsiniz.'
-              : 'Officerlar yeni haftanın raidlerini açtığında takvimde yeşil ışıklı olarak görünecektir.'}
+              : copy('raid-signup.empty.member')}
           </p>
         </Panel>
       ) : selectedEvent.status === 'ARCHIVED' ? (

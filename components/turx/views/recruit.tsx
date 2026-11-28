@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import type { TabId } from '../navigation'
 import { emptyRosterSummary, RosterSummarySection, type RosterSummaryStats } from '../roster-summary'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import { Badge, Field, GhostButton, GoldButton, Modal, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
@@ -172,6 +173,7 @@ interface RecruitViewProps {
 
 export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewProps = {}) {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [manifestoOpen, setManifestoOpen] = useState(false)
@@ -319,9 +321,9 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
   return (
     <div className="flex flex-col gap-8 pb-10">
       <SectionHeader
-        eyebrow="Recruitment · Alliance PvE (EU)"
-        title="Başvuru & Recruitment"
-        description="TURX, WoW: Forever’da Phase 1’den itibaren progress odaklı Raid kadrosunu genişletiyor."
+        eyebrow={copy('applications.eyebrow')}
+        title={copy('applications.title')}
+        description={copy('applications.description')}
       />
 
       {/* Alliance & Forever Birlik Ruhu Banner / Görsel Alanı */}
@@ -338,10 +340,10 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
               </span>
             </div>
             <h2 className="font-display text-3xl font-black tracking-wider text-gold">
-              TURX RAİD KADROSUNA KATIL
+              {copy('applications.banner.title')}
             </h2>
-            <p className="text-sm text-silver max-w-2xl leading-relaxed">
-              Bizler sadece boss kesmek için değil; adaletli loot sistemi, samimi ortam ve yüksek raid disipliniyle kalıcı bir miras bırakmak için bir araya geldik. Alliance bayrağı altında Forever evreninde yerini al!
+            <p className="text-sm text-silver max-w-2xl whitespace-pre-line leading-relaxed">
+              {copy('applications.banner.body')}
             </p>
           </div>
           <div className="shrink-0">
@@ -357,7 +359,7 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
 
       {/* İhtiyaç Matrisi */}
       <Panel>
-        <PanelTitle icon={Grid3x3}>Class / Spec İhtiyaç Matrisi</PanelTitle>
+        <PanelTitle icon={Grid3x3}>{copy('applications.matrix.title')}</PanelTitle>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {matrix.map((r) => (
             <div 
@@ -409,11 +411,11 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
             ) : undefined
           }
         >
-          TURX Raid &amp; Loot Kuralları Özeti
+          {copy('applications.rules.title')}
         </PanelTitle>
 
-        <p className="mb-4 max-w-3xl text-xs leading-relaxed text-silver">
-          Başvurmadan önce sistemimizi 30 saniyede tanıyın: TURX’ta <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> hibrit Öncelik Rotasyonu + Şeffaf Devam Puanı sistemi uygulanır.
+        <p className="mb-4 max-w-3xl whitespace-pre-line text-xs leading-relaxed text-silver">
+          {copy('applications.rules.intro')}
         </p>
 
         {/* 4 Kartlık Hızlı Bakış Özeti */}
@@ -421,37 +423,37 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
           <div className="rounded-xl border border-gold/30 bg-[#071422]/90 p-3.5">
             <p className="flex items-center gap-1.5 font-display text-xs font-bold text-gold">
               <Lock className="size-3.5 shrink-0" />
-              Faz Başı Kilitli Liste
+              {copy('applications.rules.c1.title')}
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Öncelik sırası fazdan önce lonca onayına açılır, faz başlayınca kilitlenir.
+            <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-muted-foreground">
+              {copy('applications.rules.c1.body')}
             </p>
           </div>
           <div className="rounded-xl border border-neon/30 bg-[#071422]/90 p-3.5">
             <p className="flex items-center gap-1.5 font-display text-xs font-bold text-neon">
               <Award className="size-3.5 shrink-0" />
-              Öncelik Rotasyonu &amp; Puan
+              {copy('applications.rules.c2.title')}
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Öncelik sıraları sırayla loot alır; aynı öncelik kutusunda yüksek devam puanı (eşitse zar) kazanır.
+            <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-muted-foreground">
+              {copy('applications.rules.c2.body')}
             </p>
           </div>
           <div className="rounded-xl border border-emerald-500/30 bg-[#071422]/90 p-3.5">
             <p className="flex items-center gap-1.5 font-display text-xs font-bold text-emerald-300">
               <ShieldCheck className="size-3.5 shrink-0" />
-              RCLootCouncil Dayanışma
+              {copy('applications.rules.c3.title')}
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Gönüllü <em>Minor Update</em> ile sıra veren oyuncunun hakkı <strong>Bekleyen Öncelik</strong> olarak korunur.
+            <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-muted-foreground">
+              {copy('applications.rules.c3.body')}
             </p>
           </div>
           <div className="rounded-xl border border-amber-400/30 bg-[#071422]/90 p-3.5">
             <p className="flex items-center gap-1.5 font-display text-xs font-bold text-amber-300">
               <Coins className="size-3.5 shrink-0" />
-              Bench, BoE &amp; BoP Netliği
+              {copy('applications.rules.c4.title')}
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Hazır Bench +6p (net +8p) kazanır; BoE’ler Guild Bankasına, ilk BoP tarifler Meslek Sorumlusuna gider.
+            <p className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-muted-foreground">
+              {copy('applications.rules.c4.body')}
             </p>
           </div>
         </div>
@@ -488,9 +490,10 @@ export function RecruitView({ onNavigate, canOpenRoadmap = true }: RecruitViewPr
 
         {(() => {
           const activeGuide = TURX_LOOT_GUIDE.find((t) => t.id === rule) || TURX_LOOT_GUIDE[0]
+          const summaryText = copy(`applications.tab.${activeGuide.id}.summary`) || activeGuide.summary
           return (
             <div role="tabpanel" className="mt-4 rounded-xl border border-border/80 bg-[#071422] p-4 sm:p-5">
-              <p className="text-sm leading-relaxed text-foreground">{activeGuide.summary}</p>
+              <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">{summaryText}</p>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {activeGuide.bullets.map((b) => (
                   <div key={b.title} className="rounded-lg border border-border/60 bg-[#0b1b2d]/70 p-3.5">

@@ -2,6 +2,7 @@
 
 import { EyeOff, Lock, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import { Field, GoldButton, Panel, PanelTitle, SectionHeader, inputClass } from '../ui'
 
@@ -9,6 +10,7 @@ const MAX = 1000
 
 export function FeedbackView() {
   const toast = useToast()
+  const { copy } = useSiteCopy()
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -70,13 +72,13 @@ export function FeedbackView() {
   return (
     <div>
       <SectionHeader
-        eyebrow="Gizli Kanal"
-        title="Anonim GM & Görevli Mesaj Kutusu"
-        description="Öneri, şikayet veya hassas konuları kimliğiniz paylaşılmadan doğrudan Guild Master ve Görevli ekibine iletin."
+        eyebrow={copy('anonymous.eyebrow')}
+        title={copy('anonymous.title')}
+        description={copy('anonymous.description')}
       />
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <Panel className="glow-border">
-          <PanelTitle icon={Lock}>Gizli Mesaj</PanelTitle>
+          <PanelTitle icon={Lock}>{copy('anonymous.form.title')}</PanelTitle>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Alıcı">
@@ -118,11 +120,11 @@ export function FeedbackView() {
           </form>
         </Panel>
         <Panel>
-          <PanelTitle icon={ShieldCheck}>Gizlilik Güvencesi</PanelTitle>
+          <PanelTitle icon={ShieldCheck}>{copy('anonymous.privacy.title')}</PanelTitle>
           <ul className="flex flex-col gap-3 text-sm leading-relaxed text-silver">
-            <li>Karakter adınız, Discord hesabınız ve IP bilginiz mesajla birlikte saklanmaz.</li>
-            <li>Mesajlar yalnızca GM ve Görevli ekibi tarafından görüntülenebilir.</li>
-            <li>Kötüye kullanım tespit edilirse mesaj silinir; kimlik takibi yapılmaz.</li>
+            <li>{copy('anonymous.privacy.b1')}</li>
+            <li>{copy('anonymous.privacy.b2')}</li>
+            <li>{copy('anonymous.privacy.b3')}</li>
           </ul>
         </Panel>
       </div>

@@ -8,6 +8,7 @@ import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { useAuth } from './auth-provider'
 import { GuildPresenceBar } from './guild-presence-bar'
 import { Header, Sidebar, type TabId } from './navigation'
+import { SiteCopyProvider } from './site-copy-provider'
 import { ToastProvider, useToast } from './toast'
 import { AdminDashboardView } from './views/admin'
 import { AttendanceTrackerView } from './views/attendance-tracker'
@@ -257,7 +258,9 @@ function DashboardShellInner() {
 export function DashboardShell() {
   return (
     <ToastProvider>
-      <DashboardShellInner />
+      <SiteCopyProvider>
+        <DashboardShellInner />
+      </SiteCopyProvider>
     </ToastProvider>
   )
 }

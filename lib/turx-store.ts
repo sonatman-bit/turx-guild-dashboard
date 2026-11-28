@@ -14,6 +14,7 @@ import {
   normalizeRaidSystemStore,
   type RaidSystemStore,
 } from '@/lib/raid-loot-system'
+import { normalizeSiteCopy } from '@/lib/site-copy'
 import { GM_EMAIL, isGuildMasterEmail, isGuildMasterRole, type GuildRank } from '@/lib/turx-identity'
 
 export type StoredAccount = {
@@ -183,6 +184,7 @@ export type GuildStore = {
   armoryAudit?: StoredArmoryAuditState | null
   armoryRankMappings?: ArmoryRankMapping[]
   progressTracker?: GuildProgressTrackerState | null
+  siteCopy?: Record<string, string>
 }
 
 const PATH = 'turx-guild-store.json'
@@ -223,6 +225,7 @@ export function emptyStore(): GuildStore {
     armoryAudit: null,
     armoryRankMappings: DEFAULT_ARMORY_RANK_MAPPINGS.map((m) => ({ ...m })),
     progressTracker: null,
+    siteCopy: {},
   }
 }
 
@@ -284,6 +287,7 @@ function normalizeStore(data: Partial<GuildStore> | null | undefined): GuildStor
     armoryAudit,
     armoryRankMappings: normalizeArmoryRankMappings(data.armoryRankMappings),
     progressTracker: data.progressTracker ?? null,
+    siteCopy: normalizeSiteCopy(data.siteCopy),
   }
 }
 

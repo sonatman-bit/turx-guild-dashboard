@@ -4,6 +4,7 @@ import { Check, CheckCircle2, Copy, KeyRound, Puzzle, Skull } from 'lucide-react
 import { useEffect, useState } from 'react'
 import { ADDONS, ATTUNEMENTS, BOSS_TACTICS, WEAKAURAS } from '@/lib/guild-data'
 import { cn } from '@/lib/utils'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import { Badge, Panel, PanelTitle, SectionHeader } from '../ui'
 
@@ -45,6 +46,7 @@ function CopyBox({ title, type, code }: { title: string; type: string; code: str
 }
 
 export function StrategyView() {
+  const { copy } = useSiteCopy()
   const [active, setActive] = useState(0)
   const [onyxiaLive, setOnyxiaLive] = useState<{ done: number; total: number } | null>(null)
   const boss = BOSS_TACTICS[active]
@@ -71,13 +73,13 @@ export function StrategyView() {
   return (
     <div>
       <SectionHeader
-        eyebrow="Strategy Hub"
-        title="Strateji, Attunement & WeakAura Merkezi"
-        description="WoW: Forever boss taktikleri, Attunement durumu ve zorunlu Addon / WeakAura paketleri."
+        eyebrow={copy('strategy.eyebrow')}
+        title={copy('strategy.title')}
+        description={copy('strategy.description')}
       />
 
       <Panel>
-        <PanelTitle icon={Skull}>Boss Taktikleri</PanelTitle>
+        <PanelTitle icon={Skull}>{copy('strategy.tactics.title')}</PanelTitle>
         <div role="tablist" aria-label="Raid seçimi" className="flex gap-2 overflow-x-auto pb-1">
           {BOSS_TACTICS.map((b, i) => (
             <button
@@ -112,7 +114,7 @@ export function StrategyView() {
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel>
-          <PanelTitle icon={KeyRound}>Attunement Tracker (Phase 1)</PanelTitle>
+          <PanelTitle icon={KeyRound}>{copy('strategy.attunement.title')}</PanelTitle>
           <ul className="flex flex-col gap-4">
             {ATTUNEMENTS.map((a) => {
               const done = a.id === 'onyxia' && onyxiaLive ? onyxiaLive.done : a.done
@@ -137,16 +139,16 @@ export function StrategyView() {
           <div className="mt-4 space-y-2 border-t border-border/60 pt-3 text-xs text-muted-foreground">
             <p className="flex items-center gap-2 text-emerald-300">
               <CheckCircle2 className="size-3.5 shrink-0" />
-              <span><strong>Barrow Deeps (10-Man):</strong> Attunement gerektirmez (Level 60 yeterli).</span>
+              <span>{copy('strategy.attunement.note1')}</span>
             </p>
             <p className="flex items-center gap-2 text-emerald-300">
               <CheckCircle2 className="size-3.5 shrink-0" />
-              <span><strong>Hyjal Summit (20-Man):</strong> Attunement gerektirmez (Level 60 yeterli).</span>
+              <span>{copy('strategy.attunement.note2')}</span>
             </p>
           </div>
         </Panel>
         <Panel>
-          <PanelTitle icon={Puzzle}>Zorunlu Addon Listesi</PanelTitle>
+          <PanelTitle icon={Puzzle}>{copy('strategy.addons.title')}</PanelTitle>
           <ul className="grid gap-2 sm:grid-cols-2">
             {ADDONS.map((a) => (
               <li key={a.name} className="flex items-center justify-between gap-2 rounded-lg border border-border bg-[#071422] px-3 py-2 text-sm">
@@ -161,7 +163,7 @@ export function StrategyView() {
       </div>
 
       <Panel className="mt-6">
-        <PanelTitle icon={Copy}>WeakAura & Macro Paketleri</PanelTitle>
+        <PanelTitle icon={Copy}>{copy('strategy.weakaura.title')}</PanelTitle>
         <div className="grid gap-4 lg:grid-cols-2">
           {WEAKAURAS.map((w) => (
             <CopyBox key={w.title} {...w} />

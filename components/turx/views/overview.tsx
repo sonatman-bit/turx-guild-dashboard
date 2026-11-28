@@ -10,6 +10,7 @@ import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import type { TabId } from '../navigation'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import { Badge, GhostButton, Panel, PanelTitle } from '../ui'
 import { HeroLanding } from '../hero-landing'
@@ -34,13 +35,14 @@ function useCountdown(target: string) {
 const pad = (n: number | undefined) => (n === undefined ? '--' : String(n).padStart(2, '0'))
 
 function Roadmap() {
+  const { copy } = useSiteCopy()
   const [selected, setSelected] = useState(0)
   const p = PHASES[selected]
   return (
     <Panel aria-labelledby="roadmap-title" className="flex h-full flex-col justify-between">
       <div>
         <PanelTitle icon={CalendarClock}>
-          <span id="roadmap-title">WoW: Forever Phase Roadmap</span>
+          <span id="roadmap-title">{copy('overview.roadmap.title')}</span>
         </PanelTitle>
         <div className="overflow-x-auto pb-2">
           <ol className="relative flex min-w-[560px] justify-between">
@@ -93,6 +95,7 @@ function Roadmap() {
 
 function ProgressTracker() {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const toast = useToast()
   const isStaff = canAccessAdminPanel(user?.role)
   const [syncing, setSyncing] = useState(false)
@@ -204,7 +207,7 @@ function ProgressTracker() {
             )
           }
         >
-          TURX Progress Tracker
+          {copy('overview.progress.title')}
         </PanelTitle>
 
         <ul className="flex flex-col gap-2.5">
@@ -318,13 +321,14 @@ function NextRaid({
   onNavigate: (t: TabId) => void
   canOpenRaidSignup?: boolean
 }) {
+  const { copy } = useSiteCopy()
   const c = useCountdown(RAID_DATE)
   return (
     <Panel className="flex h-full flex-col justify-between">
       <div>
-        <PanelTitle icon={Swords}>Sıradaki Raid</PanelTitle>
-        <p className="font-display text-xl font-bold text-gold">Phase 1 Açılışı</p>
-        <p className="text-sm text-muted-foreground">9 Aralık 2026 · 21:00 (TR)</p>
+        <PanelTitle icon={Swords}>{copy('overview.nextRaid.title')}</PanelTitle>
+        <p className="font-display text-xl font-bold text-gold">{copy('overview.nextRaid.heading')}</p>
+        <p className="text-sm text-muted-foreground">{copy('overview.nextRaid.dateLabel')}</p>
         <p className="mt-4 font-display text-3xl font-black text-neon tabular-nums text-glow-cyan">
           {c ? `${c.days}g ${pad(c.hours)}:${pad(c.mins)}:${pad(c.secs)}` : '--g --:--:--'}
         </p>
@@ -353,6 +357,7 @@ const PLATFORM_BADGE: Record<StreamPlatform, { label: string; className: string 
 }
 
 function StreamRadar() {
+  const { copy } = useSiteCopy()
   const [channels, setChannels] = useState<StreamRadarCard[]>([])
 
   useEffect(() => {
@@ -395,12 +400,12 @@ function StreamRadar() {
           </span>
         }
       >
-        Stream Radar
+        {copy('overview.stream.title')}
       </PanelTitle>
       <ul className="flex flex-1 flex-col gap-2">
         {channels.length === 0 && (
           <li className="rounded-lg border border-border bg-[#071422] p-3 text-sm text-muted-foreground">
-            Kayıtlı kanal yok. Profiline Twitch, Kick veya YouTube kanal adını yaz.
+            {copy('overview.stream.empty')}
           </li>
         )}
         {channels.map((stream) =>
@@ -464,6 +469,7 @@ export function OverviewView({
   onNavigate: (t: TabId) => void
   canOpenRaidSignup?: boolean
 }) {
+  const { copy } = useSiteCopy()
   return (
     <div className="flex flex-col gap-6">
       <HeroLanding onNavigate={onNavigate} />
@@ -484,7 +490,7 @@ export function OverviewView({
         <StreamRadar />
       </div>
       <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <CheckCircle2 className="size-3.5 text-success" /> Tüm saatler Türkiye saatine (UTC+3) göredir.
+        <CheckCircle2 className="size-3.5 text-success" /> {copy('overview.timezoneNote')}
       </p>
     </div>
   )

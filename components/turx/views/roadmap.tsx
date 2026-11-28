@@ -28,6 +28,7 @@ import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
 import { LootPhilosophyBanner } from '../loot-philosophy-banner'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import { Badge, GhostButton, GoldButton, Panel, PanelTitle, SectionHeader } from '../ui'
 import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
@@ -166,6 +167,7 @@ function toEmbedUrl(url: string): string | null {
 
 export function RoadmapView() {
   const { user } = useAuth()
+  const { copy } = useSiteCopy()
   const toast = useToast()
   const { data, busy, postAction } = useRaidSystem()
 
@@ -238,32 +240,31 @@ export function RoadmapView() {
   const sections = [
     // SLIDE 0: VISION & TIMELINE
     <Panel key="s0" className="border-gold/35 bg-gradient-to-br from-[#0e243a] via-[#091829] to-[#071220]">
-      <PanelTitle icon={Sparkles}>1. Büyük Resim: Fazlar & 1 Ocak 2027 Hedefi</PanelTitle>
-      <p className="mb-6 max-w-3xl text-sm leading-relaxed text-silver">
-        TURX FOREVER loncasında <strong className="text-gold">torpilsiz, %100 şeffaf ve disiplin ödüllendiren</strong> yeni Raid & Loot sistemine geçiyoruz. Tüm puanlar, devam kayıtları ve loot sıralamaları 7/24 web sitemizde tüm oyunculara açık takip edilir.
+      <PanelTitle icon={Sparkles}>{copy('roadmap.s0.title')}</PanelTitle>
+      <p className="mb-6 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-silver">
+        {copy('roadmap.s0.intro')}
       </p>
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-neon/35 bg-[#071422]/90 p-4">
-          <Badge className="border-neon/40 bg-neon/10 text-neon">2 Aralık Demo → 9 Aralık Phase 1</Badge>
-          <h3 className="mt-2 font-display text-lg font-bold text-foreground">Phase 1 & Puan Yarışı</h3>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            İlk bonus puanlar <strong>2 Aralık Guild Toplantısı</strong> ile (seviyeden bağımsız) başlar. 9 Aralık&apos;ta Barrow Deeps (10m), Hyjal Summit (20m) ve Onyxia&apos;s Lair (40m) açılır ve tüm LvL 60 Main karakterler{' '}
-            <strong className="text-neon">TURX</strong> rütbesiyle eşit şartlarda puan biriktirir.
+          <Badge className="border-neon/40 bg-neon/10 text-neon">{copy('roadmap.s0.c1.badge')}</Badge>
+          <h3 className="mt-2 font-display text-lg font-bold text-foreground">{copy('roadmap.s0.c1.title')}</h3>
+          <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s0.c1.body')}
           </p>
         </div>
         <div className="rounded-xl border border-gold/50 bg-gold/[0.07] p-4 shadow-[0_0_25px_rgb(212_175_55/0.12)]">
-          <Badge className="border-gold/50 bg-gold/15 text-gold">1 Ocak 2027</Badge>
-          <h3 className="mt-2 font-display text-lg font-bold text-gold">Roster Şablonu & İlk 50 Raider</h3>
-          <p className="mt-1 text-xs leading-relaxed text-silver">
-            10-20 ve 40-man rosterlar isimsiz class/spec şablonu olarak yayınlanır. 40-Man çekirdek kadro + yedek rotasyonu için en yüksek devam puanına sahip <strong>ilk 50 oyuncu</strong> 1 Ocak 2027 tarihinde <strong className="text-gold">RAIDER</strong> rütbesine yükseltilir.
+          <Badge className="border-gold/50 bg-gold/15 text-gold">{copy('roadmap.s0.c2.badge')}</Badge>
+          <h3 className="mt-2 font-display text-lg font-bold text-gold">{copy('roadmap.s0.c2.title')}</h3>
+          <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-silver">
+            {copy('roadmap.s0.c2.body')}
           </p>
         </div>
         <div className="rounded-xl border border-purple-400/35 bg-[#071422]/90 p-4">
-          <Badge className="border-purple-400/40 bg-purple-500/10 text-purple-300">Yeni Fazlar</Badge>
-          <h3 className="mt-2 font-display text-lg font-bold text-foreground">Yeni Faz, Taze Rekabet</h3>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Blizzard her yeni faz raid paketi eklediğinde, yeni faza ait item listesi ve öncelik sıralaması ayrıca hazırlanır ve takip edilir.
+          <Badge className="border-purple-400/40 bg-purple-500/10 text-purple-300">{copy('roadmap.s0.c3.badge')}</Badge>
+          <h3 className="mt-2 font-display text-lg font-bold text-foreground">{copy('roadmap.s0.c3.title')}</h3>
+          <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s0.c3.body')}
           </p>
         </div>
       </div>
@@ -279,7 +280,7 @@ export function RoadmapView() {
           </Badge>
         }
       >
-        2. Bir Haftalık Raid Döngüsü
+        {copy('roadmap.s1.title')}
       </PanelTitle>
       <WeeklyRaidTimeline rules={rules} />
     </Panel>,
@@ -304,7 +305,7 @@ export function RoadmapView() {
           </div>
         }
       >
-        3. Şeffaf Loot Öncelik Rotasyonu (Canlı Demo!)
+        {copy('roadmap.s2.title')}
       </PanelTitle>
 
       <div className="mb-4 rounded-xl border border-gold/30 bg-[#071422] p-4">
@@ -377,29 +378,28 @@ export function RoadmapView() {
         <div className="rounded-xl border border-gold/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-gold">
             <Lock className="size-4" />
-            Faz Başı İtiraz &amp; Liste Kilidi
+            {copy('roadmap.s2.rule1.title')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Öncelik listesi her faz başlamadan 5–7 gün önce tüm loncaya açılır ve öneriler değerlendirilir. Faz açılışında liste <strong>kilitlenir</strong> ve sonraki faza kadar tartışmaya kapatılır.
+          <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s2.rule1.body')}
           </p>
         </div>
         <div className="rounded-xl border border-neon/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-neon">
             <ShieldCheck className="size-4" />
-            RCLootCouncil (Gönüllü Dayanışma)
+            {copy('roadmap.s2.rule2.title')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Oyun içi talep toplamak (<em>BIS / Major / Minor / OS / Pass</em>) için kullanılır; nihai karar sitedeki <strong>Öncelik Sırası + Puan</strong> listesidir. Muadili olan oyuncu gönüllü <em>Minor Update</em> seçip sırayı verirse kendi önceliği <strong>Bekleyen Öncelik</strong> olarak korunur.
+          <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s2.rule2.body')}
           </p>
         </div>
         <div className="rounded-xl border border-emerald-500/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-emerald-300">
             <Users className="size-4" />
-            Ortak Liste &amp; Varsayılan Kota (10m:1 · 20m:2 · 40m:4)
+            {copy('roadmap.s2.rule3.title')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Tüm raid grupları tek ortak listeyi kullanır: her öncelik sırası varsayılan olarak <strong>10-man&apos;de 1</strong>,{' '}
-            <strong>20-man&apos;de 2</strong>, <strong>40-man&apos;de 4 kota</strong> (item bazında özelleştirilebilir ve birden fazla spec eşit paylaşabilir) ile döner. Aynı oyuncu kendi isteğiyle <strong>üst üste en fazla 2 kez benche yazılabilir</strong>; 3. kez üst üste gönüllü bench yazılamaz (Officer kararı hariç).
+          <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s2.rule3.body')}
           </p>
         </div>
       </div>
@@ -409,19 +409,19 @@ export function RoadmapView() {
         <div className="rounded-xl border border-gold/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-gold">
             <Coins className="size-4" />
-            BoE Eşyalar → Guild Banka
+            {copy('roadmap.s2.boe.title')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Raidlerde düşen tüm BoE itemlar istisnasız Guild Bankasına gelir amaçlı alınır ve sitede şeffaf olarak listelenir.
+          <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s2.boe.body')}
           </p>
         </div>
         <div className="rounded-xl border border-neon/30 bg-[#071422] p-4">
           <p className="flex items-center gap-2 font-display text-sm font-bold text-neon">
             <BookOpen className="size-4" />
-            BoP Tarifler → Meslek Sorumlusu & Min 300 Roll
+            {copy('roadmap.s2.bop.title')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-            Tüm BoP tarifler ilk düşüşte guildin belirlediği Meslek Sorumlusuna verilir. Aynı tarif tekrar düşerse o meslekte <strong>min 300</strong> olanlar <strong>anında öğrenmek şartıyla</strong> rollar.
+          <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+            {copy('roadmap.s2.bop.body')}
           </p>
         </div>
       </div>
@@ -430,22 +430,24 @@ export function RoadmapView() {
     // SLIDE 3: FAQ & ACKNOWLEDGEMENT
     <div key="s3" className="space-y-5">
       <Panel>
-        <PanelTitle icon={HelpCircle}>4. Sıkça Sorulan Sorular (SSS)</PanelTitle>
+        <PanelTitle icon={HelpCircle}>{copy('roadmap.s3.faqTitle')}</PanelTitle>
         <div className="space-y-2">
           {FAQ_ITEMS.map((item, idx) => {
             const open = openFaq === idx
+            const qText = copy(`roadmap.faq.${idx}.q`) || item.q
+            const aText = copy(`roadmap.faq.${idx}.a`) || item.a
             return (
-              <div key={item.q} className="rounded-xl border border-border/70 bg-[#071422]">
+              <div key={idx} className="rounded-xl border border-border/70 bg-[#071422]">
                 <button
                   onClick={() => setOpenFaq(open ? null : idx)}
                   className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left text-xs font-semibold text-foreground"
                 >
-                  <span>{item.q}</span>
+                  <span>{qText}</span>
                   <ChevronDown className={cn('size-4 shrink-0 text-neon transition', open && 'rotate-180')} />
                 </button>
                 {open && (
-                  <p className="border-t border-border/50 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-                    {item.a}
+                  <p className="whitespace-pre-line border-t border-border/50 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+                    {aText}
                   </p>
                 )}
               </div>
@@ -460,7 +462,7 @@ export function RoadmapView() {
           <div>
             <p className="flex items-center gap-2 font-display text-base font-bold text-foreground">
               <ShieldCheck className="size-5 text-emerald-400" />
-              Sistemi İnceledin mi? Onayını Kaydet!
+              {copy('roadmap.ack.title')}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Şu ana kadar <strong className="text-emerald-300">{acks.length}</strong>
@@ -502,9 +504,9 @@ export function RoadmapView() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="TURX FOREVER · OYUNCU REHBERİ & SUNUM"
-        title="Road Map: Yeni Raid & Loot Sistemi"
-        description="Canlıya geçmeden önce tüm lonca üyelerinin yeni sistemi 3 dakikada kavraması için hazırlanan interaktif sunum. Discord toplantıları için Slayt Moduna geçebilirsiniz."
+        eyebrow={copy('roadmap.eyebrow')}
+        title={copy('roadmap.title')}
+        description={copy('roadmap.description')}
         action={
           <div className="inline-flex rounded-lg border border-border bg-[#071422] p-1">
             <button

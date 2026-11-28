@@ -30,6 +30,7 @@ import {
 } from '@/lib/raid-loot-system'
 import { useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
+import { useSiteCopy } from '../site-copy-provider'
 import { useToast } from '../toast'
 import {
   Badge,
@@ -58,6 +59,7 @@ const OUTCOME_LABELS: Record<AttendanceOutcome, string> = {
 
 export function AttendanceTrackerView() {
   const toast = useToast()
+  const { copy } = useSiteCopy()
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | undefined>(undefined)
   const { data, loading, busy, error, postAction } = useRaidSystem(selectedPhaseId)
 
@@ -140,9 +142,9 @@ export function AttendanceTrackerView() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow={`${currentPhase?.name || 'Phase 1'} · ŞEFFAF PUAN TAKİBİ`}
-        title="Devam Takibi & 1 Ocak 2027 İlk 50 Raider Sıralaması"
-        description="Faz bazlı raid puanları, hazır bekleyen bench puanları, 2 Aralık toplantı bonus puanları (seviyeden bağımsız) ve ceza kayıtları tarihsel detaylarıyla 7/24 online takip edilir."
+        eyebrow={`${currentPhase?.name || 'Phase 1'} · ${copy('attendance.eyebrowSuffix')}`}
+        title={copy('attendance.title')}
+        description={copy('attendance.description')}
         action={
           <div className="flex flex-wrap items-center gap-2">
             <select
@@ -202,7 +204,7 @@ export function AttendanceTrackerView() {
               <p className="font-semibold text-foreground">
                 Raid İmza <span className="ml-1 font-mono text-neon">+{rs.settings.pointRules.signup} puan</span>
               </p>
-              <p className="text-muted-foreground">Zamanında raid kaydı</p>
+              <p className="text-muted-foreground">{copy('attendance.rule.signup')}</p>
             </div>
           </div>
           <div className="panel flex items-center gap-3 p-3.5">
@@ -211,7 +213,7 @@ export function AttendanceTrackerView() {
               <p className="font-semibold text-foreground">
                 İmza Konfirmasyon <span className="ml-1 font-mono text-cyan-300">+{rs.settings.pointRules.confirm} puan</span>
               </p>
-              <p className="text-muted-foreground">Kilit öncesi katılım onayı</p>
+              <p className="text-muted-foreground">{copy('attendance.rule.confirm')}</p>
             </div>
           </div>
           <div className="panel flex items-center gap-3 p-3.5">
@@ -220,7 +222,7 @@ export function AttendanceTrackerView() {
               <p className="font-semibold text-foreground">
                 Raid Tam Katılım <span className="ml-1 font-mono text-emerald-300">+{rs.settings.pointRules.raid10} puan</span>
               </p>
-              <p className="text-muted-foreground">Tüm raidler eşit (10 / 20 / 40-man)</p>
+              <p className="text-muted-foreground">{copy('attendance.rule.raid')}</p>
             </div>
           </div>
           <div className="panel flex items-center gap-3 border-gold/35 p-3.5">
@@ -230,7 +232,7 @@ export function AttendanceTrackerView() {
                 Yedek Bekleme (Bench){' '}
                 <span className="ml-1 font-mono text-gold">+{rs.settings.pointRules.benchReadyPoints ?? 6} puan</span>
               </p>
-              <p className="text-muted-foreground">Raid boyunca hazır bekleme (gönüllü maks. 2 üst üste)</p>
+              <p className="text-muted-foreground">{copy('attendance.rule.bench')}</p>
             </div>
           </div>
         </div>
@@ -242,7 +244,7 @@ export function AttendanceTrackerView() {
               <p className="font-semibold text-foreground">
                 Geç Kalma <span className="ml-1 font-mono text-amber-300">{rs.settings.pointRules.latePenalty} puan</span>
               </p>
-              <p className="text-muted-foreground">Raid saatinden sonra katılım</p>
+              <p className="text-muted-foreground">{copy('attendance.rule.late')}</p>
             </div>
           </div>
           <div className="panel flex items-center gap-3 border-orange-500/25 p-3.5">
@@ -252,7 +254,7 @@ export function AttendanceTrackerView() {
                 Eksik Hazırlık{' '}
                 <span className="ml-1 font-mono text-orange-300">{rs.settings.pointRules.missingPrepPenalty} ceza</span>
               </p>
-              <p className="text-muted-foreground">Boss savaşlarında zorunlu flask/elixir/buff kullanımı min. %75 (WarcraftLogs)</p>
+              <p className="text-muted-foreground">{copy('attendance.rule.missingPrep')}</p>
             </div>
           </div>
           <div className="panel flex items-center gap-3 border-rose-500/30 p-3.5">

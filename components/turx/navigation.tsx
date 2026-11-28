@@ -10,6 +10,7 @@ import {
   Map,
   Menu,
   MessageSquareLock,
+  Pencil,
   ScrollText,
   Shield,
   UserPlus,
@@ -20,9 +21,11 @@ import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { cn } from '@/lib/utils'
 import type { PublicModuleFlags } from '@/lib/raid-loot-system'
+import { isEditablePageId } from '@/lib/site-copy'
 import { canAccessAdminPanel } from '@/lib/turx-identity'
 import { TurxLogo } from './logo'
 import { AuthNavbarWidget, useAuth } from './auth-provider'
+import { useSiteCopy } from './site-copy-provider'
 
 export type TabId =
   | 'overview'
@@ -75,10 +78,12 @@ function NavList({
   unreadAnonymousCount?: number
 }) {
   const { user } = useAuth()
+  const { copy, isGm, openEditorForPage, pageOverrideCount } = useSiteCopy()
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   const isLoggedIn = mounted && Boolean(user)
   const showAdmin = mounted && canAccessAdminPanel(user?.role)
+  const showGmEdit = mounted && isGm
   const items = NAV_ITEMS.filter((item) => {
     if (item.section === 'staff') return showAdmin
     if (item.section === 'member') {
@@ -105,13 +110,17 @@ function NavList({
         </div>
       )}
       {items.map((item, idx) => {
-        const { id, label, short, icon: Icon, section, moduleFlag } = item
+        const { id, label: defaultLabel, short: defaultShort, icon: Icon, section, moduleFlag } = item
+        const label = isEditablePageId(id) ? copy(`nav.${id}.label`) || defaultLabel : defaultLabel
+        const short = isEditablePageId(id) ? copy(`nav.${id}.short`) || defaultShort : defaultShort
         const prevSection = idx > 0 ? items[idx - 1].section : null
         const showMemberDivider = section === 'member' && prevSection === 'public'
         const showStaffDivider = section === 'staff' && prevSection !== null && prevSection !== 'staff'
         const isActive = active === id
         const itemLocked = navigationLocked && id !== 'profile'
         const isBetaOnly = Boolean(moduleFlag && !publicModules[moduleFlag])
+        const canEditPage = showGmEdit && isEditablePageId(id)
+        const customCount = canEditPage ? pageOverrideCount(id) : 0
         return (
           <div key={id} className="flex flex-col">
             {showMemberDivider && (
@@ -132,56 +141,84 @@ function NavList({
                 <span className="h-px flex-1 bg-gold/30" />
               </div>
             )}
-            <button
-              onClick={() => onSelect(id)}
-              disabled={itemLocked}
-              aria-disabled={itemLocked || undefined}
-              aria-current={isActive ? 'page' : undefined}
-              title={itemLocked ? 'Önce profilini tamamla' : undefined}
-              className={cn(
-                'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
-                itemLocked
-                  ? 'cursor-not-allowed opacity-45'
-                  : isActive
-                    ? 'cursor-pointer bg-gradient-to-r from-neon/15 to-transparent text-foreground'
-                    : 'cursor-pointer text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
-              )}
-            >
-              {isActive && (
-                <span className="absolute top-1/2 left-0 h-6 w-0.5 -translate-y-1/2 rounded-full bg-neon shadow-[0_0_10px_#00f2fe]" />
-              )}
-              <Icon className={cn('size-5 shrink-0', isActive ? 'text-neon' : 'text-muted-foreground group-hover:text-silver')} />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="flex items-center gap-1.5">
-                  <span className="truncate text-sm font-medium">{label}</span>
-                  {isBetaOnly && (
-                    <span className="rounded border border-gold/40 bg-gold/15 px-1.5 py-0.2 text-[9px] font-bold tracking-wider text-gold uppercase">
-                      BETA
+            <div className="group/navrow relative flex items-center gap-1">
+              <button
+                onClick={() => onSelect(id)}
+                disabled={itemLocked}
+                aria-disabled={itemLocked || undefined}
+                aria-current={isActive ? 'page' : undefined}
+                title={itemLocked ? 'Önce profilini tamamla' : undefined}
+                className={cn(
+                  'group relative flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
+                  itemLocked
+                    ? 'cursor-not-allowed opacity-45'
+                    : isActive
+                      ? 'cursor-pointer bg-gradient-to-r from-neon/15 to-transparent text-foreground'
+                      : 'cursor-pointer text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-foreground',
+                )}
+              >
+                {isActive && (
+                  <span className="absolute top-1/2 left-0 h-6 w-0.5 -translate-y-1/2 rounded-full bg-neon shadow-[0_0_10px_#00f2fe]" />
+                )}
+                <Icon className={cn('size-5 shrink-0', isActive ? 'text-neon' : 'text-muted-foreground group-hover:text-silver')} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-medium">{label}</span>
+                    {isBetaOnly && (
+                      <span className="rounded border border-gold/40 bg-gold/15 px-1.5 py-0.2 text-[9px] font-bold tracking-wider text-gold uppercase">
+                        BETA
+                      </span>
+                    )}
+                  </span>
+                  {id === 'admin' && unreadAnonymousCount > 0 ? (
+                    <span className="truncate text-[11px] font-medium text-red-300">
+                      {unreadAnonymousCount} okunmamış anonim mesaj
                     </span>
+                  ) : (
+                    <span className="truncate text-[11px] text-muted-foreground">{short}</span>
                   )}
                 </span>
-                {id === 'admin' && unreadAnonymousCount > 0 ? (
-                  <span className="truncate text-[11px] font-medium text-red-300">
-                    {unreadAnonymousCount} okunmamış anonim mesaj
+                {id === 'admin' && unreadAnonymousCount > 0 && (
+                  <span
+                    className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-400/75 bg-red-500/20 px-2 py-0.5 text-[11px] font-black text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.45)]"
+                    title={`${unreadAnonymousCount} okunmamış anonim mesaj`}
+                    aria-label={`${unreadAnonymousCount} okunmamış anonim mesaj`}
+                  >
+                    <span className="relative flex size-2 shrink-0">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-85" />
+                      <span className="relative inline-flex size-2 rounded-full bg-red-500" />
+                    </span>
+                    <span className="tabular-nums">{unreadAnonymousCount > 99 ? '99+' : unreadAnonymousCount}</span>
                   </span>
-                ) : (
-                  <span className="truncate text-[11px] text-muted-foreground">{short}</span>
                 )}
-              </span>
-              {id === 'admin' && unreadAnonymousCount > 0 && (
-                <span
-                  className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-400/75 bg-red-500/20 px-2 py-0.5 text-[11px] font-black text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.45)]"
-                  title={`${unreadAnonymousCount} okunmamış anonim mesaj`}
-                  aria-label={`${unreadAnonymousCount} okunmamış anonim mesaj`}
+              </button>
+
+              {canEditPage && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openEditorForPage(id)
+                  }}
+                  title={`${label} sayfasının başlık ve metinlerini düzenle (Sadece GM)`}
+                  aria-label={`${label} metinlerini düzenle`}
+                  className={cn(
+                    'relative flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md border transition',
+                    customCount > 0
+                      ? 'border-gold/50 bg-gold/15 text-gold hover:bg-gold/25'
+                      : 'border-transparent text-gold/55 opacity-75 hover:border-gold/40 hover:bg-gold/10 hover:text-gold hover:opacity-100',
+                  )}
                 >
-                  <span className="relative flex size-2 shrink-0">
-                    <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-400 opacity-85" />
-                    <span className="relative inline-flex size-2 rounded-full bg-red-500" />
-                  </span>
-                  <span className="tabular-nums">{unreadAnonymousCount > 99 ? '99+' : unreadAnonymousCount}</span>
-                </span>
+                  <Pencil className="size-3.5" />
+                  {customCount > 0 && (
+                    <span
+                      className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-gold shadow-[0_0_6px_#d4af37]"
+                      aria-hidden
+                    />
+                  )}
+                </button>
               )}
-            </button>
+            </div>
           </div>
         )
       })}

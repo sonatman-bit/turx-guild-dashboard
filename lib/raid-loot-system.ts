@@ -738,19 +738,19 @@ export const DEFAULT_PHASES: RaidPhase[] = [
   {
     id: 'phase-2',
     name: 'Phase 2',
-    title: 'Molten Core & Dire Maul',
+    title: 'On Going...',
     startDate: '2027-03-10',
     endDate: '2027-06-09',
-    raidIds: ['molten-core'],
+    raidIds: [],
     active: false,
   },
   {
     id: 'phase-3',
     name: 'Phase 3',
-    title: 'Blackwing Lair',
+    title: 'On Going...',
     startDate: '2027-06-10',
     endDate: '2027-09-09',
-    raidIds: ['bwl'],
+    raidIds: [],
     active: false,
   },
 ]
@@ -1798,9 +1798,21 @@ export function normalizeRaidSystemStore(raw?: Partial<RaidSystemStore> | null):
     },
   }
 
+  const normalizedPhases: RaidPhase[] = (
+    Array.isArray(raw.phases) && raw.phases.length > 0 ? raw.phases : defaults.phases
+  ).map((p) => {
+    if (p.id === 'phase-2' && p.title === 'Molten Core & Dire Maul') {
+      return { ...p, title: 'On Going...', raidIds: [] }
+    }
+    if (p.id === 'phase-3' && p.title === 'Blackwing Lair') {
+      return { ...p, title: 'On Going...', raidIds: [] }
+    }
+    return p
+  })
+
   return {
     settings,
-    phases: Array.isArray(raw.phases) && raw.phases.length > 0 ? raw.phases : defaults.phases,
+    phases: normalizedPhases,
     events: Array.isArray(raw.events) ? raw.events : [],
     lootItems: shouldAutoUpgradeLegacySeed(raw.lootItems)
       ? defaults.lootItems

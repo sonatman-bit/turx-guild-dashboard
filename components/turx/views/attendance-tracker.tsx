@@ -986,7 +986,7 @@ export function AttendanceTrackerView() {
             <input
               type="text"
               className={inputClass}
-              placeholder="Örn: Molten Core & Dire Maul"
+              placeholder="Örn: On Going..."
               value={newPhaseTitle}
               onChange={(e) => setNewPhaseTitle(e.target.value)}
             />

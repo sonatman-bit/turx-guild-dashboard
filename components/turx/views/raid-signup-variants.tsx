@@ -71,6 +71,43 @@ import {
 import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
 
 export type RaidSignupVariantId = 1 | 2 | 3
+export type RaidCategoryId = 'guild-meeting' | 'barrow' | 'hyjal' | 'onyxia'
+
+const RAID_CATEGORY_META: Record<
+  RaidCategoryId,
+  { label: string; short: string; sizeLabel: string; tabId: TabId; description: string }
+> = {
+  'guild-meeting': {
+    label: 'TURX Guild Toplantısı',
+    short: 'Toplantı',
+    sizeLabel: 'Tüm Guild',
+    tabId: 'raid-signup-2-meeting',
+    description: 'Tüm seviyelere açık guild toplantıları ve canlı sistem sunumları.',
+  },
+  barrow: {
+    label: 'Barrow Deeps',
+    short: 'Barrow',
+    sizeLabel: '10-Man',
+    tabId: 'raid-signup-2-barrow',
+    description: '10 kişilik Phase 1 giriş raidi — 2 Tank · 2 Healer · 6 DPS.',
+  },
+  hyjal: {
+    label: 'Hyjal Summit',
+    short: 'Hyjal',
+    sizeLabel: '20-Man',
+    tabId: 'raid-signup-2-hyjal',
+    description: '20 kişilik Phase 1 progress raidi — 3 Tank · 5 Healer · 12 DPS.',
+  },
+  onyxia: {
+    label: "Onyxia's Lair",
+    short: 'Onyxia',
+    sizeLabel: '40-Man',
+    tabId: 'raid-signup-2-onyxia',
+    description: '40 kişilik Phase 1 ejderha raidi — Drakefire Amulet zorunlu.',
+  },
+}
+
+const RAID_CATEGORY_ORDER: RaidCategoryId[] = ['guild-meeting', 'barrow', 'hyjal', 'onyxia']
 
 type RankMeta = { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }
 
@@ -318,9 +355,11 @@ const VARIANT_META: Record<
 
 export function RaidSignupVariantView({
   variant,
+  filterRaidId,
   onNavigate,
 }: {
   variant: RaidSignupVariantId
+  filterRaidId?: RaidCategoryId
   onNavigate?: (tab: TabId) => void
 }) {
   const { user } = useAuth()
@@ -400,13 +439,32 @@ export function RaidSignupVariantView({
     [guildMembers, user?.username],
   )
 
-  const activeEvents = useMemo(
+  const allActiveEvents = useMemo(
     () =>
       (rs?.events || [])
         .filter((e) => e.status !== 'ARCHIVED')
         .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
     [rs?.events],
   )
+
+  const activeEvents = useMemo(
+    () =>
+      filterRaidId
+        ? allActiveEvents.filter((e) => e.raidId === filterRaidId)
+        : allActiveEvents,
+    [allActiveEvents, filterRaidId],
+  )
+
+  const openCreateForRaid = (preferredRaidId?: string) => {
+    const targetId = preferredRaidId || filterRaidId || 'barrow'
+    const schedMs = defaultRaidScheduleMs(targetId)
+    setNewRaidId(targetId)
+    setNewScheduledAt(toDateTimeLocal(schedMs))
+    setNewSignupDeadline(toDateTimeLocal(schedMs - 3 * 86_400_000))
+    setNewConfirmDeadline(toDateTimeLocal(schedMs - 1 * 86_400_000))
+    setDeadlinesAuto(true)
+    setCreateOpen(true)
+  }
 
   useEffect(() => {
     if (activeEvents.length > 0 && !activeEvents.some((e) => e.id === selectedEventId)) {
@@ -585,6 +643,7 @@ export function RaidSignupVariantView({
 
   const rules = rs.settings.pointRules
   const meta = VARIANT_META[variant]
+  const categoryMeta = filterRaidId ? RAID_CATEGORY_META[filterRaidId] : null
 
   // Helper: player CTA buttons for the currently selected event
   const renderPlayerCta = (ev: RaidEvent, compact = false) => {
@@ -906,11 +965,15 @@ export function RaidSignupVariantView({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded border border-gold/50 bg-gold/20 px-2 py-0.5 text-[10px] font-black tracking-wider text-gold uppercase">
-              {meta.badge}
+              {categoryMeta ? `RAİD KAYIT 2 · ${categoryMeta.sizeLabel}` : meta.badge}
             </span>
-            <h1 className="font-display text-base font-bold text-foreground sm:text-lg">{meta.title}</h1>
+            <h1 className="font-display text-base font-bold text-foreground sm:text-lg">
+              {categoryMeta ? categoryMeta.label : meta.title}
+            </h1>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{meta.subtitle}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {categoryMeta ? categoryMeta.description : meta.subtitle}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -918,7 +981,7 @@ export function RaidSignupVariantView({
             <button
               key={v}
               type="button"
-              onClick={() => onNavigate?.(VARIANT_META[v].tabId)}
+              onClick={() => onNavigate?.(v === 2 ? 'raid-signup-2-meeting' : VARIANT_META[v].tabId)}
               className={cn(
                 'cursor-pointer rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition',
                 variant === v
@@ -933,12 +996,53 @@ export function RaidSignupVariantView({
             <CalendarClock className="size-3.5" /> Döngü
           </GhostButton>
           {isOfficer && (
-            <GoldButton onClick={() => setCreateOpen(true)} className="px-3 py-1.5 text-xs">
-              <CalendarPlus className="size-3.5" /> Yeni Raid
+            <GoldButton onClick={() => openCreateForRaid(filterRaidId)} className="px-3 py-1.5 text-xs">
+              <CalendarPlus className="size-3.5" />
+              {categoryMeta ? `Yeni ${categoryMeta.short} Aç` : 'Yeni Raid'}
             </GoldButton>
           )}
         </div>
       </div>
+
+      {/* Raid Type Sub-Navigation Pills for Variant 2 (mirrors the left sidebar sub-menu cleanly on mobile & desktop) */}
+      {variant === 2 && filterRaidId && (
+        <div className="flex flex-wrap items-center gap-2">
+          {RAID_CATEGORY_ORDER.map((cid) => {
+            const cInfo = RAID_CATEGORY_META[cid]
+            const active = cid === filterRaidId
+            const openCount = allActiveEvents.filter((e) => e.raidId === cid).length
+            return (
+              <button
+                key={cid}
+                type="button"
+                onClick={() => onNavigate?.(cInfo.tabId)}
+                className={cn(
+                  'inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold transition',
+                  active
+                    ? 'border-gold/70 bg-gold/15 text-gold shadow-[0_0_16px_rgba(212,175,55,0.16)]'
+                    : 'border-border/75 bg-[#071422]/85 text-muted-foreground hover:border-neon/40 hover:text-foreground',
+                )}
+              >
+                <span>{cInfo.label}</span>
+                <span className="rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] opacity-85">
+                  {cInfo.sizeLabel}
+                </span>
+                {openCount > 0 && (
+                  <span
+                    className={cn(
+                      'inline-flex size-4 items-center justify-center rounded-full font-mono text-[10px] font-bold',
+                      active ? 'bg-gold text-[#1a1305]' : 'bg-neon/20 text-neon',
+                    )}
+                    title={`${openCount} aktif etkinlik`}
+                  >
+                    {openCount}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {showCycle && (
         <Panel className="border-neon/30 bg-[#081728]">
@@ -947,10 +1051,28 @@ export function RaidSignupVariantView({
       )}
 
       {activeEvents.length === 0 ? (
-        <Panel className="py-14 text-center">
-          <CalendarClock className="mx-auto size-9 text-muted-foreground/50" />
-          <p className="mt-3 font-display text-base font-bold text-foreground">Şu an aktif etkinlik yok</p>
-          <p className="mt-1 text-xs text-muted-foreground">Yeni Raid düğmesiyle bir etkinlik açabilirsiniz.</p>
+        <Panel className="border-dashed border-border/80 py-14 text-center">
+          <Swords className="mx-auto size-10 text-gold/55" />
+          <p className="mt-3 font-display text-lg font-bold text-foreground">
+            {categoryMeta
+              ? `Şu an açık ${categoryMeta.label} takvimi yok`
+              : 'Şu an aktif etkinlik yok'}
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
+            {categoryMeta
+              ? isOfficer
+                ? `Yeni bir ${categoryMeta.label} (${categoryMeta.sizeLabel}) etkinliği açtığınızda 4 rol sütunlu kadro panosu burada görünecektir.`
+                : `Officerlar yeni ${categoryMeta.label} takvimi açtığında buradan tek tıkla imza atabilirsiniz.`
+              : 'Yeni Raid düğmesiyle bir etkinlik açabilirsiniz.'}
+          </p>
+          {isOfficer && (
+            <div className="mt-4 flex justify-center">
+              <GoldButton onClick={() => openCreateForRaid(filterRaidId)} className="px-4 py-2 text-xs">
+                <CalendarPlus className="size-4" />
+                {categoryMeta ? `${categoryMeta.label} (${categoryMeta.sizeLabel}) Aç` : 'Yeni Raid Aç'}
+              </GoldButton>
+            </div>
+          )}
         </Panel>
       ) : (
         <>

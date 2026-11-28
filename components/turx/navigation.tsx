@@ -3,7 +3,6 @@
 import {
   Award,
   CalendarCheck,
-  ChevronDown,
   ClipboardList,
   Coins,
   LayoutDashboard,
@@ -13,7 +12,6 @@ import {
   MessageSquareLock,
   ScrollText,
   Shield,
-  Swords,
   UserPlus,
   Users,
   X,
@@ -32,13 +30,6 @@ export type TabId =
   | 'applications'
   | 'strategy'
   | 'raid-signup'
-  | 'raid-signup-1'
-  | 'raid-signup-2'
-  | 'raid-signup-2-meeting'
-  | 'raid-signup-2-barrow'
-  | 'raid-signup-2-hyjal'
-  | 'raid-signup-2-onyxia'
-  | 'raid-signup-3'
   | 'loot'
   | 'attendance'
   | 'roadmap'
@@ -46,19 +37,6 @@ export type TabId =
   | 'anonymous'
   | 'profile'
   | 'admin'
-
-export type NavSubItem = {
-  id: TabId
-  label: string
-  tag: string
-}
-
-export const RAID2_SUB_ITEMS: NavSubItem[] = [
-  { id: 'raid-signup-2-meeting', label: 'Toplantı', tag: 'Guild' },
-  { id: 'raid-signup-2-barrow', label: 'Barrow Deeps', tag: '10m' },
-  { id: 'raid-signup-2-hyjal', label: 'Hyjal Summit', tag: '20m' },
-  { id: 'raid-signup-2-onyxia', label: "Onyxia's Lair", tag: '40m' },
-]
 
 export type NavSection = 'public' | 'member' | 'staff'
 
@@ -69,8 +47,6 @@ export const NAV_ITEMS: {
   icon: React.ComponentType<{ className?: string }>
   section: NavSection
   moduleFlag?: keyof PublicModuleFlags
-  alwaysBeta?: boolean
-  children?: NavSubItem[]
 }[] = [
   { id: 'overview', label: 'Genel Bakış', short: 'Dashboard', icon: LayoutDashboard, section: 'public' },
   { id: 'roadmap', label: 'Road Map', short: 'Sistem Sunumu & Rehber', icon: Map, section: 'public' },
@@ -78,21 +54,11 @@ export const NAV_ITEMS: {
   { id: 'applications', label: 'Guild Başvuru', short: 'Recruitment', icon: UserPlus, section: 'public' },
   { id: 'strategy', label: 'Strateji Merkezi', short: 'Attunement & WeakAura', icon: ScrollText, section: 'public' },
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock, section: 'public' },
-  { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, section: 'member', moduleFlag: 'raidSignup' },
+  { id: 'raid-signup', label: 'Raid Kayıt', short: 'Takvim & 4 Rol Panosu', icon: CalendarCheck, section: 'member', moduleFlag: 'raidSignup' },
   { id: 'loot', label: 'Loot Sistemi', short: 'Öncelik & BoE/BoP', icon: Award, section: 'member', moduleFlag: 'loot' },
   { id: 'attendance', label: 'Devam Takibi', short: 'Puan & İlk 50 Raider', icon: ClipboardList, section: 'member', moduleFlag: 'attendance' },
   { id: 'bank', label: 'Guild Bank', short: 'Malzeme Talebi', icon: Coins, section: 'member', moduleFlag: 'bank' },
   { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield, section: 'staff' },
-  { id: 'raid-signup-1', label: 'Raid Kayıt 1', short: 'Minimalist & Sade Liste', icon: CalendarCheck, section: 'staff', alwaysBeta: true },
-  {
-    id: 'raid-signup-2',
-    label: 'Raid Kayıt 2',
-    short: 'Takvim & 4 Rol Panosu',
-    icon: Swords,
-    section: 'staff',
-    alwaysBeta: true,
-  },
-  { id: 'raid-signup-3', label: 'Raid Kayıt 3', short: 'Sol Takvim + Sekmeli', icon: CalendarCheck, section: 'staff', alwaysBeta: true },
 ]
 
 function NavList({
@@ -110,13 +76,7 @@ function NavList({
 }) {
   const { user } = useAuth()
   const [mounted, setMounted] = useState(false)
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({ 'raid-signup-2': true })
   useEffect(() => setMounted(true), [])
-  useEffect(() => {
-    if (RAID2_SUB_ITEMS.some((c) => c.id === active) || active === 'raid-signup-2') {
-      setExpandedGroups((prev) => (prev['raid-signup-2'] ? prev : { ...prev, 'raid-signup-2': true }))
-    }
-  }, [active])
   const isLoggedIn = mounted && Boolean(user)
   const showAdmin = mounted && canAccessAdminPanel(user?.role)
   const items = NAV_ITEMS.filter((item) => {
@@ -145,16 +105,13 @@ function NavList({
         </div>
       )}
       {items.map((item, idx) => {
-        const { id, label, short, icon: Icon, section, moduleFlag, alwaysBeta, children } = item
+        const { id, label, short, icon: Icon, section, moduleFlag } = item
         const prevSection = idx > 0 ? items[idx - 1].section : null
         const showMemberDivider = section === 'member' && prevSection === 'public'
         const showStaffDivider = section === 'staff' && prevSection !== null && prevSection !== 'staff'
-        const hasChildren = Boolean(children && children.length > 0)
-        const childActive = Boolean(children?.some((c) => c.id === active))
-        const isActive = active === id || childActive
-        const isExpanded = Boolean(expandedGroups[id])
+        const isActive = active === id
         const itemLocked = navigationLocked && id !== 'profile'
-        const isBetaOnly = Boolean(alwaysBeta || (moduleFlag && !publicModules[moduleFlag]))
+        const isBetaOnly = Boolean(moduleFlag && !publicModules[moduleFlag])
         return (
           <div key={id} className="flex flex-col">
             {showMemberDivider && (
@@ -176,17 +133,10 @@ function NavList({
               </div>
             )}
             <button
-              onClick={() => {
-                if (hasChildren) {
-                  setExpandedGroups((prev) => ({ ...prev, [id]: !prev[id] }))
-                } else {
-                  onSelect(id)
-                }
-              }}
+              onClick={() => onSelect(id)}
               disabled={itemLocked}
               aria-disabled={itemLocked || undefined}
-              aria-current={!hasChildren && isActive ? 'page' : undefined}
-              aria-expanded={hasChildren ? isExpanded : undefined}
+              aria-current={isActive ? 'page' : undefined}
               title={itemLocked ? 'Önce profilini tamamla' : undefined}
               className={cn(
                 'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition',
@@ -218,14 +168,6 @@ function NavList({
                   <span className="truncate text-[11px] text-muted-foreground">{short}</span>
                 )}
               </span>
-              {hasChildren && (
-                <ChevronDown
-                  className={cn(
-                    'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
-                    isExpanded && 'rotate-180 text-gold',
-                  )}
-                />
-              )}
               {id === 'admin' && unreadAnonymousCount > 0 && (
                 <span
                   className="ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full border border-red-400/75 bg-red-500/20 px-2 py-0.5 text-[11px] font-black text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.45)]"
@@ -240,49 +182,6 @@ function NavList({
                 </span>
               )}
             </button>
-
-            {hasChildren && isExpanded && (
-              <div className="mt-1 ml-5 flex flex-col gap-0.5 border-l border-gold/30 pl-3">
-                {children!.map((sub) => {
-                  const subActive = active === sub.id
-                  return (
-                    <button
-                      key={sub.id}
-                      type="button"
-                      disabled={itemLocked}
-                      onClick={() => onSelect(sub.id)}
-                      aria-current={subActive ? 'page' : undefined}
-                      className={cn(
-                        'flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition',
-                        subActive
-                          ? 'bg-gold/15 text-gold shadow-[inset_0_0_0_1px_rgba(212,175,55,0.35)]'
-                          : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-foreground',
-                      )}
-                    >
-                      <span className="flex items-center gap-2 truncate">
-                        <span
-                          className={cn(
-                            'size-1.5 shrink-0 rounded-full',
-                            subActive ? 'bg-gold shadow-[0_0_8px_#d4af37]' : 'bg-muted-foreground/50',
-                          )}
-                        />
-                        <span className="truncate">{sub.label}</span>
-                      </span>
-                      <span
-                        className={cn(
-                          'shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px]',
-                          subActive
-                            ? 'bg-gold/20 text-gold'
-                            : 'bg-white/[0.04] text-muted-foreground',
-                        )}
-                      >
-                        {sub.tag}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
           </div>
         )
       })}

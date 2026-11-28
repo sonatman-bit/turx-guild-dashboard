@@ -17,7 +17,6 @@ import { LootDistributionView } from './views/loot-distribution'
 import { OverviewView } from './views/overview'
 import { ProfileView } from './views/profile'
 import { RaidSignupView } from './views/raid-signup'
-import { RaidSignupVariantView } from './views/raid-signup-variants'
 import { RecruitView } from './views/recruit'
 import { RoadmapView } from './views/roadmap'
 import { RosterView } from './views/roster'
@@ -31,13 +30,6 @@ const TAB_IDS: TabId[] = [
   'strategy',
   'anonymous',
   'raid-signup',
-  'raid-signup-1',
-  'raid-signup-2',
-  'raid-signup-2-meeting',
-  'raid-signup-2-barrow',
-  'raid-signup-2-hyjal',
-  'raid-signup-2-onyxia',
-  'raid-signup-3',
   'loot',
   'attendance',
   'bank',
@@ -118,18 +110,7 @@ function DashboardShellInner() {
 
   const canAccessTab = useCallback(
     (id: TabId) => {
-      if (
-        id === 'admin' ||
-        id === 'raid-signup-1' ||
-        id === 'raid-signup-2' ||
-        id === 'raid-signup-2-meeting' ||
-        id === 'raid-signup-2-barrow' ||
-        id === 'raid-signup-2-hyjal' ||
-        id === 'raid-signup-2-onyxia' ||
-        id === 'raid-signup-3'
-      ) {
-        return canOpenAdmin
-      }
+      if (id === 'admin') return canOpenAdmin
       const modKey = MODULE_TAB_MAP[id]
       if (modKey) {
         return Boolean(user) && (canOpenAdmin || Boolean(publicModules[modKey]))
@@ -232,13 +213,6 @@ function DashboardShellInner() {
               <OverviewView onNavigate={select} canOpenRaidSignup={canAccessTab('raid-signup')} />
             )}
             {tab === 'raid-signup' && canAccessTab('raid-signup') && <RaidSignupView />}
-            {tab === 'raid-signup-1' && canOpenAdmin && <RaidSignupVariantView variant={1} onNavigate={select} />}
-            {tab === 'raid-signup-2' && canOpenAdmin && <RaidSignupVariantView variant={2} onNavigate={select} />}
-            {tab === 'raid-signup-2-meeting' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="guild-meeting" onNavigate={select} />}
-            {tab === 'raid-signup-2-barrow' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="barrow" onNavigate={select} />}
-            {tab === 'raid-signup-2-hyjal' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="hyjal" onNavigate={select} />}
-            {tab === 'raid-signup-2-onyxia' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="onyxia" onNavigate={select} />}
-            {tab === 'raid-signup-3' && canOpenAdmin && <RaidSignupVariantView variant={3} onNavigate={select} />}
             {tab === 'loot' && canAccessTab('loot') && <LootDistributionView />}
             {tab === 'attendance' && canAccessTab('attendance') && <AttendanceTrackerView />}
             {tab === 'roadmap' && canAccessTab('roadmap') && <RoadmapView />}

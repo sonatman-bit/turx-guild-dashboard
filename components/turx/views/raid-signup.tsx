@@ -3,21 +3,23 @@
 import {
   AlertTriangle,
   Archive,
+  ArrowRightLeft,
   CalendarClock,
   CalendarPlus,
   Check,
   CheckCircle2,
   ChevronDown,
   Clock,
-  Info,
+  Cross,
   Layers,
   Lock,
   Pencil,
   Plus,
   RefreshCw,
   Send,
-  ShieldAlert,
-  Sparkles,
+  Shield,
+  Swords,
+  Target,
   Trash2,
   UserCheck,
   UserMinus,
@@ -43,6 +45,7 @@ import {
   SPECIAL_EVENT_CATALOG,
   type AttendanceFlags,
   type AttendanceOutcome,
+  type PointRules,
   type PrepChecklist,
   type RaidEvent,
   type RaidEventSignup,
@@ -51,6 +54,7 @@ import {
 import { useLiveNow, useRaidSystem } from '@/lib/use-raid-system'
 import { cn } from '@/lib/utils'
 import { useAuth } from '../auth-provider'
+import { RaidCalendarGrid } from '../raid-calendar-grid'
 import { useToast } from '../toast'
 import {
   Badge,
@@ -67,6 +71,8 @@ import {
 } from '../ui'
 import { WeeklyRaidTimeline } from '../weekly-raid-timeline'
 
+type RankMeta = { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }
+
 type SameWeekConflict = {
   eventId: string
   dayLabel: string
@@ -74,9 +80,62 @@ type SameWeekConflict = {
   severity: 'assigned' | 'bench' | 'pool'
 }
 
+const ROLE_META: Record<
+  RaidRoleType,
+  {
+    label: string
+    short: string
+    icon: React.ComponentType<{ className?: string }>
+    color: string
+    chip: string
+    headerBg: string
+    border: string
+  }
+> = {
+  TANK: {
+    label: 'Tank',
+    short: 'T',
+    icon: Shield,
+    color: 'text-sky-300',
+    chip: 'border-sky-500/35 bg-sky-500/10 text-sky-300',
+    headerBg: 'bg-sky-500/10',
+    border: 'border-sky-500/30',
+  },
+  HEALER: {
+    label: 'Healer',
+    short: 'H',
+    icon: Cross,
+    color: 'text-emerald-300',
+    chip: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
+    headerBg: 'bg-emerald-500/10',
+    border: 'border-emerald-500/30',
+  },
+  MELEE: {
+    label: 'Melee DPS',
+    short: 'M',
+    icon: Swords,
+    color: 'text-amber-300',
+    chip: 'border-amber-500/35 bg-amber-500/10 text-amber-300',
+    headerBg: 'bg-amber-500/10',
+    border: 'border-amber-500/30',
+  },
+  RANGED: {
+    label: 'Ranged DPS',
+    short: 'R',
+    icon: Target,
+    color: 'text-purple-300',
+    chip: 'border-purple-500/35 bg-purple-500/10 text-purple-300',
+    headerBg: 'bg-purple-500/10',
+    border: 'border-purple-500/30',
+  },
+}
+
+const ROLE_ORDER: RaidRoleType[] = ['TANK', 'HEALER', 'MELEE', 'RANGED']
+
 function formatShortDayTime(iso: string): string {
   try {
     return new Intl.DateTimeFormat('tr-TR', {
+      timeZone: 'Europe/Istanbul',
       weekday: 'short',
       day: '2-digit',
       month: 'short',
@@ -154,7 +213,7 @@ function CountdownValue({
   return (
     <span
       className={cn(
-        'font-mono font-semibold',
+        'font-mono font-semibold tabular-nums',
         cd.expired ? 'text-rose-400' : cd.urgent ? 'text-amber-300' : accentClass,
         className,
       )}
@@ -164,9 +223,18 @@ function CountdownValue({
   )
 }
 
+function shortRosterLabel(name: string, index: number): string {
+  const trimmed = name.trim()
+  if (trimmed.length <= 14) return trimmed
+  if (trimmed.toLowerCase().includes('toplantı') || trimmed.toLowerCase().includes('tüm guild')) {
+    return 'Katılımcılar'
+  }
+  return `Grup ${index + 1}`
+}
+
 const OUTCOME_OPTIONS: { value: AttendanceOutcome; label: string; tone: string }[] = [
-  { value: 'ATTENDED', label: 'Katıldı (+4p)', tone: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
-  { value: 'BENCH_READY', label: 'Bench Hazır (+6p)', tone: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' },
+  { value: 'ATTENDED', label: 'Katıldı', tone: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' },
+  { value: 'BENCH_READY', label: 'Bench Hazır', tone: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10' },
   { value: 'LATE', label: 'Geç Kaldı (-2p)', tone: 'text-amber-300 border-amber-500/40 bg-amber-500/10' },
   { value: 'MISSING_PREP', label: 'Eksik Hazırlık (-2p)', tone: 'text-orange-300 border-orange-500/40 bg-orange-500/10' },
   { value: 'EXCUSED', label: 'Mazeretli İptal (0p)', tone: 'text-slate-300 border-slate-500/40 bg-slate-500/10' },
@@ -179,13 +247,133 @@ function outcomeBadge(outcome: AttendanceOutcome, flags?: AttendanceFlags) {
   if (flags && flags.late && flags.missingPrep) {
     return (
       <span className="inline-flex flex-wrap items-center gap-1">
-        <Badge className="text-amber-300 border-amber-500/40 bg-amber-500/10">Geç Kaldı (-2p)</Badge>
-        <Badge className="text-orange-300 border-orange-500/40 bg-orange-500/10">Eksik Hazırlık (-2p)</Badge>
+        <Badge className="border-amber-500/40 bg-amber-500/10 text-amber-300">Geç Kaldı (-2p)</Badge>
+        <Badge className="border-orange-500/40 bg-orange-500/10 text-orange-300">Eksik Hazırlık (-2p)</Badge>
       </span>
     )
   }
   const found = OUTCOME_OPTIONS.find((o) => o.value === outcome) || OUTCOME_OPTIONS[OUTCOME_OPTIONS.length - 1]
   return <Badge className={found.tone}>{found.label}</Badge>
+}
+
+function ConfirmDot({ status, published }: { status: RaidEventSignup['confirmStatus']; published: boolean }) {
+  if (status === 'CONFIRMED') {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300"
+        title="Katılım onaylandı"
+      >
+        <Check className="size-2.5" /> Onaylı
+      </span>
+    )
+  }
+  if (status === 'DECLINED_EXCUSED') {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-rose-300"
+        title="Mazeretli iptal"
+      >
+        İptal
+      </span>
+    )
+  }
+  if (published) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300"
+        title="Konfirmasyon bekliyor"
+      >
+        Bekliyor
+      </span>
+    )
+  }
+  return <span className="shrink-0 text-[10px] text-muted-foreground/75">İmzalı</span>
+}
+
+/** Compact assignment control that NEVER stretches cards or truncates character names */
+function CompactAssignControl({
+  signup,
+  event,
+  busy,
+  onAssign,
+}: {
+  signup: RaidEventSignup
+  event: RaidEvent
+  busy: boolean
+  onAssign: (signupId: string, assignment: string) => void
+}) {
+  if (event.rosters.length <= 2) {
+    return (
+      <div className="inline-flex shrink-0 items-center gap-1">
+        {event.rosters.map((r, idx) => {
+          const active = signup.assignment === r.id
+          return (
+            <button
+              key={r.id}
+              type="button"
+              disabled={busy || active}
+              onClick={() => onAssign(signup.id, r.id)}
+              title={`${r.name} grubuna taşı`}
+              className={cn(
+                'cursor-pointer rounded border px-1.5 py-0.5 text-[10px] font-semibold transition disabled:cursor-default',
+                active
+                  ? 'border-gold/55 bg-gold/20 text-gold'
+                  : 'border-border/70 bg-[#081524] text-muted-foreground hover:border-neon/50 hover:text-neon',
+              )}
+            >
+              {event.rosters.length === 1 ? 'Kadro' : `G${idx + 1}`}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          disabled={busy || signup.assignment === 'BENCH'}
+          onClick={() => onAssign(signup.id, 'BENCH')}
+          title="Yedek (Bench) listesine taşı"
+          className={cn(
+            'cursor-pointer rounded border px-1.5 py-0.5 text-[10px] font-semibold transition disabled:cursor-default',
+            signup.assignment === 'BENCH'
+              ? 'border-cyan-400/55 bg-cyan-500/20 text-cyan-200'
+              : 'border-border/70 bg-[#081524] text-muted-foreground hover:border-cyan-400/50 hover:text-cyan-300',
+          )}
+        >
+          Bench
+        </button>
+        {signup.assignment !== 'POOL' && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onAssign(signup.id, 'POOL')}
+            title="İmza havuzuna geri al"
+            className="cursor-pointer rounded border border-border/60 bg-[#081524] px-1.5 py-0.5 text-[10px] text-muted-foreground hover:border-rose-400/50 hover:text-rose-300"
+          >
+            Havuz
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative inline-flex shrink-0 items-center">
+      <ArrowRightLeft className="pointer-events-none absolute left-2 size-3 text-muted-foreground/75" />
+      <select
+        disabled={busy}
+        value={signup.assignment}
+        onChange={(e) => onAssign(signup.id, e.target.value)}
+        aria-label={`${signup.characterName} grup ataması`}
+        className="w-[116px] cursor-pointer truncate rounded-md border border-border/80 bg-[#091829] py-1 pr-2 pl-6 text-[11px] font-medium text-silver transition hover:border-neon/50 focus:border-neon focus:outline-none"
+      >
+        <option value="POOL">Havuz</option>
+        {event.rosters.map((r, idx) => (
+          <option key={r.id} value={r.id}>
+            {shortRosterLabel(r.name, idx)}
+          </option>
+        ))}
+        <option value="BENCH">Bench</option>
+      </select>
+    </div>
+  )
 }
 
 function toDateTimeLocal(ms: number) {
@@ -212,8 +400,8 @@ export function RaidSignupView() {
   const toast = useToast()
   const { data, loading, busy, error, postAction } = useRaidSystem()
 
-  const [subTab, setSubTab] = useState<'active' | 'archive'>('active')
   const [showCycle, setShowCycle] = useState(false)
+  const [calendarFilter, setCalendarFilter] = useState<string>('all')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [confirmModalEvent, setConfirmModalEvent] = useState<RaidEvent | null>(null)
@@ -233,7 +421,7 @@ export function RaidSignupView() {
   const [deadlinesAuto, setDeadlinesAuto] = useState(true)
   const [newNotes, setNewNotes] = useState('')
 
-  // Confirm checklist state
+  // Confirm / Decline / Archive / Manual Add states
   const [prepChecklist, setPrepChecklist] = useState<PrepChecklist>({
     onTime15m: true,
     fullConsumables: true,
@@ -249,6 +437,7 @@ export function RaidSignupView() {
   const rs = data?.raidSystem
   const isOfficer = Boolean(data?.isOfficer)
   const guildMembers = data?.guildMembers || []
+
   const pointsByUser = useMemo(() => {
     const map = new Map<string, number>()
     for (const row of data?.attendanceLeaderboard || []) {
@@ -256,8 +445,9 @@ export function RaidSignupView() {
     }
     return map
   }, [data?.attendanceLeaderboard])
+
   const rankByUser = useMemo(() => {
-    const map = new Map<string, { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }>()
+    const map = new Map<string, RankMeta>()
     for (const m of guildMembers) {
       map.set(m.username.toLowerCase(), {
         label: m.armoryRankLabel || m.guildRank,
@@ -267,36 +457,37 @@ export function RaidSignupView() {
     }
     return map
   }, [guildMembers])
+
   const myMain = useMemo(
     () => guildMembers.find((m) => m.username.toLowerCase() === (user?.username || '').toLowerCase()) || null,
     [guildMembers, user?.username],
   )
 
+  const allEventsSorted = useMemo(
+    () => [...(rs?.events || [])].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
+    [rs?.events],
+  )
+
   const activeEvents = useMemo(
-    () =>
-      (rs?.events || [])
-        .filter((e) => e.status !== 'ARCHIVED')
-        .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt)),
-    [rs?.events],
+    () => allEventsSorted.filter((e) => e.status !== 'ARCHIVED'),
+    [allEventsSorted],
   )
 
-  const archivedEvents = useMemo(
-    () =>
-      (rs?.events || [])
-        .filter((e) => e.status === 'ARCHIVED')
-        .sort((a, b) => (b.archivedAt || b.scheduledAt).localeCompare(a.archivedAt || a.scheduledAt)),
-    [rs?.events],
-  )
-
+  // Default selection: nearest upcoming active raid, otherwise latest archived event
   useEffect(() => {
-    if (subTab === 'active') {
-      if (activeEvents.length > 0 && !activeEvents.some((e) => e.id === selectedEventId)) {
-        setSelectedEventId(activeEvents[0].id)
-      }
+    if (allEventsSorted.length === 0) {
+      setSelectedEventId(null)
+      return
     }
-  }, [activeEvents, selectedEventId, subTab])
+    if (!allEventsSorted.some((e) => e.id === selectedEventId)) {
+      const now = Date.now()
+      const nextUpcoming = activeEvents.find((e) => new Date(e.scheduledAt).getTime() >= now) || activeEvents[0]
+      setSelectedEventId(nextUpcoming ? nextUpcoming.id : allEventsSorted[allEventsSorted.length - 1].id)
+    }
+  }, [allEventsSorted, activeEvents, selectedEventId])
 
-  const selectedEvent = activeEvents.find((e) => e.id === selectedEventId) || activeEvents[0] || null
+  const selectedEvent =
+    allEventsSorted.find((e) => e.id === selectedEventId) || activeEvents[0] || allEventsSorted[0] || null
 
   const runAction = async (payload: Record<string, unknown>, successMsg: string) => {
     try {
@@ -305,6 +496,7 @@ export function RaidSignupView() {
       return true
     } catch (err) {
       toast({
+        variant: 'error',
         title: 'İşlem Başarısız',
         description: err instanceof Error ? err.message : 'Bir hata oluştu.',
       })
@@ -312,8 +504,26 @@ export function RaidSignupView() {
     }
   }
 
-  const handleRaidPresetChange = (raidId: string) => {
-    setNewRaidId(raidId)
+  const openCreateModal = (preferredRaidId?: string, dateKey?: string) => {
+    const targetId =
+      preferredRaidId && preferredRaidId !== 'all'
+        ? preferredRaidId
+        : calendarFilter !== 'all'
+          ? calendarFilter
+          : 'barrow'
+    let schedMs = defaultRaidScheduleMs(targetId)
+    if (dateKey) {
+      const parsed = new Date(`${dateKey}T21:00:00+03:00`).getTime()
+      if (Number.isFinite(parsed)) {
+        schedMs = parsed
+      }
+    }
+    setNewRaidId(targetId)
+    setNewScheduledAt(toDateTimeLocal(schedMs))
+    setNewSignupDeadline(toDateTimeLocal(schedMs - 3 * 86_400_000))
+    setNewConfirmDeadline(toDateTimeLocal(schedMs - 1 * 86_400_000))
+    setDeadlinesAuto(true)
+    setCreateOpen(true)
   }
 
   const handleScheduledChange = (val: string) => {
@@ -354,7 +564,7 @@ export function RaidSignupView() {
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
     if (createDateValidationError) {
-      toast({ title: 'Geçersiz Tarih', description: createDateValidationError, variant: 'error' })
+      toast({ variant: 'error', title: 'Geçersiz Tarih', description: createDateValidationError })
       return
     }
     const def =
@@ -383,7 +593,7 @@ export function RaidSignupView() {
 
   const handleSignup = async (ev: RaidEvent) => {
     if (!user) {
-      toast({ title: 'Giriş Gerekli', description: 'İmza atmak için oturum açın.' })
+      toast({ variant: 'info', title: 'Giriş Gerekli', description: 'İmza atmak için oturum açın.' })
       return
     }
     const char = myMain || {
@@ -421,6 +631,7 @@ export function RaidSignupView() {
       Boolean(prepChecklist.bossTactics)
     if (!allChecked) {
       toast({
+        variant: 'error',
         title: 'Hazırlık Onayı Eksik',
         description: 'Konfirmasyon için 5 raid hazırlık şartını onaylamanız gerekir.',
       })
@@ -469,14 +680,13 @@ export function RaidSignupView() {
     )
     if (ok) {
       setArchiveModalEvent(null)
-      setSubTab('archive')
     }
   }
 
   if (loading) {
     return (
       <Panel className="py-12 text-center text-sm text-muted-foreground">
-        Raid kayıt sistemi yükleniyor...
+        Raid kayıt takvimi yükleniyor...
       </Panel>
     )
   }
@@ -494,31 +704,11 @@ export function RaidSignupView() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="TURX RAID SİSTEMİ · BETA"
-        title="Raid Kayıt & Çoklu Roster Yönetimi"
-        description="Her raid gün ve saat belirtilerek tek imza havuzuyla açılır. Officerlar gelen imzalardan gerektiği kadar grup (Grup 1, Grup 2, ...) ve Bench oluşturup yayınlar; oyuncular geri sayım bitmeden konfirmasyon verir."
+        eyebrow="TURX RAID TAKVİMİ · PAZARTESİ BAŞLANGIÇLI"
+        title="Raid Kayıt & 4 Rol Panosu"
+        description="Gelecek raidler takvimde yeşil ışıklı, geçmiş ve arşivlenen raidler kırmızı flu görünür. Bir etkinliğe tıklayıp 4 rol sütunlu kadroyu inceleyebilir, imza ve konfirmasyon verebilirsiniz."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-border bg-[#071422] p-1">
-              <button
-                onClick={() => setSubTab('active')}
-                className={cn(
-                  'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition',
-                  subTab === 'active' ? 'bg-neon/15 text-neon' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                Aktif Raidler ({activeEvents.length})
-              </button>
-              <button
-                onClick={() => setSubTab('archive')}
-                className={cn(
-                  'cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition',
-                  subTab === 'archive' ? 'bg-gold/15 text-gold' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                Arşiv ({archivedEvents.length})
-              </button>
-            </div>
             <GhostButton
               type="button"
               onClick={() => setShowCycle((v) => !v)}
@@ -531,7 +721,7 @@ export function RaidSignupView() {
               {showCycle ? 'Döngüyü Gizle' : 'Haftalık Döngü'}
             </GhostButton>
             {isOfficer && (
-              <GoldButton onClick={() => setCreateOpen(true)}>
+              <GoldButton onClick={() => openCreateModal()}>
                 <CalendarPlus className="size-4" />
                 Yeni Raid Aç
               </GoldButton>
@@ -556,374 +746,144 @@ export function RaidSignupView() {
         </Panel>
       )}
 
-      {subTab === 'active' && (
-        <>
-          {activeEvents.length === 0 ? (
-            <Panel className="py-12 text-center">
-              <CalendarClock className="mx-auto size-10 text-muted-foreground/60" />
-              <p className="mt-3 font-display text-lg font-bold text-foreground">Şu an açık raid takvimi yok</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {isOfficer
-                  ? 'Yukarıdaki "Yeni Raid Aç" butonuyla Barrow Deeps, Hyjal Summit veya Onyxia takvimi açabilirsiniz.'
-                  : 'Officerlar yeni haftanın raidlerini açtığında burada geri sayımla birlikte görünecektir.'}
-              </p>
-            </Panel>
-          ) : (
-            <>
-              {/* Event Cards Selector */}
-              <div className="grid gap-4 md:grid-cols-3">
-                {activeEvents.map((ev) => {
-                  const isSelected = selectedEvent?.id === ev.id
-                  const myEntry = ev.signups.find(
-                    (s) => s.username.toLowerCase() === (user?.username || '').toLowerCase(),
-                  )
-                  const assignedCount = ev.signups.filter((s) => s.assignment !== 'POOL' && s.assignment !== 'BENCH').length
-                  const benchCount = ev.signups.filter((s) => s.assignment === 'BENCH').length
+      {/* Monday-First 5-Week (-2/+2) & Monthly Calendar */}
+      <RaidCalendarGrid
+        events={allEventsSorted}
+        selectedEventId={selectedEvent?.id || null}
+        onSelectEvent={(clicked) => setSelectedEventId(clicked.id)}
+        currentUsername={user?.username || null}
+        isOfficer={isOfficer}
+        onQuickCreateForDate={(dateKey) => openCreateModal(calendarFilter, dateKey)}
+        raidTypeFilter={calendarFilter}
+        onRaidTypeFilterChange={(rid) => setCalendarFilter(rid)}
+      />
 
-                  return (
-                    <button
-                      key={ev.id}
-                      onClick={() => setSelectedEventId(ev.id)}
-                      className={cn(
-                        'panel cursor-pointer p-4 text-left transition',
-                        isSelected
-                          ? 'border-neon/60 bg-gradient-to-br from-neon/10 to-transparent shadow-[0_0_24px_rgb(0_242_254/0.14)]'
-                          : 'hover:border-gold/40',
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-display text-base font-bold text-gold">{ev.raidName}</span>
-                            <Badge className={isGuildMeetingEvent(ev.raidId) ? 'border-purple-400/40 bg-purple-500/15 text-purple-200' : 'border-gold/30 bg-gold/10 text-gold'}>
-                              {isGuildMeetingEvent(ev.raidId) ? 'Tüm Guild' : `${ev.size}-Man`}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 text-xs text-silver">{formatTrDateTime(ev.scheduledAt)}</p>
-                        </div>
-                        <Badge
-                          className={
-                            ev.status === 'ROSTERS_PUBLISHED'
-                              ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                              : 'border-neon/40 bg-neon/10 text-neon'
-                          }
-                        >
-                          {ev.status === 'ROSTERS_PUBLISHED' ? 'Roster Yayında' : 'İmza Açık'}
-                        </Badge>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-                        <div className="rounded-lg border border-border/70 bg-[#071422]/80 px-2.5 py-1.5">
-                          <span className="block text-muted-foreground">İmza Kapanış</span>
-                          <CountdownValue targetIso={ev.signupDeadline} accentClass="text-neon" />
-                        </div>
-                        <div className="rounded-lg border border-border/70 bg-[#071422]/80 px-2.5 py-1.5">
-                          <span className="block text-muted-foreground">Konfirme Kapanış</span>
-                          <CountdownValue targetIso={ev.confirmDeadline} accentClass="text-gold" />
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                        <span>
-                          <strong className="text-foreground">{ev.signups.length}</strong> imza ·{' '}
-                          <strong className="text-foreground">{ev.rosters.length}</strong> grup ({assignedCount} atanmış, {benchCount} bench)
-                        </span>
-                        {myEntry && (
-                          <Badge
-                            className={
-                              myEntry.confirmStatus === 'CONFIRMED'
-                                ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                                : myEntry.confirmStatus === 'DECLINED_EXCUSED'
-                                  ? 'border-rose-500/40 bg-rose-500/15 text-rose-300'
-                                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                            }
-                          >
-                            {myEntry.confirmStatus === 'CONFIRMED'
-                              ? 'Konfirme'
-                              : myEntry.confirmStatus === 'DECLINED_EXCUSED'
-                                ? 'İptal'
-                                : 'İmzalı'}
-                          </Badge>
-                        )}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Selected Raid Event Workspace */}
-              {selectedEvent && (
-                <EventWorkspace
-                  event={selectedEvent}
-                  allEvents={rs.events}
-                  pointsByUser={pointsByUser}
-                  rankByUser={rankByUser}
-                  isOfficer={isOfficer}
-                  busy={busy}
-                  currentUsername={user?.username || null}
-                  myMain={myMain}
-                  rules={rules}
-                  onSignup={() => void handleSignup(selectedEvent)}
-                  onRefreshArmoryLevel={() =>
-                    void runAction(
-                      { action: 'refresh_my_armory_level' },
-                      'WoW Armory seviyeniz güncellendi.',
-                    )
-                  }
-                  onWithdraw={() =>
-                    void runAction(
-                      { action: 'withdraw_signup', eventId: selectedEvent.id },
-                      'İmzanız geri çekildi.',
-                    )
-                  }
-                  onOpenConfirm={() => setConfirmModalEvent(selectedEvent)}
-                  onOpenDecline={() => setDeclineModalEvent(selectedEvent)}
-                  onAddRoster={() =>
-                    void runAction(
-                      { action: 'add_roster', eventId: selectedEvent.id },
-                      `Yeni grup (Grup ${selectedEvent.rosters.length + 1}) oluşturuldu.`,
-                    )
-                  }
-                  onUpdateRoster={(rosterId, updates) =>
-                    void runAction(
-                      { action: 'update_roster', eventId: selectedEvent.id, rosterId, ...updates },
-                      'Grup adı ve rengi güncellendi.',
-                    )
-                  }
-                  onRemoveRoster={(rosterId) =>
-                    void runAction(
-                      { action: 'remove_roster', eventId: selectedEvent.id, rosterId },
-                      'Grup silindi, oyuncular imza havuzuna döndürüldü.',
-                    )
-                  }
-                  onAssign={(signupId, assignment) =>
-                    void runAction(
-                      { action: 'assign_member', eventId: selectedEvent.id, signupId, assignment },
-                      'Oyuncu ataması güncellendi.',
-                    )
-                  }
-                  onPublish={() =>
-                    void runAction(
-                      { action: 'publish_rosters', eventId: selectedEvent.id },
-                      'Tüm gruplar ve Bench yayınlandı! Oyuncular konfirmasyon verebilir.',
-                    )
-                  }
-                  onSetOutcome={(signupId, flags) =>
-                    void runAction(
-                      {
-                        action: 'set_attendance_outcome',
-                        eventId: selectedEvent.id,
-                        signupId,
-                        flags,
-                        outcome: deriveOutcomeFromFlags(flags),
-                      },
-                      'Katılım durumu ve puan önizlemesi güncellendi.',
-                    )
-                  }
-                  onBatchSetOutcome={(updates, msg) =>
-                    void runAction(
-                      {
-                        action: 'set_attendance_outcome',
-                        eventId: selectedEvent.id,
-                        updates: updates.map((u) => ({
-                          signupId: u.signupId,
-                          flags: u.flags,
-                          outcome: deriveOutcomeFromFlags(u.flags),
-                        })),
-                      },
-                      msg,
-                    )
-                  }
-                  onMarkRosterScored={(rosterId, scored) =>
-                    void runAction(
-                      { action: 'mark_roster_scored', eventId: selectedEvent.id, rosterId, scored },
-                      scored ? 'Grup puanlaması onaylandı.' : 'Grup puanlama onayı kaldırıldı.',
-                    )
-                  }
-                  onOpenArchive={() => setArchiveModalEvent(selectedEvent)}
-                  onOpenAddMember={() => {
-                    setManualAddUsername(guildMembers[0]?.username || '')
-                    setManualAddAssignment(selectedEvent.rosters[0]?.id || 'POOL')
-                    setAddMemberModalEvent(selectedEvent)
-                  }}
-                  onDeleteEvent={() =>
-                    void runAction(
-                      { action: 'delete_event', eventId: selectedEvent.id },
-                      'Raid etkinliği silindi.',
-                    )
-                  }
-                />
-              )}
-            </>
-          )}
-        </>
-      )}
-
-      {subTab === 'archive' && (
-        <div className="space-y-4">
-          {archivedEvents.length === 0 ? (
-            <Panel className="py-12 text-center">
-              <Archive className="mx-auto size-10 text-muted-foreground/60" />
-              <p className="mt-3 font-display text-lg font-bold text-foreground">Henüz arşivlenmiş raid yok</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Bir raid tamamlanıp Officer tarafından &quot;Tamamla &amp; Arşivle&quot; dendiğinde tüm katılımcılar (Bench dahil) ve aldıkları puan/cezalar burada saklanır.
-              </p>
-            </Panel>
-          ) : (
-            archivedEvents.map((ev) => {
-              const archiveGroups: {
-                id: string
-                name: string
-                color: string
-                scoredBy?: string
-                members: RaidEventSignup[]
-              }[] = [
-                ...ev.rosters.map((r, rIdx) => ({
-                  id: r.id,
-                  name: r.name,
-                  color: r.color || ROSTER_COLOR_PRESETS[rIdx % ROSTER_COLOR_PRESETS.length].hex,
-                  scoredBy: r.scoredBy,
-                  members: ev.signups.filter((s) => s.assignment === r.id),
+      {/* Selected Event Workspace (Active/Upcoming 4-Role Board OR Archived Score Breakdown) */}
+      {!selectedEvent ? (
+        <Panel className="border-dashed border-border/80 py-12 text-center">
+          <CalendarClock className="mx-auto size-10 text-muted-foreground/60" />
+          <p className="mt-3 font-display text-lg font-bold text-foreground">
+            Takvimde henüz etkinlik yok
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isOfficer
+              ? 'Gelecek bir gün kutusunun sağ üstündeki + düğmesiyle veya yukarıdaki "Yeni Raid Aç" butonuyla takvime raid ekleyebilirsiniz.'
+              : 'Officerlar yeni haftanın raidlerini açtığında takvimde yeşil ışıklı olarak görünecektir.'}
+          </p>
+        </Panel>
+      ) : selectedEvent.status === 'ARCHIVED' ? (
+        <ArchivedEventPanel
+          event={selectedEvent}
+          rules={rules}
+          pointsByUser={pointsByUser}
+          rankByUser={rankByUser}
+        />
+      ) : (
+        <EventWorkspace
+          key={selectedEvent.id}
+          event={selectedEvent}
+          allEvents={rs.events}
+          pointsByUser={pointsByUser}
+          rankByUser={rankByUser}
+          isOfficer={isOfficer}
+          busy={busy}
+          currentUsername={user?.username || null}
+          myMain={myMain}
+          rules={rules}
+          onSignup={() => void handleSignup(selectedEvent)}
+          onRefreshArmoryLevel={() =>
+            void runAction(
+              { action: 'refresh_my_armory_level' },
+              'WoW Armory seviyeniz güncellendi.',
+            )
+          }
+          onWithdraw={() =>
+            void runAction(
+              { action: 'withdraw_signup', eventId: selectedEvent.id },
+              'İmzanız geri çekildi.',
+            )
+          }
+          onOpenConfirm={() => setConfirmModalEvent(selectedEvent)}
+          onOpenDecline={() => setDeclineModalEvent(selectedEvent)}
+          onAddRoster={() =>
+            void runAction(
+              { action: 'add_roster', eventId: selectedEvent.id },
+              `Yeni grup (Grup ${selectedEvent.rosters.length + 1}) oluşturuldu.`,
+            )
+          }
+          onUpdateRoster={(rosterId, updates) =>
+            void runAction(
+              { action: 'update_roster', eventId: selectedEvent.id, rosterId, ...updates },
+              'Grup adı ve rengi güncellendi.',
+            )
+          }
+          onRemoveRoster={(rosterId) =>
+            void runAction(
+              { action: 'remove_roster', eventId: selectedEvent.id, rosterId },
+              'Grup silindi, oyuncular imza havuzuna döndürüldü.',
+            )
+          }
+          onAssign={(signupId, assignment) =>
+            void runAction(
+              { action: 'assign_member', eventId: selectedEvent.id, signupId, assignment },
+              'Oyuncu ataması güncellendi.',
+            )
+          }
+          onPublish={() =>
+            void runAction(
+              { action: 'publish_rosters', eventId: selectedEvent.id },
+              'Tüm gruplar ve Bench yayınlandı! Oyuncular konfirmasyon verebilir.',
+            )
+          }
+          onSetOutcome={(signupId, flags) =>
+            void runAction(
+              {
+                action: 'set_attendance_outcome',
+                eventId: selectedEvent.id,
+                signupId,
+                flags,
+                outcome: deriveOutcomeFromFlags(flags),
+              },
+              'Katılım durumu ve puan önizlemesi güncellendi.',
+            )
+          }
+          onBatchSetOutcome={(updates, msg) =>
+            void runAction(
+              {
+                action: 'set_attendance_outcome',
+                eventId: selectedEvent.id,
+                updates: updates.map((u) => ({
+                  signupId: u.signupId,
+                  flags: u.flags,
+                  outcome: deriveOutcomeFromFlags(u.flags),
                 })),
-              ]
-              const archivedBench = ev.signups.filter((s) => s.assignment === 'BENCH')
-              if (archivedBench.length > 0) {
-                archiveGroups.push({
-                  id: 'BENCH',
-                  name: 'Yedek / Bench',
-                  color: '#22d3ee',
-                  scoredBy: ev.benchScoredBy,
-                  members: archivedBench,
-                })
-              }
-              const knownIds = new Set([...ev.rosters.map((r) => r.id), 'BENCH'])
-              const archivedPool = ev.signups.filter((s) => !knownIds.has(s.assignment))
-              if (archivedPool.length > 0) {
-                archiveGroups.push({
-                  id: 'POOL',
-                  name: 'Atanmamış Havuz / İptal',
-                  color: '#94a3b8',
-                  members: archivedPool,
-                })
-              }
-
-              return (
-                <Panel key={ev.id}>
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-display text-lg font-bold text-gold">{ev.raidName}</h3>
-                        <Badge className="border-gold/30 bg-gold/10 text-gold">{ev.size}-Man</Badge>
-                        <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">Arşivlendi</Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Raid Tarihi: {formatTrDateTime(ev.scheduledAt)} · Arşivleyen: {ev.archivedBy || '—'}
-                      </p>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Toplam Kayıt: <strong className="text-foreground">{ev.signups.length}</strong> · Grup Sayısı:{' '}
-                      <strong className="text-foreground">{ev.rosters.length}</strong>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 space-y-4">
-                    {archiveGroups.map((grp) => (
-                      <div
-                        key={grp.id}
-                        className="relative overflow-hidden rounded-xl border bg-[#071422]/85 p-3.5"
-                        style={{ borderColor: `${grp.color}45` }}
-                      >
-                        <div
-                          className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
-                          style={{ backgroundColor: grp.color }}
-                        />
-                        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="size-2.5 rounded-full"
-                              style={{ backgroundColor: grp.color, boxShadow: `0 0 8px ${grp.color}` }}
-                            />
-                            <h4 className="font-display text-sm font-bold" style={{ color: grp.color }}>
-                              {grp.name}
-                            </h4>
-                            <span className="text-[11px] text-muted-foreground">({grp.members.length} kişi)</span>
-                          </div>
-                          {grp.scoredBy && (
-                            <Badge className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-300">
-                              ✓ Puanlayan: {grp.scoredBy}
-                            </Badge>
-                          )}
-                        </div>
-
-                        {grp.members.length === 0 ? (
-                          <p className="py-2 text-xs text-muted-foreground">Bu grupta kayıtlı oyuncu yok.</p>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs">
-                              <thead>
-                                <tr className="border-b border-border/50 text-muted-foreground uppercase">
-                                  <th className="py-1.5 pr-3">Karakter</th>
-                                  <th className="py-1.5 pr-3">Konfirme</th>
-                                  <th className="py-1.5 pr-3">Sonuç</th>
-                                  <th className="py-1.5 pr-3 text-right">İmza/Konf.</th>
-                                  <th className="py-1.5 pr-3 text-right">Raid/Yedek</th>
-                                  <th className="py-1.5 pr-3 text-right">Ceza</th>
-                                  <th className="py-1.5 text-right">Net Puan</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-border/35">
-                                {grp.members.map((s) => {
-                                  const bd = s.pointsBreakdown || calculateSignupPoints(s, ev.size, rules)
-                                  return (
-                                    <tr key={s.id} className="hover:bg-white/[0.02]">
-                                      <td className="py-2 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
-                                        <span className="inline-flex flex-wrap items-center gap-1.5">
-                                          <span>{s.characterName}</span>
-                                          {(() => {
-                                            const rk = rankByUser.get(s.username.toLowerCase())
-                                            return rk ? (
-                                              <RankPill
-                                                label={rk.label}
-                                                color={rk.color}
-                                                armoryRankId={rk.armoryRankId}
-                                              />
-                                            ) : null
-                                          })()}
-                                          <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
-                                        </span>
-                                        <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
-                                      </td>
-                                      <td className="py-2 pr-3 text-muted-foreground">
-                                        {s.confirmStatus === 'CONFIRMED'
-                                          ? 'Konfirme'
-                                          : s.confirmStatus === 'DECLINED_EXCUSED'
-                                            ? 'Mazeretli İptal'
-                                            : 'Konfirme Yok'}
-                                      </td>
-                                      <td className="py-2 pr-3">{outcomeBadge(s.attendanceOutcome, s.attendanceFlags)}</td>
-                                      <td className="py-2 pr-3 text-right font-mono text-cyan-300">+{bd.signup + bd.confirm}</td>
-                                      <td className="py-2 pr-3 text-right font-mono text-emerald-300">+{bd.raid}</td>
-                                      <td className="py-2 pr-3 text-right font-mono text-rose-400">
-                                        {bd.penalty < 0 ? bd.penalty : '0'}
-                                      </td>
-                                      <td className="py-2 text-right font-mono font-bold text-gold">
-                                        {bd.total > 0 ? `+${bd.total}` : bd.total}
-                                      </td>
-                                    </tr>
-                                  )
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              )
-            })
-          )}
-        </div>
+              },
+              msg,
+            )
+          }
+          onMarkRosterScored={(rosterId, scored) =>
+            void runAction(
+              { action: 'mark_roster_scored', eventId: selectedEvent.id, rosterId, scored },
+              scored ? 'Grup puanlaması onaylandı.' : 'Grup puanlama onayı kaldırıldı.',
+            )
+          }
+          onOpenArchive={() => setArchiveModalEvent(selectedEvent)}
+          onOpenAddMember={() => {
+            setManualAddUsername(guildMembers[0]?.username || '')
+            setManualAddAssignment(selectedEvent.rosters[0]?.id || 'POOL')
+            setAddMemberModalEvent(selectedEvent)
+          }}
+          onDeleteEvent={() => {
+            const confirmed = window.confirm(
+              `"${selectedEvent.raidName}" (${formatTrDateTime(selectedEvent.scheduledAt)}) etkinliğini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
+            )
+            if (!confirmed) return
+            void runAction(
+              { action: 'delete_event', eventId: selectedEvent.id },
+              'Raid etkinliği silindi.',
+            )
+          }}
+        />
       )}
 
       {/* Create Event Modal */}
@@ -938,7 +898,7 @@ export function RaidSignupView() {
             <select
               className={inputClass}
               value={newRaidId}
-              onChange={(e) => handleRaidPresetChange(e.target.value)}
+              onChange={(e) => setNewRaidId(e.target.value)}
             >
               <optgroup label="Raidler">
                 {RAID_CATALOG.map((r) => (
@@ -1228,6 +1188,170 @@ export function RaidSignupView() {
   )
 }
 
+function ArchivedEventPanel({
+  event,
+  rules,
+  pointsByUser,
+  rankByUser,
+}: {
+  event: RaidEvent
+  rules: PointRules
+  pointsByUser: Map<string, number>
+  rankByUser: Map<string, RankMeta>
+}) {
+  const isMeeting = isGuildMeetingEvent(event.raidId)
+  const archiveGroups: {
+    id: string
+    name: string
+    color: string
+    scoredBy?: string
+    members: RaidEventSignup[]
+  }[] = [
+    ...event.rosters.map((r, rIdx) => ({
+      id: r.id,
+      name: r.name,
+      color: r.color || ROSTER_COLOR_PRESETS[rIdx % ROSTER_COLOR_PRESETS.length].hex,
+      scoredBy: r.scoredBy,
+      members: event.signups.filter((s) => s.assignment === r.id),
+    })),
+  ]
+
+  const archivedBench = event.signups.filter((s) => s.assignment === 'BENCH')
+  if (archivedBench.length > 0) {
+    archiveGroups.push({
+      id: 'BENCH',
+      name: 'Yedek / Bench',
+      color: '#22d3ee',
+      scoredBy: event.benchScoredBy,
+      members: archivedBench,
+    })
+  }
+  const knownIds = new Set([...event.rosters.map((r) => r.id), 'BENCH'])
+  const archivedPool = event.signups.filter((s) => !knownIds.has(s.assignment))
+  if (archivedPool.length > 0) {
+    archiveGroups.push({
+      id: 'POOL',
+      name: 'Atanmamış Havuz / İptal',
+      color: '#94a3b8',
+      members: archivedPool,
+    })
+  }
+
+  return (
+    <Panel className="border-rose-500/35 bg-gradient-to-br from-rose-950/30 via-[#081524] to-[#071220]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-500/25 pb-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="size-2.5 rounded-full bg-rose-400/80" />
+            <h2 className="font-display text-xl font-bold text-rose-200">{event.raidName}</h2>
+            <Badge className={isMeeting ? 'border-purple-400/35 bg-purple-500/15 text-purple-200' : 'border-gold/30 bg-gold/10 text-gold'}>
+              {isMeeting ? 'Tüm Guild' : `${event.size}-Man`}
+            </Badge>
+            <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">
+              <Archive className="size-3" /> Arşivlendi
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Raid Tarihi: {formatTrDateTime(event.scheduledAt)} · Arşivleyen: {event.archivedBy || '—'}
+          </p>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Toplam Kayıt: <strong className="text-foreground">{event.signups.length}</strong> · Grup Sayısı:{' '}
+          <strong className="text-foreground">{event.rosters.length}</strong>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-4">
+        {archiveGroups.map((grp) => (
+          <div
+            key={grp.id}
+            className="relative overflow-hidden rounded-xl border bg-[#071422]/85 p-3.5"
+            style={{ borderColor: `${grp.color}45` }}
+          >
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-0.5"
+              style={{ backgroundColor: grp.color }}
+            />
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2">
+              <div className="flex items-center gap-2">
+                <span
+                  className="size-2.5 rounded-full"
+                  style={{ backgroundColor: grp.color, boxShadow: `0 0 8px ${grp.color}` }}
+                />
+                <h4 className="font-display text-sm font-bold" style={{ color: grp.color }}>
+                  {grp.name}
+                </h4>
+                <span className="text-[11px] text-muted-foreground">({grp.members.length} kişi)</span>
+              </div>
+              {grp.scoredBy && (
+                <Badge className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-300">
+                  ✓ Puanlayan: {grp.scoredBy}
+                </Badge>
+              )}
+            </div>
+
+            {grp.members.length === 0 ? (
+              <p className="py-2 text-xs text-muted-foreground">Bu grupta kayıtlı oyuncu yok.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border/50 text-muted-foreground uppercase">
+                      <th className="py-1.5 pr-3">Karakter</th>
+                      <th className="py-1.5 pr-3">Konfirme</th>
+                      <th className="py-1.5 pr-3">Sonuç</th>
+                      <th className="py-1.5 pr-3 text-right">İmza/Konf.</th>
+                      <th className="py-1.5 pr-3 text-right">Raid/Yedek</th>
+                      <th className="py-1.5 pr-3 text-right">Ceza</th>
+                      <th className="py-1.5 text-right">Net Puan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/35">
+                    {grp.members.map((s) => {
+                      const bd = s.pointsBreakdown || calculateSignupPoints(s, event.size, rules)
+                      const rk = rankByUser.get(s.username.toLowerCase())
+                      return (
+                        <tr key={s.id} className="hover:bg-white/[0.02]">
+                          <td className="py-2 pr-3 font-semibold" style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}>
+                            <span className="inline-flex flex-wrap items-center gap-1.5">
+                              <span>{s.characterName}</span>
+                              {rk && (
+                                <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                              )}
+                              <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
+                            </span>
+                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">({s.spec})</span>
+                          </td>
+                          <td className="py-2 pr-3 text-muted-foreground">
+                            {s.confirmStatus === 'CONFIRMED'
+                              ? 'Konfirme'
+                              : s.confirmStatus === 'DECLINED_EXCUSED'
+                                ? 'Mazeretli İptal'
+                                : 'Konfirme Yok'}
+                          </td>
+                          <td className="py-2 pr-3">{outcomeBadge(s.attendanceOutcome, s.attendanceFlags)}</td>
+                          <td className="py-2 pr-3 text-right font-mono text-cyan-300">+{bd.signup + bd.confirm}</td>
+                          <td className="py-2 pr-3 text-right font-mono text-emerald-300">+{bd.raid}</td>
+                          <td className="py-2 pr-3 text-right font-mono text-rose-400">
+                            {bd.penalty < 0 ? bd.penalty : '0'}
+                          </td>
+                          <td className="py-2 text-right font-mono font-bold text-gold">
+                            {bd.total > 0 ? `+${bd.total}` : bd.total}p
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
 function EventWorkspace({
   event,
   allEvents,
@@ -1258,7 +1382,7 @@ function EventWorkspace({
   event: RaidEvent
   allEvents: RaidEvent[]
   pointsByUser: Map<string, number>
-  rankByUser: Map<string, { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }>
+  rankByUser: Map<string, RankMeta>
   isOfficer: boolean
   busy: boolean
   currentUsername: string | null
@@ -1272,19 +1396,7 @@ function EventWorkspace({
     level: number
     guildRank: string
   } | null
-  rules: {
-    raid10: number
-    raid20: number
-    raid40: number
-    signup: number
-    confirm: number
-    benchReadyEqual: boolean
-    benchReadyPoints?: number
-    latePenalty: number
-    noShowPenalty: number
-    excusedDeclinePenalty: number
-    missingPrepPenalty: number
-  }
+  rules: PointRules
   onSignup: () => void
   onRefreshArmoryLevel: () => void
   onWithdraw: () => void
@@ -1303,13 +1415,17 @@ function EventWorkspace({
   onDeleteEvent: () => void
 }) {
   const [viewMode, setViewMode] = useState<'rosters' | 'postraid'>('rosters')
+  const [rosterFilterId, setRosterFilterId] = useState<string>('all')
   const [editingRosterId, setEditingRosterId] = useState<string | null>(null)
   const [editRosterName, setEditRosterName] = useState('')
   const [editRosterColor, setEditRosterColor] = useState('#d4af37')
   const [postraidGroupFilter, setPostraidGroupFilter] = useState<string>('all')
   const [collapsedPostraidGroups, setCollapsedPostraidGroups] = useState<Record<string, boolean>>({})
+
   const signupExpired = new Date(event.signupDeadline).getTime() <= Date.now()
   const confirmExpired = new Date(event.confirmDeadline).getTime() <= Date.now()
+  const eventHasStarted = new Date(event.scheduledAt).getTime() <= Date.now()
+  const isMeeting = isGuildMeetingEvent(event.raidId)
 
   const myEntry = event.signups.find(
     (s) => currentUsername && s.username.toLowerCase() === currentUsername.toLowerCase(),
@@ -1326,36 +1442,71 @@ function EventWorkspace({
         : event.rosters.find((r) => r.id === myEntry.assignment)?.name || myEntry.assignment
 
   const baseRaidPts = raidBasePoints(event.size, rules)
-  const eventHasStarted = new Date(event.scheduledAt).getTime() <= Date.now()
+  const visibleRosters =
+    rosterFilterId === 'all' ? event.rosters : event.rosters.filter((r) => r.id === rosterFilterId)
+
+  const myLevel = myMain?.level ?? 0
+  const isBelowLevel60 = Boolean(!isMeeting && currentUsername && myLevel < 60)
 
   return (
     <div className="space-y-5">
-      {/* Header & Player Action Banner */}
-      <Panel className="border-gold/30 bg-gradient-to-br from-[#0d2238] via-[#091829] to-[#071220]">
+      {/* Unified Selected Event Command Banner */}
+      <Panel
+        className={cn(
+          'p-4 sm:p-5',
+          eventHasStarted
+            ? 'border-rose-500/40 bg-gradient-to-br from-rose-950/25 via-[#091829] to-[#071220]'
+            : 'border-emerald-400/35 bg-gradient-to-br from-emerald-950/20 via-[#0b1f33] to-[#071220]',
+        )}
+      >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="font-display text-2xl font-bold text-gold">{event.raidName}</h2>
-              <Badge className={isGuildMeetingEvent(event.raidId) ? 'border-purple-400/40 bg-purple-500/15 text-purple-200' : 'border-gold/40 bg-gold/10 text-gold'}>
-                {isGuildMeetingEvent(event.raidId) ? 'Tüm Guild · Tüm Seviyeler' : `${event.size}-Man`}
+              <span
+                className={cn(
+                  'size-2.5 shrink-0 rounded-full',
+                  eventHasStarted
+                    ? 'bg-rose-400'
+                    : 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]',
+                )}
+              />
+              <h2 className="font-display text-xl font-bold text-gold sm:text-2xl">{event.raidName}</h2>
+              <Badge
+                className={
+                  isMeeting
+                    ? 'border-purple-400/40 bg-purple-500/15 text-purple-200'
+                    : 'border-gold/40 bg-gold/10 text-gold'
+                }
+              >
+                {isMeeting ? 'Tüm Guild · Tüm Seviyeler' : `${event.size}-Man`}
               </Badge>
               <Badge
                 className={
-                  event.status === 'ROSTERS_PUBLISHED'
-                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
-                    : 'border-neon/40 bg-neon/10 text-neon'
+                  eventHasStarted
+                    ? 'border-rose-500/40 bg-rose-500/15 text-rose-300'
+                    : event.status === 'ROSTERS_PUBLISHED'
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                      : 'border-neon/40 bg-neon/10 text-neon'
                 }
               >
-                {event.status === 'ROSTERS_PUBLISHED' ? 'Roster Yayınlandı — Konfirmasyon Açık' : 'İmza Toplama Aşaması'}
+                {eventHasStarted
+                  ? 'Süresi Geçti · Puanlama & Arşiv Bekliyor'
+                  : event.status === 'ROSTERS_PUBLISHED'
+                    ? 'Roster Yayında — Konfirmasyon Açık'
+                    : 'İmza Toplama Aşaması'}
               </Badge>
             </div>
             <p className="mt-1 text-sm text-silver">{formatTrDateTime(event.scheduledAt)}</p>
             {event.notes && <p className="mt-1 text-xs text-amber-200/90">Not: {event.notes}</p>}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          {/* Countdowns */}
+          <div className="flex flex-wrap items-center gap-2.5">
             <div className="rounded-xl border border-neon/25 bg-[#071422] px-3.5 py-2 text-center">
-              <p className="text-[10px] tracking-wider text-muted-foreground uppercase">İmza Kapanış</p>
+              <p className="text-[10px] tracking-wider text-muted-foreground uppercase">
+                <Clock className="mr-1 inline size-3 text-neon" />
+                İmza Kapanış
+              </p>
               <CountdownValue targetIso={event.signupDeadline} accentClass="text-neon" className="text-sm font-bold" />
               <p className="mt-0.5 text-[10px] text-muted-foreground">{formatTrShortDateTime(event.signupDeadline)}</p>
             </div>
@@ -1367,409 +1518,632 @@ function EventWorkspace({
           </div>
         </div>
 
-        {/* Player CTA Bar */}
-        {(() => {
-          const isMeeting = isGuildMeetingEvent(event.raidId)
-          const myLevel = myMain?.level ?? 0
-          const isBelowLevel60 = Boolean(!isMeeting && currentUsername && myLevel < 60)
-          return (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-[#071422]/85 px-4 py-3">
-              <div className="text-xs">
-                {myEntry ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-muted-foreground">Durumun:</span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
-                      {(() => {
-                        const rk = rankByUser.get(myEntry.username.toLowerCase())
-                        return rk ? (
-                          <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
-                        ) : null
-                      })()}
-                      <PointsPill points={pointsByUser.get(myEntry.username.toLowerCase()) ?? 0} />
-                    </span>
-                    <Badge className="border-neon/30 bg-neon/10 text-neon">{myAssignmentLabel}</Badge>
-                    {myEntry.confirmStatus === 'CONFIRMED' && (
-                      <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
-                        Konfirme Edildi (+{rules.confirm}p)
-                      </Badge>
-                    )}
-                    {myEntry.confirmStatus === 'DECLINED_EXCUSED' && (
-                      <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">Mazeretli İptal</Badge>
-                    )}
-                  </div>
-                ) : isBelowLevel60 ? (
-                  <span className="flex items-center gap-1.5 text-amber-300">
-                    <Lock className="size-3.5 shrink-0" />
-                    <span>
-                      {myLevel > 0 ? (
-                        <>
-                          WoW Armory verisine göre karakteriniz (<strong>{myMain?.characterName}</strong>) şu an{' '}
-                          <strong>Level {myLevel}</strong>. Raidlere yalnızca <strong>Level 60</strong> karakterler imza atabilir.
-                        </>
-                      ) : (
-                        <>
-                          WoW Armory üzerinden karakterinizin <strong>Level 60</strong> olduğu doğrulandığında raidlere imza atabilirsiniz.
-                        </>
-                      )}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">
-                    {isMeeting
-                      ? 'Bu guild toplantısına henüz imza atmadınız. Tüm seviyeler imza atabilir — ilk puanlarınız bu demo ile başlar!'
-                      : 'Bu raide henüz imza atmadınız. Tek imza havuzuna kaydolun, Officerlar uygun gruba atasın.'}
-                  </span>
+        {/* Player Status & CTA Bar */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-[#071422]/85 px-4 py-3">
+          <div className="text-xs">
+            {myEntry ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-muted-foreground">Durumun:</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <strong style={{ color: CLASS_COLORS[myEntry.wowClass] }}>{myEntry.characterName}</strong>
+                  {(() => {
+                    const rk = rankByUser.get(myEntry.username.toLowerCase())
+                    return rk ? (
+                      <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                    ) : null
+                  })()}
+                  <PointsPill points={pointsByUser.get(myEntry.username.toLowerCase()) ?? 0} />
+                </span>
+                <Badge className="border-neon/30 bg-neon/10 text-neon">{myAssignmentLabel}</Badge>
+                {myEntry.confirmStatus === 'CONFIRMED' && (
+                  <Badge className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300">
+                    Konfirme Edildi (+{rules.confirm}p)
+                  </Badge>
+                )}
+                {myEntry.confirmStatus === 'DECLINED_EXCUSED' && (
+                  <Badge className="border-rose-500/40 bg-rose-500/15 text-rose-300">Mazeretli İptal</Badge>
                 )}
               </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {!myEntry ? (
-                  isBelowLevel60 ? (
+            ) : isBelowLevel60 ? (
+              <span className="flex items-center gap-1.5 text-amber-300">
+                <Lock className="size-3.5 shrink-0" />
+                <span>
+                  {myLevel > 0 ? (
                     <>
-                      <GhostButton
-                        type="button"
-                        disabled={busy}
-                        onClick={onRefreshArmoryLevel}
-                        className="px-3 py-1.5 text-xs"
-                        title="Yeni 60 olduysanız WoW Armory seviyenizi yeniden kontrol eder"
-                      >
-                        <RefreshCw className="size-3.5" />
-                        Armory Yenile
-                      </GhostButton>
-                      <GoldButton disabled className="opacity-55">
-                        <Lock className="size-4" />
-                        Level 60 Gerekli{myLevel > 0 ? ` (Lv${myLevel})` : ''}
-                      </GoldButton>
+                      WoW Armory verisine göre karakteriniz (<strong>{myMain?.characterName}</strong>) şu an{' '}
+                      <strong>Level {myLevel}</strong>. Raidlere yalnızca <strong>Level 60</strong> karakterler imza atabilir.
                     </>
                   ) : (
-                    <GoldButton disabled={busy || (signupExpired && !isOfficer)} onClick={onSignup}>
-                      <UserCheck className="size-4" />
-                      {isMeeting ? `Toplantıya İmza At (+${rules.signup}p)` : `Raide İmza At (+${rules.signup}p)`}
-                    </GoldButton>
-                  )
-                ) : (
-                  <>
-                    {event.status === 'ROSTERS_PUBLISHED' && myEntry.confirmStatus !== 'CONFIRMED' && (
-                      <GoldButton disabled={busy || (confirmExpired && !isOfficer)} onClick={onOpenConfirm}>
-                        <CheckCircle2 className="size-4" />
-                        Katılımı Konfirme Et (+{rules.confirm}p)
-                      </GoldButton>
-                    )}
-                    {myEntry.confirmStatus !== 'DECLINED_EXCUSED' && (
-                      <GhostButton
-                        disabled={busy}
-                        onClick={event.status === 'SIGNUP_OPEN' ? onWithdraw : onOpenDecline}
-                        className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10"
-                      >
-                        <XCircle className="size-4" />
-                        {event.status === 'SIGNUP_OPEN' ? 'İmzayı Geri Çek' : 'Mazeretli İptal (0p)'}
-                      </GhostButton>
-                    )}
-                  </>
+                    <>
+                      WoW Armory üzerinden karakterinizin <strong>Level 60</strong> olduğu doğrulandığında raidlere imza atabilirsiniz.
+                    </>
+                  )}
+                </span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                {isMeeting
+                  ? 'Bu guild toplantısına henüz imza atmadınız. Tüm seviyeler imza atabilir — ilk puanlarınız bu demo ile başlar!'
+                  : 'Bu raide henüz imza atmadınız. Tek imza havuzuna kaydolun, Officerlar uygun gruba atasın.'}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {!myEntry ? (
+              isBelowLevel60 ? (
+                <>
+                  <GhostButton
+                    type="button"
+                    disabled={busy}
+                    onClick={onRefreshArmoryLevel}
+                    className="px-3 py-1.5 text-xs"
+                    title="Yeni 60 olduysanız WoW Armory seviyenizi yeniden kontrol eder"
+                  >
+                    <RefreshCw className="size-3.5" />
+                    Armory Yenile
+                  </GhostButton>
+                  <GoldButton disabled className="opacity-55">
+                    <Lock className="size-4" />
+                    Level 60 Gerekli{myLevel > 0 ? ` (Lv${myLevel})` : ''}
+                  </GoldButton>
+                </>
+              ) : (
+                <GoldButton disabled={busy || (signupExpired && !isOfficer)} onClick={onSignup}>
+                  <UserCheck className="size-4" />
+                  {isMeeting ? `Toplantıya İmza At (+${rules.signup}p)` : `Raide İmza At (+${rules.signup}p)`}
+                </GoldButton>
+              )
+            ) : (
+              <>
+                {event.status === 'ROSTERS_PUBLISHED' && myEntry.confirmStatus !== 'CONFIRMED' && (
+                  <GoldButton disabled={busy || (confirmExpired && !isOfficer)} onClick={onOpenConfirm}>
+                    <CheckCircle2 className="size-4" />
+                    Katılımı Konfirme Et (+{rules.confirm}p)
+                  </GoldButton>
                 )}
+                {myEntry.confirmStatus !== 'DECLINED_EXCUSED' && (
+                  <GhostButton
+                    disabled={busy}
+                    onClick={event.status === 'SIGNUP_OPEN' ? onWithdraw : onOpenDecline}
+                    className="border-rose-500/30 text-rose-300 hover:bg-rose-500/10"
+                  >
+                    <XCircle className="size-4" />
+                    {event.status === 'SIGNUP_OPEN' ? 'İmzayı Geri Çek' : 'Mazeretli İptal (0p)'}
+                  </GhostButton>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Sub-Toolbar: Roster Filter Pills + Officer Controls */}
+        {(event.rosters.length > 1 || isOfficer) && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {isOfficer && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('rosters')}
+                    className={cn(
+                      'cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+                      viewMode === 'rosters'
+                        ? 'border-neon/50 bg-neon/15 text-neon'
+                        : 'border-border text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Layers className="mr-1.5 inline size-3.5" />
+                    1. Roster Panosu ({event.rosters.length} Grup)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('postraid')}
+                    className={cn(
+                      'cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
+                      viewMode === 'postraid'
+                        ? 'border-gold/50 bg-gold/15 text-gold'
+                        : 'border-border text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <Archive className="mr-1.5 inline size-3.5" />
+                    2. Raid Sonu Puanlama &amp; Arşiv
+                  </button>
+                </>
+              )}
+
+              {viewMode === 'rosters' && event.rosters.length > 1 && (
+                <div className="ml-1 flex flex-wrap items-center gap-1 border-l border-border/60 pl-2">
+                  <button
+                    type="button"
+                    onClick={() => setRosterFilterId('all')}
+                    className={cn(
+                      'cursor-pointer rounded-md border px-2 py-1 text-[11px] font-semibold transition',
+                      rosterFilterId === 'all'
+                        ? 'border-gold/50 bg-gold/15 text-gold'
+                        : 'border-border/70 text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    Tüm Gruplar
+                  </button>
+                  {event.rosters.map((r, idx) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRosterFilterId(r.id)}
+                      className={cn(
+                        'cursor-pointer rounded-md border px-2 py-1 text-[11px] font-semibold transition',
+                        rosterFilterId === r.id
+                          ? 'border-neon/50 bg-neon/15 text-neon'
+                          : 'border-border/70 text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {shortRosterLabel(r.name, idx)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {isOfficer && (
+              <div className="flex flex-wrap items-center gap-2">
+                <GhostButton disabled={busy} onClick={onOpenAddMember} className="px-3 py-1.5 text-xs">
+                  <UserPlus className="size-3.5" />
+                  Üye Ekle
+                </GhostButton>
+                <GhostButton disabled={busy} onClick={onAddRoster} className="px-3 py-1.5 text-xs">
+                  <Plus className="size-3.5" />
+                  Yeni Grup Ekle
+                </GhostButton>
+                <GoldButton disabled={busy} onClick={onPublish} className="px-3 py-1.5 text-xs">
+                  <Send className="size-3.5" />
+                  {event.status === 'ROSTERS_PUBLISHED' ? 'Rosterı Güncelle & Duyur' : 'Rosterları Yayınla'}
+                </GoldButton>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onDeleteEvent}
+                  className="cursor-pointer rounded-lg border border-rose-500/30 p-1.5 text-rose-400 transition hover:bg-rose-500/10"
+                  title="Raid etkinliğini sil"
+                >
+                  <Trash2 className="size-4" />
+                </button>
               </div>
-            </div>
-          )
-        })()}
-
-        {/* Officer Toolbar */}
-        {isOfficer && (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setViewMode('rosters')}
-                className={cn(
-                  'cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
-                  viewMode === 'rosters'
-                    ? 'border-neon/50 bg-neon/15 text-neon'
-                    : 'border-border text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <Layers className="mr-1.5 inline size-3.5" />
-                1. Roster Planlama ({event.rosters.length} Grup)
-              </button>
-              <button
-                onClick={() => setViewMode('postraid')}
-                className={cn(
-                  'cursor-pointer rounded-lg border px-3 py-1.5 text-xs font-semibold transition',
-                  viewMode === 'postraid'
-                    ? 'border-gold/50 bg-gold/15 text-gold'
-                    : 'border-border text-muted-foreground hover:text-foreground',
-                )}
-              >
-                <Archive className="mr-1.5 inline size-3.5" />
-                2. Raid Sonu Puanlama & Arşiv
-              </button>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <GhostButton disabled={busy} onClick={onOpenAddMember} className="px-3 py-1.5 text-xs">
-                <UserPlus className="size-3.5" />
-                Üye Ekle
-              </GhostButton>
-              <GhostButton disabled={busy} onClick={onAddRoster} className="px-3 py-1.5 text-xs">
-                <Plus className="size-3.5" />
-                Yeni Grup (Roster) Ekle
-              </GhostButton>
-              <GoldButton disabled={busy} onClick={onPublish} className="px-3 py-1.5 text-xs">
-                <Send className="size-3.5" />
-                {event.status === 'ROSTERS_PUBLISHED' ? 'Rosterı Güncelle & Duyur' : 'Rosterları Yayınla'}
-              </GoldButton>
-              <button
-                disabled={busy}
-                onClick={onDeleteEvent}
-                className="cursor-pointer rounded-lg border border-rose-500/30 p-1.5 text-rose-400 hover:bg-rose-500/10"
-                title="Raid etkinliğini sil"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
+            )}
           </div>
         )}
       </Panel>
 
-      {/* Mode 1: Multi-Roster Builder & Display */}
+      {/* Mode 1: Full-Width 4-Role Column Raid Board + Spacious Bottom Pool & Bench */}
       {viewMode === 'rosters' && (
-        <div className="grid gap-5 xl:grid-cols-12">
-          {/* Left: Signup Pool + Bench */}
-          <div className="space-y-5 xl:col-span-4">
-            <Panel>
-              <PanelTitle icon={Users} action={<Badge className="border-neon/30 bg-neon/10 text-neon">{poolSignups.length}</Badge>}>
-                İmza Havuzu (Atama Bekleyen)
-              </PanelTitle>
-              {poolSignups.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Havuzda bekleyen imza yok.</p>
-              ) : (
-                <div className="space-y-2">
-                  {poolSignups.map((s) => (
-                    <SignupRowCard
-                      key={s.id}
-                      signup={s}
-                      event={event}
-                      points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
-                      rankInfo={rankByUser.get(s.username.toLowerCase())}
-                      conflicts={getSameWeekConflicts(event, allEvents, s.username)}
-                      isOfficer={isOfficer}
-                      busy={busy}
-                      onAssign={onAssign}
-                    />
-                  ))}
-                </div>
-              )}
-            </Panel>
+        <div className="space-y-5">
+          {visibleRosters.map((roster, rosterIndex) => {
+            const members = event.signups.filter((s) => s.assignment === roster.id)
+            const confirmedCount = members.filter((m) => m.confirmStatus === 'CONFIRMED').length
+            const rosterColor =
+              roster.color || ROSTER_COLOR_PRESETS[rosterIndex % ROSTER_COLOR_PRESETS.length].hex
+            const isEditingThis = editingRosterId === roster.id
 
-            <Panel className="border-cyan-500/25">
-              <PanelTitle
-                icon={UserMinus}
-                action={<Badge className="border-cyan-500/30 bg-cyan-500/10 text-cyan-300">{benchSignups.length}</Badge>}
+            const saveRosterEdit = () => {
+              const trimmed = editRosterName.trim()
+              if (!trimmed) return
+              onUpdateRoster(roster.id, { name: trimmed, color: editRosterColor })
+              setEditingRosterId(null)
+            }
+
+            return (
+              <Panel
+                key={roster.id}
+                className="relative overflow-hidden p-4"
+                style={{ borderColor: `${rosterColor}50` }}
               >
-                Yedek / Bench (Hazır = +{rules.benchReadyPoints ?? 6}p)
-              </PanelTitle>
-              {benchSignups.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Henüz bench atanmadı.</p>
+                <div
+                  className="pointer-events-none absolute inset-x-0 top-0 h-1"
+                  style={{ backgroundColor: rosterColor }}
+                />
+
+                {/* Roster Header + Inline Rename & Color Picker */}
+                <div className="mb-3.5 border-b border-border/60 pb-3">
+                  {isEditingThis && isOfficer ? (
+                    <div className="space-y-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={editRosterName}
+                          maxLength={48}
+                          autoFocus
+                          placeholder="Grup adı..."
+                          onChange={(e) => setEditRosterName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              saveRosterEdit()
+                            } else if (e.key === 'Escape') {
+                              setEditingRosterId(null)
+                            }
+                          }}
+                          className={cn(inputClass, 'h-8 min-w-[200px] flex-1 px-2.5 py-1 text-xs font-semibold')}
+                        />
+                        <button
+                          type="button"
+                          disabled={busy || !editRosterName.trim()}
+                          onClick={saveRosterEdit}
+                          className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
+                        >
+                          <Check className="size-3.5" />
+                          Kaydet
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRosterId(null)}
+                          className="h-8 cursor-pointer rounded-lg border border-border px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          İptal
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="mr-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+                          Renk:
+                        </span>
+                        {ROSTER_COLOR_PRESETS.map((preset) => {
+                          const selected = editRosterColor.toLowerCase() === preset.hex.toLowerCase()
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => setEditRosterColor(preset.hex)}
+                              title={preset.label}
+                              className={cn(
+                                'size-5 cursor-pointer rounded-full border-2 transition-transform hover:scale-110',
+                                selected
+                                  ? 'scale-110 border-white shadow-[0_0_8px_rgba(255,255,255,0.6)]'
+                                  : 'border-black/40',
+                              )}
+                              style={{ backgroundColor: preset.hex }}
+                            />
+                          )
+                        })}
+                        <label
+                          className="ml-1 inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/80 bg-[#071422] px-1.5 py-0.5 text-[10px] text-silver hover:border-neon/50"
+                          title="Özel renk seç"
+                        >
+                          <input
+                            type="color"
+                            value={editRosterColor}
+                            onChange={(e) => setEditRosterColor(e.target.value)}
+                            className="size-3.5 cursor-pointer border-0 bg-transparent p-0"
+                          />
+                          Özel
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: rosterColor, boxShadow: `0 0 8px ${rosterColor}` }}
+                        />
+                        <h3 className="font-display text-base font-bold" style={{ color: rosterColor }}>
+                          {roster.name}
+                        </h3>
+                        <span className="rounded-md bg-white/5 px-2 py-0.5 font-mono text-xs text-silver">
+                          {isMeeting ? `${members.length} katılımcı` : `${members.length}/${event.size}`}
+                        </span>
+                        <span className="text-[11px] text-emerald-300">{confirmedCount} Konfirme</span>
+                        {isOfficer && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              setEditingRosterId(roster.id)
+                              setEditRosterName(roster.name)
+                              setEditRosterColor(rosterColor)
+                            }}
+                            className="cursor-pointer rounded p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+                            title="Grup adını ve rengini düzenle"
+                          >
+                            <Pencil className="size-3.5" />
+                          </button>
+                        )}
+                        {isOfficer && event.rosters.length > 1 && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onRemoveRoster(roster.id)}
+                            className="cursor-pointer rounded p-1 text-muted-foreground transition hover:bg-rose-500/10 hover:text-rose-400"
+                            title="Grubu sil"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {ROLE_ORDER.map((rk) => {
+                          const cnt = members.filter((m) => m.role === rk).length
+                          return (
+                            <span
+                              key={rk}
+                              className={cn('rounded border px-2 py-0.5 font-mono font-semibold', ROLE_META[rk].chip)}
+                            >
+                              {ROLE_META[rk].label.split(' ')[0]}: {cnt}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4 Role Columns: Tank / Healer / Melee DPS / Ranged DPS */}
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {ROLE_ORDER.map((roleKey) => {
+                    const rm = ROLE_META[roleKey]
+                    const RIcon = rm.icon
+                    const list = members.filter((m) => m.role === roleKey)
+                    return (
+                      <div
+                        key={roleKey}
+                        className={cn('flex flex-col rounded-xl border bg-[#06111e]/90', rm.border)}
+                      >
+                        <div
+                          className={cn(
+                            'flex items-center justify-between rounded-t-xl px-3 py-2 text-xs font-bold',
+                            rm.headerBg,
+                            rm.color,
+                          )}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <RIcon className="size-3.5" />
+                            {rm.label}
+                          </span>
+                          <span className="font-mono">{list.length}</span>
+                        </div>
+                        <div className="flex-1 space-y-2 p-2.5">
+                          {list.length === 0 ? (
+                            <p className="py-5 text-center text-[11px] text-muted-foreground/60">Boş</p>
+                          ) : (
+                            list.map((s) => {
+                              const rk = rankByUser.get(s.username.toLowerCase())
+                              const pts = pointsByUser.get(s.username.toLowerCase()) ?? 0
+                              const conflicts = getSameWeekConflicts(event, allEvents, s.username)
+                              return (
+                                <div
+                                  key={s.id}
+                                  className={cn(
+                                    'rounded-lg border px-3 py-2 transition',
+                                    conflicts.some((c) => c.severity === 'assigned')
+                                      ? 'border-amber-400/50 bg-amber-500/[0.05]'
+                                      : 'border-border/65 bg-[#0a1a2c] hover:border-border',
+                                  )}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span
+                                      className="truncate text-xs font-bold"
+                                      style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}
+                                      title={s.characterName}
+                                    >
+                                      {s.characterName}
+                                    </span>
+                                    <ConfirmDot
+                                      status={s.confirmStatus}
+                                      published={event.status === 'ROSTERS_PUBLISHED'}
+                                    />
+                                  </div>
+                                  <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+                                    <span className="text-muted-foreground">
+                                      {s.spec}
+                                      {s.level < 60 && (
+                                        <span className="ml-1 text-amber-300">· Lv{s.level}</span>
+                                      )}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1">
+                                      {rk && (
+                                        <RankPill
+                                          label={rk.label}
+                                          color={rk.color}
+                                          armoryRankId={rk.armoryRankId}
+                                        />
+                                      )}
+                                      <PointsPill points={pts} />
+                                    </span>
+                                  </div>
+                                  {s.confirmStatus === 'DECLINED_EXCUSED' && s.declineReason && (
+                                    <p className="mt-1 text-[10px] text-rose-300/90">
+                                      Mazeret: {s.declineReason}
+                                    </p>
+                                  )}
+                                  {conflicts.length > 0 && (
+                                    <div className="mt-1.5 flex items-start gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200">
+                                      <AlertTriangle className="mt-0.5 size-3 shrink-0 text-amber-400" />
+                                      <span>
+                                        Aynı hafta:{' '}
+                                        {conflicts
+                                          .map((c) => `${c.dayLabel} (${c.assignmentLabel})`)
+                                          .join(', ')}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {isOfficer && (
+                                    <div className="mt-2 flex justify-end border-t border-border/40 pt-1.5">
+                                      <CompactAssignControl
+                                        signup={s}
+                                        event={event}
+                                        busy={busy}
+                                        onAssign={onAssign}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </Panel>
+            )
+          })}
+
+          {/* Full-Width Bottom Strips for Signup Pool & Bench */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel className="border-neon/25 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 font-display text-sm font-bold text-neon">
+                  <Users className="size-4" /> İmza Havuzu (Atama Bekleyen)
+                </h3>
+                <Badge className="border-neon/35 bg-neon/10 text-neon">{poolSignups.length}</Badge>
+              </div>
+              {poolSignups.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  Havuzda bekleyen imza yok.
+                </p>
               ) : (
-                <div className="space-y-2">
-                  {benchSignups.map((s) => (
-                    <SignupRowCard
-                      key={s.id}
-                      signup={s}
-                      event={event}
-                      points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
-                      rankInfo={rankByUser.get(s.username.toLowerCase())}
-                      conflicts={getSameWeekConflicts(event, allEvents, s.username)}
-                      isOfficer={isOfficer}
-                      busy={busy}
-                      onAssign={onAssign}
-                    />
-                  ))}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {poolSignups.map((s) => {
+                    const rk = rankByUser.get(s.username.toLowerCase())
+                    const pts = pointsByUser.get(s.username.toLowerCase()) ?? 0
+                    const conflicts = getSameWeekConflicts(event, allEvents, s.username)
+                    return (
+                      <div
+                        key={s.id}
+                        className={cn(
+                          'rounded-lg border p-2.5 text-xs',
+                          conflicts.some((c) => c.severity === 'assigned')
+                            ? 'border-amber-400/50 bg-amber-500/[0.04]'
+                            : 'border-border/70 bg-[#071422]',
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className="truncate font-bold"
+                            style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}
+                            title={s.characterName}
+                          >
+                            {s.characterName}
+                          </span>
+                          <span className="inline-flex shrink-0 items-center gap-1">
+                            {rk && (
+                              <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                            )}
+                            <PointsPill points={pts} />
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-muted-foreground">
+                            {s.spec} · {ROLE_META[s.role].label.split(' ')[0]}
+                            {s.level < 60 && <span className="ml-1 text-amber-300">· Lv{s.level}</span>}
+                          </span>
+                          {isOfficer ? (
+                            <CompactAssignControl
+                              signup={s}
+                              event={event}
+                              busy={busy}
+                              onAssign={onAssign}
+                            />
+                          ) : (
+                            <ConfirmDot
+                              status={s.confirmStatus}
+                              published={event.status === 'ROSTERS_PUBLISHED'}
+                            />
+                          )}
+                        </div>
+                        {conflicts.length > 0 && (
+                          <div className="mt-1.5 flex items-start gap-1 text-[10px] text-amber-300">
+                            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                            <span>
+                              Aynı hafta: {conflicts.map((c) => `${c.dayLabel} (${c.assignmentLabel})`).join(', ')}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </Panel>
-          </div>
 
-          {/* Right: Multiple Sub-Rosters (Grup 1, Grup 2, ...) */}
-          <div className="space-y-5 xl:col-span-8">
-            <div className="grid gap-4 md:grid-cols-2">
-              {event.rosters.map((roster, rosterIndex) => {
-                const members = event.signups.filter((s) => s.assignment === roster.id)
-                const tanks = members.filter((m) => m.role === 'TANK')
-                const healers = members.filter((m) => m.role === 'HEALER')
-                const dps = members.filter((m) => m.role === 'MELEE' || m.role === 'RANGED')
-                const confirmedCount = members.filter((m) => m.confirmStatus === 'CONFIRMED').length
-                const rosterColor =
-                  roster.color || ROSTER_COLOR_PRESETS[rosterIndex % ROSTER_COLOR_PRESETS.length].hex
-                const isEditingThis = editingRosterId === roster.id
-
-                const saveRosterEdit = () => {
-                  const trimmed = editRosterName.trim()
-                  if (!trimmed) return
-                  onUpdateRoster(roster.id, { name: trimmed, color: editRosterColor })
-                  setEditingRosterId(null)
-                }
-
-                return (
-                  <Panel
-                    key={roster.id}
-                    className="relative overflow-hidden"
-                    style={{ borderColor: `${rosterColor}55` }}
-                  >
-                    <div
-                      className="pointer-events-none absolute inset-x-0 top-0 h-1"
-                      style={{ backgroundColor: rosterColor }}
-                    />
-                    <div className="mb-3 border-b border-border/60 pb-2.5">
-                      {isEditingThis && isOfficer ? (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={editRosterName}
-                              maxLength={48}
-                              autoFocus
-                              placeholder="Grup adı..."
-                              onChange={(e) => setEditRosterName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault()
-                                  saveRosterEdit()
-                                } else if (e.key === 'Escape') {
-                                  setEditingRosterId(null)
-                                }
-                              }}
-                              className={cn(inputClass, 'h-8 flex-1 px-2.5 py-1 text-xs font-semibold')}
-                            />
-                            <button
-                              type="button"
-                              disabled={busy || !editRosterName.trim()}
-                              onClick={saveRosterEdit}
-                              className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
-                              title="Kaydet"
-                            >
-                              <Check className="size-3.5" />
-                              Kaydet
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingRosterId(null)}
-                              className="h-8 cursor-pointer rounded-lg border border-border px-2 text-xs text-muted-foreground hover:text-foreground"
-                            >
-                              İptal
-                            </button>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="mr-1 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-                              Renk:
-                            </span>
-                            {ROSTER_COLOR_PRESETS.map((preset) => {
-                              const selected = editRosterColor.toLowerCase() === preset.hex.toLowerCase()
-                              return (
-                                <button
-                                  key={preset.id}
-                                  type="button"
-                                  onClick={() => setEditRosterColor(preset.hex)}
-                                  title={preset.label}
-                                  className={cn(
-                                    'size-5 cursor-pointer rounded-full border-2 transition-transform hover:scale-110',
-                                    selected ? 'scale-110 border-white shadow-[0_0_8px_rgba(255,255,255,0.6)]' : 'border-black/40',
-                                  )}
-                                  style={{ backgroundColor: preset.hex }}
-                                />
-                              )
-                            })}
-                            <label
-                              className="ml-1 inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/80 bg-[#071422] px-1.5 py-0.5 text-[10px] text-silver hover:border-neon/50"
-                              title="Özel renk seç"
-                            >
-                              <input
-                                type="color"
-                                value={editRosterColor}
-                                onChange={(e) => setEditRosterColor(e.target.value)}
-                                className="size-3.5 cursor-pointer border-0 bg-transparent p-0"
-                              />
-                              Özel
-                            </label>
-                          </div>
-                        </div>
-                      ) : (
+            <Panel className="border-cyan-500/25 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 font-display text-sm font-bold text-cyan-300">
+                  <UserMinus className="size-4" /> Yedek / Bench (Hazır = +{rules.benchReadyPoints ?? 6}p)
+                </h3>
+                <Badge className="border-cyan-500/35 bg-cyan-500/10 text-cyan-300">
+                  {benchSignups.length}
+                </Badge>
+              </div>
+              {benchSignups.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">
+                  Henüz bench atanmadı.
+                </p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {benchSignups.map((s) => {
+                    const rk = rankByUser.get(s.username.toLowerCase())
+                    const pts = pointsByUser.get(s.username.toLowerCase()) ?? 0
+                    const conflicts = getSameWeekConflicts(event, allEvents, s.username)
+                    return (
+                      <div
+                        key={s.id}
+                        className={cn(
+                          'rounded-lg border p-2.5 text-xs',
+                          conflicts.some((c) => c.severity === 'assigned')
+                            ? 'border-amber-400/50 bg-amber-500/[0.04]'
+                            : 'border-border/70 bg-[#071422]',
+                        )}
+                      >
                         <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="size-2.5 shrink-0 rounded-full"
-                                style={{ backgroundColor: rosterColor, boxShadow: `0 0 8px ${rosterColor}` }}
-                              />
-                              <h3
-                                className="truncate font-display text-base font-bold"
-                                style={{ color: rosterColor }}
-                              >
-                                {roster.name}
-                              </h3>
-                              {isOfficer && (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setEditingRosterId(roster.id)
-                                    setEditRosterName(roster.name)
-                                    setEditRosterColor(rosterColor)
-                                  }}
-                                  className="cursor-pointer rounded p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
-                                  title="Grup adını ve rengini düzenle"
-                                >
-                                  <Pencil className="size-3.5" />
-                                </button>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-muted-foreground">
-                              {members.length}/{event.size} Oyuncu · <span className="text-emerald-300">{confirmedCount} Konfirme</span>
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
-                            <Badge className="border-sky-500/30 bg-sky-500/10 text-sky-300">T:{tanks.length}</Badge>
-                            <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">H:{healers.length}</Badge>
-                            <Badge className="border-rose-500/30 bg-rose-500/10 text-rose-300">D:{dps.length}</Badge>
-                            {isOfficer && event.rosters.length > 1 && (
-                              <button
-                                disabled={busy}
-                                onClick={() => onRemoveRoster(roster.id)}
-                                className="ml-1 cursor-pointer rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-400"
-                                title="Grubu sil"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
+                          <span
+                            className="truncate font-bold"
+                            style={{ color: CLASS_COLORS[s.wowClass] || '#fff' }}
+                            title={s.characterName}
+                          >
+                            {s.characterName}
+                          </span>
+                          <span className="inline-flex shrink-0 items-center gap-1">
+                            {rk && (
+                              <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
                             )}
-                          </div>
+                            <PointsPill points={pts} />
+                          </span>
                         </div>
-                      )}
-                    </div>
-
-                    {members.length === 0 ? (
-                      <p className="py-6 text-center text-xs text-muted-foreground">
-                        İmza havuzundan oyuncuları bu gruba atayın.
-                      </p>
-                    ) : (
-                      <div className="space-y-1.5">
-                        {[...tanks, ...healers, ...dps].map((s) => (
-                          <SignupRowCard
-                            key={s.id}
-                            signup={s}
-                            event={event}
-                            points={pointsByUser.get(s.username.toLowerCase()) ?? 0}
-                            rankInfo={rankByUser.get(s.username.toLowerCase())}
-                            conflicts={getSameWeekConflicts(event, allEvents, s.username)}
-                            isOfficer={isOfficer}
-                            busy={busy}
-                            onAssign={onAssign}
-                          />
-                        ))}
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <span>
+                              {s.spec} · {ROLE_META[s.role].label.split(' ')[0]}
+                            </span>
+                            <ConfirmDot
+                              status={s.confirmStatus}
+                              published={event.status === 'ROSTERS_PUBLISHED'}
+                            />
+                          </span>
+                          {isOfficer && (
+                            <CompactAssignControl
+                              signup={s}
+                              event={event}
+                              busy={busy}
+                              onAssign={onAssign}
+                            />
+                          )}
+                        </div>
+                        {conflicts.length > 0 && (
+                          <div className="mt-1.5 flex items-start gap-1 text-[10px] text-amber-300">
+                            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+                            <span>
+                              Aynı hafta: {conflicts.map((c) => `${c.dayLabel} (${c.assignmentLabel})`).join(', ')}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </Panel>
-                )
-              })}
-            </div>
+                    )
+                  })}
+                </div>
+              )}
+            </Panel>
           </div>
         </div>
       )}
@@ -1911,10 +2285,7 @@ function EventWorkspace({
                       )}
                       style={selected ? { borderColor: sec.color, color: sec.color } : undefined}
                     >
-                      <span
-                        className="size-2 rounded-full"
-                        style={{ backgroundColor: sec.color }}
-                      />
+                      <span className="size-2 rounded-full" style={{ backgroundColor: sec.color }} />
                       <span>{sec.name}</span>
                       <span className="opacity-70">({sec.members.length})</span>
                       {sec.scoredBy && <CheckCircle2 className="size-3.5 text-emerald-400" />}
@@ -2174,7 +2545,9 @@ function EventWorkspace({
                                 ]
 
                                 const penaltiesDisabled =
-                                  busy || !eventHasStarted || Boolean(activeFlags.excused || activeFlags.noShow || activeFlags.benchReady)
+                                  busy ||
+                                  !eventHasStarted ||
+                                  Boolean(activeFlags.excused || activeFlags.noShow || activeFlags.benchReady)
 
                                 return (
                                   <tr key={s.id} className="hover:bg-white/[0.02]">
@@ -2187,7 +2560,11 @@ function EventWorkspace({
                                         {(() => {
                                           const rk = rankByUser.get(s.username.toLowerCase())
                                           return rk ? (
-                                            <RankPill label={rk.label} color={rk.color} armoryRankId={rk.armoryRankId} />
+                                            <RankPill
+                                              label={rk.label}
+                                              color={rk.color}
+                                              armoryRankId={rk.armoryRankId}
+                                            />
                                           ) : null
                                         })()}
                                         <PointsPill points={pointsByUser.get(s.username.toLowerCase()) ?? 0} />
@@ -2310,113 +2687,6 @@ function EventWorkspace({
           </div>
         )
       })()}
-    </div>
-  )
-}
-
-function SignupRowCard({
-  signup,
-  event,
-  points,
-  rankInfo,
-  conflicts,
-  isOfficer,
-  busy,
-  onAssign,
-}: {
-  signup: RaidEventSignup
-  event: RaidEvent
-  points: number
-  rankInfo?: { label: string; color?: ArmoryRankColorId; armoryRankId?: number | null }
-  conflicts: SameWeekConflict[]
-  isOfficer: boolean
-  busy: boolean
-  onAssign: (signupId: string, assignment: string) => void
-}) {
-  return (
-    <div
-      className={cn(
-        'flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-[#071422]/90 px-3 py-2 text-xs',
-        conflicts.some((c) => c.severity === 'assigned')
-          ? 'border-amber-400/50 bg-amber-500/[0.04]'
-          : 'border-border/70',
-      )}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="truncate font-semibold" style={{ color: CLASS_COLORS[signup.wowClass] || '#fff' }}>
-            {signup.characterName}
-          </span>
-          {rankInfo && (
-            <RankPill
-              label={rankInfo.label}
-              color={rankInfo.color}
-              armoryRankId={rankInfo.armoryRankId}
-            />
-          )}
-          <PointsPill points={points} />
-          <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">{signup.role}</span>
-          {signup.level < 60 && (
-            <span className="rounded bg-amber-500/15 px-1 text-[10px] text-amber-300">Lv{signup.level}</span>
-          )}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-          <span>{signup.spec}</span>
-          {signup.confirmStatus === 'CONFIRMED' && <span className="text-emerald-400">✓ Konfirme</span>}
-          {signup.confirmStatus === 'DECLINED_EXCUSED' && (
-            <span className="text-rose-400">✗ İptal{signup.declineReason ? ` (${signup.declineReason})` : ''}</span>
-          )}
-          {signup.confirmStatus === 'PENDING' && event.status === 'ROSTERS_PUBLISHED' && (
-            <span className="text-amber-300">⏳ Konfirme Bekliyor</span>
-          )}
-        </div>
-        {conflicts.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {conflicts.map((c) => (
-              <span
-                key={c.eventId}
-                title={`Aynı hafta (${event.raidName}) — ${c.dayLabel}: ${c.assignmentLabel}`}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold',
-                  c.severity === 'assigned'
-                    ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
-                    : c.severity === 'bench'
-                      ? 'border-cyan-400/40 bg-cyan-500/10 text-cyan-200'
-                      : 'border-sky-400/35 bg-sky-500/10 text-sky-200',
-                )}
-              >
-                {c.severity === 'pool' ? (
-                  <Info className="size-3 shrink-0" />
-                ) : (
-                  <AlertTriangle className="size-3 shrink-0" />
-                )}
-                {c.severity === 'assigned'
-                  ? `${c.dayLabel} (${c.assignmentLabel}) atanmış`
-                  : c.severity === 'bench'
-                    ? `${c.dayLabel} (Bench)`
-                    : `${c.dayLabel} de imzalı`}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {isOfficer && (
-        <select
-          disabled={busy}
-          value={signup.assignment}
-          onChange={(e) => onAssign(signup.id, e.target.value)}
-          className="rounded-md border border-input bg-[#0b1b2d] px-2 py-1 text-[11px] text-foreground focus:border-neon focus:outline-none"
-        >
-          <option value="POOL">Havuz</option>
-          {event.rosters.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.name}
-            </option>
-          ))}
-          <option value="BENCH">Bench (Yedek)</option>
-        </select>
-      )}
     </div>
   )
 }

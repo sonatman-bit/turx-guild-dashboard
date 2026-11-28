@@ -114,6 +114,7 @@ export function RaidCalendarGrid({
   events,
   selectedEventId,
   onSelectEvent,
+  currentUsername = null,
   isOfficer = false,
   onQuickCreateForDate,
   raidTypeFilter = 'all',
@@ -122,6 +123,7 @@ export function RaidCalendarGrid({
   events: RaidEvent[]
   selectedEventId: string | null
   onSelectEvent: (event: RaidEvent) => void
+  currentUsername?: string | null
   isOfficer?: boolean
   onQuickCreateForDate?: (dateKey: string) => void
   raidTypeFilter?: string
@@ -493,6 +495,9 @@ export function RaidCalendarGrid({
                             const isSelected = selectedEventId === ev.id
                             const timeStr = trTimeLabel(ev.scheduledAt)
                             const title = shortEventTitle(ev)
+                            const mySignup = currentUsername
+                              ? ev.signups.find((s) => s.username.toLowerCase() === currentUsername.toLowerCase())
+                              : undefined
 
                             return (
                               <button
@@ -500,8 +505,14 @@ export function RaidCalendarGrid({
                                 type="button"
                                 onClick={() => onSelectEvent(ev)}
                                 title={`${ev.raidName} · ${timeStr} TR (${ev.signups.length} kayıt)${
-                                  isPastOrArchived ? ' — Geçmiş / Arşiv' : ' — Aktif / Gelecek'
-                                }`}
+                                  mySignup
+                                    ? mySignup.confirmStatus === 'CONFIRMED'
+                                      ? ' · Onaylısınız'
+                                      : mySignup.confirmStatus === 'DECLINED_EXCUSED'
+                                        ? ' · İptal ettiniz'
+                                        : ' · İmzalandınız'
+                                    : ''
+                                }${isPastOrArchived ? ' — Geçmiş / Arşiv' : ' — Aktif / Gelecek'}`}
                                 className={cn(
                                   'w-full cursor-pointer rounded-lg border px-2 py-1.5 text-left transition-all',
                                   isPastOrArchived
@@ -540,14 +551,34 @@ export function RaidCalendarGrid({
                                 </div>
                                 <div className="mt-0.5 flex items-center justify-between gap-1 font-mono text-[9px] opacity-85">
                                   <span>{timeStr}</span>
-                                  <span>
-                                    {isPastOrArchived
-                                      ? ev.status === 'ARCHIVED'
-                                        ? 'Arşiv'
-                                        : 'Geçti'
-                                      : isGuildMeetingEvent(ev.raidId)
-                                        ? 'Guild'
-                                        : `${ev.size}m`}
+                                  <span className="flex items-center gap-1">
+                                    {mySignup && !isPastOrArchived && (
+                                      <span
+                                        className={cn(
+                                          'rounded px-1 font-sans text-[8px] font-bold',
+                                          mySignup.confirmStatus === 'CONFIRMED'
+                                            ? 'bg-emerald-400/30 text-emerald-100'
+                                            : mySignup.confirmStatus === 'DECLINED_EXCUSED'
+                                              ? 'bg-rose-500/25 text-rose-200'
+                                              : 'bg-gold/30 text-gold',
+                                        )}
+                                      >
+                                        {mySignup.confirmStatus === 'CONFIRMED'
+                                          ? 'Onaylı'
+                                          : mySignup.confirmStatus === 'DECLINED_EXCUSED'
+                                            ? 'İptal'
+                                            : 'İmzalı'}
+                                      </span>
+                                    )}
+                                    <span>
+                                      {isPastOrArchived
+                                        ? ev.status === 'ARCHIVED'
+                                          ? 'Arşiv'
+                                          : 'Geçti'
+                                        : isGuildMeetingEvent(ev.raidId)
+                                          ? 'Guild'
+                                          : `${ev.size}m`}
+                                    </span>
                                   </span>
                                 </div>
                               </button>

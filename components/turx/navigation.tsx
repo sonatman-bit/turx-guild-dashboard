@@ -30,6 +30,9 @@ export type TabId =
   | 'applications'
   | 'strategy'
   | 'raid-signup'
+  | 'raid-signup-1'
+  | 'raid-signup-2'
+  | 'raid-signup-3'
   | 'loot'
   | 'attendance'
   | 'roadmap'
@@ -47,6 +50,7 @@ export const NAV_ITEMS: {
   icon: React.ComponentType<{ className?: string }>
   section: NavSection
   moduleFlag?: keyof PublicModuleFlags
+  alwaysBeta?: boolean
 }[] = [
   { id: 'overview', label: 'Genel Bakış', short: 'Dashboard', icon: LayoutDashboard, section: 'public' },
   { id: 'roadmap', label: 'Road Map', short: 'Sistem Sunumu & Rehber', icon: Map, section: 'public' },
@@ -56,9 +60,12 @@ export const NAV_ITEMS: {
   { id: 'anonymous', label: 'Anonim Mesaj Kutusu', short: 'GM & Görevli', icon: MessageSquareLock, section: 'public' },
   { id: 'raid-signup', label: 'Raid Kayıt', short: 'İmza & Çoklu Roster', icon: CalendarCheck, section: 'member', moduleFlag: 'raidSignup' },
   { id: 'loot', label: 'Loot Sistemi', short: 'Öncelik & BoE/BoP', icon: Award, section: 'member', moduleFlag: 'loot' },
-  { id: 'attendance', label: 'Devam Takibi', short: 'Puan & 40-Man Raider', icon: ClipboardList, section: 'member', moduleFlag: 'attendance' },
+  { id: 'attendance', label: 'Devam Takibi', short: 'Puan & İlk 50 Raider', icon: ClipboardList, section: 'member', moduleFlag: 'attendance' },
   { id: 'bank', label: 'Guild Bank', short: 'Malzeme Talebi', icon: Coins, section: 'member', moduleFlag: 'bank' },
   { id: 'admin', label: 'GM Yönetim Paneli', short: 'Yetkili Kontrolü', icon: Shield, section: 'staff' },
+  { id: 'raid-signup-1', label: 'Raid Kayıt 1', short: 'Minimalist & Sade Liste', icon: CalendarCheck, section: 'staff', alwaysBeta: true },
+  { id: 'raid-signup-2', label: 'Raid Kayıt 2', short: '4 Rol Sütunlu Pano', icon: CalendarCheck, section: 'staff', alwaysBeta: true },
+  { id: 'raid-signup-3', label: 'Raid Kayıt 3', short: 'Sol Takvim + Sekmeli', icon: CalendarCheck, section: 'staff', alwaysBeta: true },
 ]
 
 function NavList({
@@ -105,13 +112,13 @@ function NavList({
         </div>
       )}
       {items.map((item, idx) => {
-        const { id, label, short, icon: Icon, section, moduleFlag } = item
+        const { id, label, short, icon: Icon, section, moduleFlag, alwaysBeta } = item
         const prevSection = idx > 0 ? items[idx - 1].section : null
         const showMemberDivider = section === 'member' && prevSection === 'public'
         const showStaffDivider = section === 'staff' && prevSection !== null && prevSection !== 'staff'
         const isActive = active === id
         const itemLocked = navigationLocked && id !== 'profile'
-        const isBetaOnly = Boolean(moduleFlag && !publicModules[moduleFlag])
+        const isBetaOnly = Boolean(alwaysBeta || (moduleFlag && !publicModules[moduleFlag]))
         return (
           <div key={id} className="flex flex-col">
             {showMemberDivider && (

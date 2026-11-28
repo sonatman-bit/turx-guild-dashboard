@@ -718,6 +718,71 @@ export async function POST(request: Request) {
           break
         }
 
+        case 'update_event': {
+          requireOfficer()
+          const eventId = String(body.eventId || '')
+          const ev = rs.events.find((e) => e.id === eventId)
+          if (!ev) throw new Error('EVENT_NOT_FOUND')
+          if (ev.status === 'ARCHIVED' && !caller.isGm) throw new Error('GM_REQUIRED')
+
+          if (typeof body.raidName === 'string') {
+            const trimmedName = body.raidName.trim().slice(0, 90)
+            if (!trimmedName) throw new Error('RAID_NAME_REQUIRED')
+            ev.raidName = trimmedName
+          }
+
+          if (typeof body.notes === 'string') {
+            ev.notes = body.notes.trim().slice(0, 600)
+          }
+
+          if (ev.status !== 'ARCHIVED') {
+            const nextRaidId = typeof body.raidId === 'string' && body.raidId.trim() ? body.raidId.trim() : ev.raidId
+            const catalog =
+              RAID_CATALOG.find((r) => r.id === nextRaidId) ||
+              SPECIAL_EVENT_CATALOG.find((r) => r.id === nextRaidId)
+
+            const nextScheduledIso =
+              typeof body.scheduledAt === 'string' && body.scheduledAt.trim()
+                ? body.scheduledAt.trim()
+                : ev.scheduledAt
+            const nextSignupIso =
+              typeof body.signupDeadline === 'string' && body.signupDeadline.trim()
+                ? body.signupDeadline.trim()
+                : ev.signupDeadline
+            const nextConfirmIso =
+              typeof body.confirmDeadline === 'string' && body.confirmDeadline.trim()
+                ? body.confirmDeadline.trim()
+                : ev.confirmDeadline
+
+            const schedMs = new Date(nextScheduledIso).getTime()
+            const signupMs = new Date(nextSignupIso).getTime()
+            const confirmMs = new Date(nextConfirmIso).getTime()
+
+            if (!Number.isFinite(schedMs)) throw new Error('DATE_REQUIRED')
+            if (!isGuildMeetingEvent(nextRaidId) && schedMs < new Date(PHASE1_RAID_UNLOCK_ISO).getTime()) {
+              throw new Error('RAID_NOT_UNLOCKED_YET')
+            }
+            if (!Number.isFinite(signupMs) || !Number.isFinite(confirmMs)) {
+              throw new Error('INVALID_DATE_ORDER')
+            }
+            if (!(signupMs < confirmMs && confirmMs < schedMs)) {
+              throw new Error('INVALID_DATE_ORDER')
+            }
+
+            ev.raidId = nextRaidId
+            if (typeof body.size === 'number' || typeof body.size === 'string') {
+              const numSize = Number(body.size)
+              ev.size = (numSize === 40 ? 40 : numSize === 20 ? 20 : 10) as 10 | 20 | 40
+            } else if (catalog) {
+              ev.size = catalog.size
+            }
+            ev.scheduledAt = new Date(schedMs).toISOString()
+            ev.signupDeadline = new Date(signupMs).toISOString()
+            ev.confirmDeadline = new Date(confirmMs).toISOString()
+          }
+          break
+        }
+
         case 'delete_event': {
           requireOfficer()
           const eventId = String(body.eventId || '')
@@ -1501,6 +1566,7 @@ export async function POST(request: Request) {
       NOT_SIGNED_UP: ['Önce bu raide imza atmalısınız.', 400],
       CANNOT_WITHDRAW_PUBLISHED: ['Roster yayınlandıktan sonra geri çekme yerine mazeretli iptal kullanın.', 400],
       CHAR_REQUIRED: ['Karakter bilgisi zorunludur.', 400],
+      RAID_NAME_REQUIRED: ['Etkinlik / raid adı boş bırakılamaz.', 400],
       DATE_REQUIRED: ['Raid tarih ve saati zorunludur.', 400],
       INVALID_DATE_ORDER: ['Tarih sırası geçersiz: İmza kapanışı < Konfirmasyon kapanışı < Etkinlik başlangıcı olmalıdır.', 400],
       RAID_NOT_UNLOCKED_YET: ['Gerçek raidler Blizzard Phase 1 açılış tarihi olan 9 Aralık 2026 öncesine planlanamaz.', 400],

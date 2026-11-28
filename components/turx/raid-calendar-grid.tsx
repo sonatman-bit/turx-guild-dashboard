@@ -91,11 +91,16 @@ function mondayIndexUtc(d: Date): number {
 }
 
 function shortEventTitle(ev: RaidEvent): string {
-  if (isGuildMeetingEvent(ev.raidId)) return 'Toplantı'
-  if (ev.raidId === 'barrow') return 'Barrow'
-  if (ev.raidId === 'hyjal') return 'Hyjal'
-  if (ev.raidId === 'onyxia') return 'Onyxia'
-  return ev.raidName.slice(0, 14)
+  const name = ev.raidName.trim()
+  if (isGuildMeetingEvent(ev.raidId)) {
+    return name === 'TURX Guild Toplantısı & Yeni Sistem Sunumu' || name === 'TURX Guild Toplantısı'
+      ? 'Toplantı'
+      : name
+  }
+  if (ev.raidId === 'barrow') return name === 'Barrow Deeps' ? 'Barrow' : name
+  if (ev.raidId === 'hyjal') return name === 'Hyjal Summit' ? 'Hyjal' : name
+  if (ev.raidId === 'onyxia') return name === "Onyxia's Lair" ? 'Onyxia' : name
+  return name
 }
 
 export type CalendarViewMode = '5weeks' | 'month'

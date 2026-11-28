@@ -404,6 +404,7 @@ export function RaidSignupView() {
   const [calendarFilter, setCalendarFilter] = useState<string>('all')
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [editModalEvent, setEditModalEvent] = useState<RaidEvent | null>(null)
   const [confirmModalEvent, setConfirmModalEvent] = useState<RaidEvent | null>(null)
   const [declineModalEvent, setDeclineModalEvent] = useState<RaidEvent | null>(null)
   const [archiveModalEvent, setArchiveModalEvent] = useState<RaidEvent | null>(null)
@@ -411,6 +412,7 @@ export function RaidSignupView() {
 
   // Create Raid form state
   const [newRaidId, setNewRaidId] = useState('barrow')
+  const [newRaidName, setNewRaidName] = useState('')
   const [newScheduledAt, setNewScheduledAt] = useState(() => toDateTimeLocal(defaultRaidScheduleMs('barrow')))
   const [newSignupDeadline, setNewSignupDeadline] = useState(() =>
     toDateTimeLocal(defaultRaidScheduleMs('barrow') - 3 * 86_400_000),
@@ -420,6 +422,15 @@ export function RaidSignupView() {
   )
   const [deadlinesAuto, setDeadlinesAuto] = useState(true)
   const [newNotes, setNewNotes] = useState('')
+
+  // Edit Raid form state
+  const [editRaidId, setEditRaidId] = useState('barrow')
+  const [editRaidName, setEditRaidName] = useState('')
+  const [editScheduledAt, setEditScheduledAt] = useState('')
+  const [editSignupDeadline, setEditSignupDeadline] = useState('')
+  const [editConfirmDeadline, setEditConfirmDeadline] = useState('')
+  const [editDeadlinesAuto, setEditDeadlinesAuto] = useState(false)
+  const [editNotes, setEditNotes] = useState('')
 
   // Confirm / Decline / Archive / Manual Add states
   const [prepChecklist, setPrepChecklist] = useState<PrepChecklist>({
@@ -519,11 +530,26 @@ export function RaidSignupView() {
       }
     }
     setNewRaidId(targetId)
+    setNewRaidName('')
     setNewScheduledAt(toDateTimeLocal(schedMs))
     setNewSignupDeadline(toDateTimeLocal(schedMs - 3 * 86_400_000))
     setNewConfirmDeadline(toDateTimeLocal(schedMs - 1 * 86_400_000))
     setDeadlinesAuto(true)
     setCreateOpen(true)
+  }
+
+  const openEditModal = (ev: RaidEvent) => {
+    setEditModalEvent(ev)
+    setEditRaidId(ev.raidId)
+    setEditRaidName(ev.raidName)
+    const schedMs = new Date(ev.scheduledAt).getTime()
+    const signupMs = new Date(ev.signupDeadline).getTime()
+    const confirmMs = new Date(ev.confirmDeadline).getTime()
+    setEditScheduledAt(Number.isFinite(schedMs) ? toDateTimeLocal(schedMs) : '')
+    setEditSignupDeadline(Number.isFinite(signupMs) ? toDateTimeLocal(signupMs) : '')
+    setEditConfirmDeadline(Number.isFinite(confirmMs) ? toDateTimeLocal(confirmMs) : '')
+    setEditDeadlinesAuto(false)
+    setEditNotes(ev.notes || '')
   }
 
   const handleScheduledChange = (val: string) => {
@@ -545,6 +571,25 @@ export function RaidSignupView() {
     }
   }
 
+  const handleEditScheduledChange = (val: string) => {
+    setEditScheduledAt(val)
+    if (!editDeadlinesAuto) return
+    const dt = new Date(val).getTime()
+    if (Number.isFinite(dt)) {
+      setEditSignupDeadline(toDateTimeLocal(dt - 3 * 86_400_000))
+      setEditConfirmDeadline(toDateTimeLocal(dt - 1 * 86_400_000))
+    }
+  }
+
+  const resetEditDeadlinesToAuto = () => {
+    setEditDeadlinesAuto(true)
+    const dt = new Date(editScheduledAt).getTime()
+    if (Number.isFinite(dt)) {
+      setEditSignupDeadline(toDateTimeLocal(dt - 3 * 86_400_000))
+      setEditConfirmDeadline(toDateTimeLocal(dt - 1 * 86_400_000))
+    }
+  }
+
   const createDateValidationError = useMemo(() => {
     const schedMs = new Date(newScheduledAt).getTime()
     const signupMs = new Date(newSignupDeadline).getTime()
@@ -561,6 +606,27 @@ export function RaidSignupView() {
     return null
   }, [newRaidId, newScheduledAt, newSignupDeadline, newConfirmDeadline])
 
+  const editValidationError = useMemo(() => {
+    if (!editModalEvent) return null
+    if (!editRaidName.trim()) {
+      return 'Etkinlik / raid adı boş bırakılamaz.'
+    }
+    if (editModalEvent.status === 'ARCHIVED') return null
+    const schedMs = new Date(editScheduledAt).getTime()
+    const signupMs = new Date(editSignupDeadline).getTime()
+    const confirmMs = new Date(editConfirmDeadline).getTime()
+    if (!Number.isFinite(schedMs) || !Number.isFinite(signupMs) || !Number.isFinite(confirmMs)) {
+      return 'Lütfen geçerli tarih ve saat değerleri girin.'
+    }
+    if (!isGuildMeetingEvent(editRaidId) && schedMs < new Date(PHASE1_RAID_UNLOCK_ISO).getTime()) {
+      return 'Gerçek raidler Phase 1 açılış tarihi olan 9 Aralık 2026 öncesine planlanamaz.'
+    }
+    if (!(signupMs < confirmMs && confirmMs < schedMs)) {
+      return 'Tarih sırası geçersiz: İmza kapanışı < Konfirmasyon kapanışı < Etkinlik başlangıcı olmalıdır.'
+    }
+    return null
+  }, [editModalEvent, editRaidId, editRaidName, editScheduledAt, editSignupDeadline, editConfirmDeadline])
+
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault()
     if (createDateValidationError) {
@@ -571,23 +637,54 @@ export function RaidSignupView() {
       RAID_CATALOG.find((r) => r.id === newRaidId) ||
       SPECIAL_EVENT_CATALOG.find((r) => r.id === newRaidId) ||
       RAID_CATALOG[0]
+    const finalName = newRaidName.trim() || def.name
     const ok = await runAction(
       {
         action: 'create_event',
         raidId: def.id,
-        raidName: def.name,
+        raidName: finalName,
         size: def.size,
         scheduledAt: new Date(newScheduledAt).toISOString(),
         signupDeadline: new Date(newSignupDeadline).toISOString(),
         confirmDeadline: new Date(newConfirmDeadline).toISOString(),
         notes: newNotes,
       },
-      `${def.name} (${isGuildMeetingEvent(def.id) ? 'Tüm Guild' : `${def.size}-man`}) takvime eklendi.`,
+      `${finalName} (${isGuildMeetingEvent(def.id) ? 'Tüm Guild' : `${def.size}-man`}) takvime eklendi.`,
     )
     if (ok) {
       setCreateOpen(false)
+      setNewRaidName('')
       setNewNotes('')
       setDeadlinesAuto(true)
+    }
+  }
+
+  const handleUpdateEvent = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editModalEvent) return
+    if (editValidationError) {
+      toast({ variant: 'error', title: 'Geçersiz Bilgi', description: editValidationError })
+      return
+    }
+    const def =
+      RAID_CATALOG.find((r) => r.id === editRaidId) ||
+      SPECIAL_EVENT_CATALOG.find((r) => r.id === editRaidId)
+    const payload: Record<string, unknown> = {
+      action: 'update_event',
+      eventId: editModalEvent.id,
+      raidName: editRaidName.trim(),
+      notes: editNotes,
+    }
+    if (editModalEvent.status !== 'ARCHIVED') {
+      payload.raidId = editRaidId
+      payload.size = def?.size ?? editModalEvent.size
+      payload.scheduledAt = new Date(editScheduledAt).toISOString()
+      payload.signupDeadline = new Date(editSignupDeadline).toISOString()
+      payload.confirmDeadline = new Date(editConfirmDeadline).toISOString()
+    }
+    const ok = await runAction(payload, `"${editRaidName.trim()}" bilgileri güncellendi.`)
+    if (ok) {
+      setEditModalEvent(null)
     }
   }
 
@@ -777,6 +874,8 @@ export function RaidSignupView() {
           rules={rules}
           pointsByUser={pointsByUser}
           rankByUser={rankByUser}
+          canEdit={Boolean(data?.isGm)}
+          onEditEvent={() => openEditModal(selectedEvent)}
         />
       ) : (
         <EventWorkspace
@@ -873,6 +972,7 @@ export function RaidSignupView() {
             setManualAddAssignment(selectedEvent.rosters[0]?.id || 'POOL')
             setAddMemberModalEvent(selectedEvent)
           }}
+          onEditEvent={() => openEditModal(selectedEvent)}
           onDeleteEvent={() => {
             const confirmed = window.confirm(
               `"${selectedEvent.raidName}" (${formatTrDateTime(selectedEvent.scheduledAt)}) etkinliğini silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.`,
@@ -894,7 +994,7 @@ export function RaidSignupView() {
         description="Gün ve saat belirleyerek tek imza havuzu açın. İmza sayısına göre birden fazla roster grubu oluşturabilirsiniz."
       >
         <form onSubmit={handleCreateEvent} className="space-y-4">
-          <Field label="Raid / Etkinlik Seçimi">
+          <Field label="Raid / Etkinlik Türü">
             <select
               className={inputClass}
               value={newRaidId}
@@ -915,6 +1015,20 @@ export function RaidSignupView() {
                 ))}
               </optgroup>
             </select>
+          </Field>
+
+          <Field
+            label="Özel Başlık / Raid Adı (Opsiyonel)"
+            hint="Boş bırakırsanız seçili raid türü adı kullanılır."
+          >
+            <input
+              type="text"
+              maxLength={90}
+              className={inputClass}
+              placeholder="Örn: Barrow Deeps · Grup 1 (Hızlı Run)"
+              value={newRaidName}
+              onChange={(e) => setNewRaidName(e.target.value)}
+            />
           </Field>
 
           <Field
@@ -984,11 +1098,12 @@ export function RaidSignupView() {
             </div>
           )}
 
-          <Field label="Officer Notu (Opsiyonel)">
-            <input
-              type="text"
-              className={inputClass}
-              placeholder="Örn: Onyxia Cloak zorunlu, 20:45 summon hazır."
+          <Field label="İçerik / Officer Notu (Opsiyonel)">
+            <textarea
+              rows={3}
+              maxLength={600}
+              className={cn(inputClass, 'min-h-[78px] resize-y py-2')}
+              placeholder="Örn: Onyxia Cloak zorunlu, 20:45 summon hazır. Flask & Buff Food eksiksiz gelin."
               value={newNotes}
               onChange={(e) => setNewNotes(e.target.value)}
             />
@@ -1001,6 +1116,145 @@ export function RaidSignupView() {
             <GoldButton type="submit" disabled={busy || Boolean(createDateValidationError)}>
               <CalendarPlus className="size-4" />
               Takvimi Aç
+            </GoldButton>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Event Modal */}
+      <Modal
+        open={Boolean(editModalEvent)}
+        onClose={() => setEditModalEvent(null)}
+        title="Raid / Etkinlik Bilgilerini Düzenle"
+        description={
+          editModalEvent?.status === 'ARCHIVED'
+            ? 'Arşivlenmiş etkinlikte yalnızca başlık ve içerik notunu güncelleyebilirsiniz.'
+            : 'Etkinliğin adını, türünü, tarih-saatini, son tarihlerini ve içerik açıklamasını güncelleyin.'
+        }
+      >
+        <form onSubmit={handleUpdateEvent} className="space-y-4">
+          <Field label="Etkinlik / Raid Adı">
+            <input
+              type="text"
+              required
+              maxLength={90}
+              className={inputClass}
+              placeholder="Raid veya etkinlik adını girin..."
+              value={editRaidName}
+              onChange={(e) => setEditRaidName(e.target.value)}
+            />
+          </Field>
+
+          {editModalEvent?.status !== 'ARCHIVED' && (
+            <>
+              <Field label="Raid Türü / Kapasite">
+                <select
+                  className={inputClass}
+                  value={editRaidId}
+                  onChange={(e) => setEditRaidId(e.target.value)}
+                >
+                  <optgroup label="Raidler">
+                    {RAID_CATALOG.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.size}-Man)
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Özel Guild Etkinlikleri (Tüm Seviyeler)">
+                    {SPECIAL_EVENT_CATALOG.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} (Tüm Guild)
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </Field>
+
+              <Field
+                label="Raid Tarih ve Saati (TR · UTC+3)"
+                hint={
+                  editDeadlinesAuto
+                    ? 'Otomatik mod: Başlangıç değiştiğinde imza (-3g) ve konfirmasyon (-1g) otomatik kaydırılır.'
+                    : 'Mevcut son tarihler korunur; isterseniz alttan elle güncelleyebilir veya otomatiğe sıfırlayabilirsiniz.'
+                }
+              >
+                <input
+                  type="datetime-local"
+                  required
+                  className={inputClass}
+                  value={editScheduledAt}
+                  onChange={(e) => handleEditScheduledChange(e.target.value)}
+                />
+              </Field>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-semibold text-silver">
+                    Son Tarihler ({editDeadlinesAuto ? 'Otomatik (-3g / -1g)' : 'Elle / Mevcut'})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={resetEditDeadlinesToAuto}
+                    className="cursor-pointer font-semibold text-neon hover:underline"
+                  >
+                    Otomatiğe Sıfırla (-3g / -1g)
+                  </button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="İmza Kapanış (TR)">
+                    <input
+                      type="datetime-local"
+                      required
+                      className={inputClass}
+                      value={editSignupDeadline}
+                      onChange={(e) => {
+                        setEditDeadlinesAuto(false)
+                        setEditSignupDeadline(e.target.value)
+                      }}
+                    />
+                  </Field>
+                  <Field label="Konfirmasyon Kapanış (TR)">
+                    <input
+                      type="datetime-local"
+                      required
+                      className={inputClass}
+                      value={editConfirmDeadline}
+                      onChange={(e) => {
+                        setEditDeadlinesAuto(false)
+                        setEditConfirmDeadline(e.target.value)
+                      }}
+                    />
+                  </Field>
+                </div>
+              </div>
+            </>
+          )}
+
+          {editValidationError && (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-rose-400" />
+              <span>{editValidationError}</span>
+            </div>
+          )}
+
+          <Field label="İçerik / Açıklama / Officer Notu">
+            <textarea
+              rows={4}
+              maxLength={600}
+              className={cn(inputClass, 'min-h-[96px] resize-y py-2')}
+              placeholder="Etkinlik detayları, gerekli consumable/attunement notları veya duyuru metni..."
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+            />
+          </Field>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <GhostButton type="button" onClick={() => setEditModalEvent(null)}>
+              İptal
+            </GhostButton>
+            <GoldButton type="submit" disabled={busy || Boolean(editValidationError)}>
+              <Check className="size-4" />
+              Değişiklikleri Kaydet
             </GoldButton>
           </div>
         </form>
@@ -1193,11 +1447,15 @@ function ArchivedEventPanel({
   rules,
   pointsByUser,
   rankByUser,
+  canEdit = false,
+  onEditEvent,
 }: {
   event: RaidEvent
   rules: PointRules
   pointsByUser: Map<string, number>
   rankByUser: Map<string, RankMeta>
+  canEdit?: boolean
+  onEditEvent?: () => void
 }) {
   const isMeeting = isGuildMeetingEvent(event.raidId)
   const archiveGroups: {
@@ -1254,10 +1512,21 @@ function ArchivedEventPanel({
           <p className="mt-1 text-xs text-muted-foreground">
             Raid Tarihi: {formatTrDateTime(event.scheduledAt)} · Arşivleyen: {event.archivedBy || '—'}
           </p>
+          {event.notes && (
+            <p className="mt-1 whitespace-pre-line text-xs text-amber-200/85">Not: {event.notes}</p>
+          )}
         </div>
-        <div className="text-xs text-muted-foreground">
-          Toplam Kayıt: <strong className="text-foreground">{event.signups.length}</strong> · Grup Sayısı:{' '}
-          <strong className="text-foreground">{event.rosters.length}</strong>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-xs text-muted-foreground">
+            Toplam Kayıt: <strong className="text-foreground">{event.signups.length}</strong> · Grup Sayısı:{' '}
+            <strong className="text-foreground">{event.rosters.length}</strong>
+          </div>
+          {canEdit && onEditEvent && (
+            <GhostButton type="button" onClick={onEditEvent} className="px-3 py-1.5 text-xs">
+              <Pencil className="size-3.5" />
+              Düzenle
+            </GhostButton>
+          )}
         </div>
       </div>
 
@@ -1377,6 +1646,7 @@ function EventWorkspace({
   onMarkRosterScored,
   onOpenArchive,
   onOpenAddMember,
+  onEditEvent,
   onDeleteEvent,
 }: {
   event: RaidEvent
@@ -1412,6 +1682,7 @@ function EventWorkspace({
   onMarkRosterScored: (rosterId: string, scored: boolean) => void
   onOpenArchive: () => void
   onOpenAddMember: () => void
+  onEditEvent: () => void
   onDeleteEvent: () => void
 }) {
   const [viewMode, setViewMode] = useState<'rosters' | 'postraid'>('rosters')
@@ -1471,6 +1742,18 @@ function EventWorkspace({
                 )}
               />
               <h2 className="font-display text-xl font-bold text-gold sm:text-2xl">{event.raidName}</h2>
+              {isOfficer && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onEditEvent}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-gold/35 bg-gold/10 px-2 py-1 text-[11px] font-semibold text-gold transition hover:border-gold/60 hover:bg-gold/20 disabled:opacity-50"
+                  title="Raid adını, tarihini veya içeriğini düzenle"
+                >
+                  <Pencil className="size-3" />
+                  Düzenle
+                </button>
+              )}
               <Badge
                 className={
                   isMeeting
@@ -1497,7 +1780,11 @@ function EventWorkspace({
               </Badge>
             </div>
             <p className="mt-1 text-sm text-silver">{formatTrDateTime(event.scheduledAt)}</p>
-            {event.notes && <p className="mt-1 text-xs text-amber-200/90">Not: {event.notes}</p>}
+            {event.notes && (
+              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-amber-200/90">
+                Not: {event.notes}
+              </p>
+            )}
           </div>
 
           {/* Countdowns */}

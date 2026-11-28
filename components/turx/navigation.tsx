@@ -87,11 +87,10 @@ export const NAV_ITEMS: {
   {
     id: 'raid-signup-2',
     label: 'Raid Kayıt 2',
-    short: '4 Rol Sütunu · Raid Bazlı',
+    short: 'Takvim & 4 Rol Panosu',
     icon: Swords,
     section: 'staff',
     alwaysBeta: true,
-    children: RAID2_SUB_ITEMS,
   },
   { id: 'raid-signup-3', label: 'Raid Kayıt 3', short: 'Sol Takvim + Sekmeli', icon: CalendarCheck, section: 'staff', alwaysBeta: true },
 ]

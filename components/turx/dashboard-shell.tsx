@@ -233,7 +233,7 @@ function DashboardShellInner() {
             )}
             {tab === 'raid-signup' && canAccessTab('raid-signup') && <RaidSignupView />}
             {tab === 'raid-signup-1' && canOpenAdmin && <RaidSignupVariantView variant={1} onNavigate={select} />}
-            {tab === 'raid-signup-2' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="guild-meeting" onNavigate={select} />}
+            {tab === 'raid-signup-2' && canOpenAdmin && <RaidSignupVariantView variant={2} onNavigate={select} />}
             {tab === 'raid-signup-2-meeting' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="guild-meeting" onNavigate={select} />}
             {tab === 'raid-signup-2-barrow' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="barrow" onNavigate={select} />}
             {tab === 'raid-signup-2-hyjal' && canOpenAdmin && <RaidSignupVariantView variant={2} filterRaidId="hyjal" onNavigate={select} />}

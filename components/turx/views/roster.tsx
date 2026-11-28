@@ -121,6 +121,40 @@ function isWowClass(value: string | undefined): value is WowClass {
   return Boolean(value && value in CLASS_COLORS)
 }
 
+function rankSortOrder(row: Pick<RosterMemberRow, 'armoryRankId' | 'armoryRankLabel' | 'rank' | 'type'>): number {
+  if (typeof row.armoryRankId === 'number' && Number.isFinite(row.armoryRankId)) {
+    return row.armoryRankId
+  }
+  const label = (row.armoryRankLabel || (row.type === 'Alt' ? 'Alt' : row.rank) || '').toLowerCase()
+  if (label === 'gm' || label === 'guild master') return 0
+  if (label === 'officer' || label === 'görevli') return 1
+  if (label === 'raider' || label === 'raid leader') return 2
+  if (label === 'turx' || label === 'member') return 3
+  if (label === 'alt') return 4
+  if (label === 'sosyal' || label === 'social') return 5
+  return 99
+}
+
+function sortByRankAndName(a: RosterMemberRow, b: RosterMemberRow): number {
+  const rankDiff = rankSortOrder(a) - rankSortOrder(b)
+  if (rankDiff !== 0) return rankDiff
+  const lvlDiff = (b.level ?? 0) - (a.level ?? 0)
+  if (lvlDiff !== 0) return lvlDiff
+  return a.charName.localeCompare(b.charName, 'tr')
+}
+
+function matchesRankFilter(row: RosterMemberRow, selectedRank: GuildRank | 'all'): boolean {
+  if (selectedRank === 'all') return true
+  const label = (row.armoryRankLabel || '').toLowerCase()
+  if (selectedRank === 'Guild Master') return row.rank === 'Guild Master' || label === 'gm' || label === 'guild master'
+  if (selectedRank === 'Görevli') return row.rank === 'Görevli' || row.rank === 'Officer' || label === 'officer' || label === 'görevli'
+  if (selectedRank === 'Raider') return row.rank === 'Raider' || label === 'raider'
+  if (selectedRank === 'Turx') return (row.type === 'Main' && row.rank === 'Turx') || label === 'turx'
+  if (selectedRank === 'Alt') return row.type === 'Alt' || row.rank === 'Alt' || label === 'alt'
+  if (selectedRank === 'Sosyal') return row.rank === 'Sosyal' || label === 'sosyal'
+  return row.rank === selectedRank
+}
+
 function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
   return accounts.flatMap((account) => {
     const chars = Array.isArray(account.characters) ? account.characters : []
@@ -132,6 +166,7 @@ function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
 
     return validChars.map((character, index) => {
       const wowClass = isWowClass(character.wowClass) ? character.wowClass : 'Warrior'
+      const isMainChar = Boolean(character.isMain)
       return {
         id: character.id || `${account.username}-${index}`,
         username: account.username,
@@ -145,13 +180,13 @@ function mapServerMembers(accounts: ServerMember[]): RosterMemberRow[] {
         spec: character.spec || '—',
         offSpec: character.offSpec || 'Yok',
         role: character.role || 'MELEE',
-        rank: account.role,
+        rank: isMainChar ? account.role : 'Alt',
         armoryRankId: character.armoryRankId ?? null,
-        armoryRankLabel: character.armoryRankLabel,
-        armoryRankColor: character.armoryRankColor,
+        armoryRankLabel: character.armoryRankLabel || (isMainChar ? undefined : 'Alt'),
+        armoryRankColor: character.armoryRankColor || (isMainChar ? undefined : 'violet'),
         bnet: account.bnet,
         discord: account.discord,
-        type: character.isMain ? 'Main' : 'Alt',
+        type: isMainChar ? 'Main' : 'Alt',
         professions: character.professions || ['Yok', 'Yok'],
         attunements: {
           onyxia: Boolean(character.attunements?.onyxia),
@@ -270,7 +305,7 @@ export function RosterView() {
       )
     const matchesClass = cls === 'all' || m.wowClass === cls
     const matchesRole = role === 'all' || m.role === role
-    const matchesRank = rank === 'all' || m.rank === rank
+    const matchesRank = matchesRankFilter(m, rank)
     const matchesProf = professionFilter === 'all' || m.professions.includes(professionFilter)
     return matchesQuery && matchesClass && matchesRole && matchesRank && matchesProf
   }
@@ -278,12 +313,12 @@ export function RosterView() {
   const allMains = useMemo(() => rosterMembers.filter((m) => m.type === 'Main'), [rosterMembers])
   const allAlts = useMemo(() => rosterMembers.filter((m) => m.type === 'Alt'), [rosterMembers])
   const filteredMains = useMemo(
-    () => allMains.filter(matchesFilters),
+    () => allMains.filter(matchesFilters).sort(sortByRankAndName),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [allMains, query, cls, role, rank, professionFilter],
   )
   const filteredAlts = useMemo(
-    () => allAlts.filter(matchesFilters),
+    () => allAlts.filter(matchesFilters).sort(sortByRankAndName),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [allAlts, query, cls, role, rank, professionFilter],
   )
@@ -384,6 +419,7 @@ export function RosterView() {
               <option value="all">Tüm Ranklar</option>
               <option value="Guild Master">Guild Master</option>
               <option value="Görevli">Görevli</option>
+              <option value="Raider">Raider</option>
               <option value="Turx">Turx</option>
               <option value="Alt">Alt</option>
               <option value="Sosyal">Sosyal</option>

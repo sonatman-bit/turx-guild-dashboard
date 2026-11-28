@@ -250,7 +250,8 @@ export async function GET(request: Request) {
               : typeof character.armoryRankId === 'number'
                 ? character.armoryRankId
                 : null
-          const resolvedRank = resolveArmoryDisplayRank(rawRankId, store.armoryRankMappings, pub.role)
+          const fallbackRank = character.isMain ? pub.role : 'Alt'
+          const resolvedRank = resolveArmoryDisplayRank(rawRankId, store.armoryRankMappings, fallbackRank)
           return {
             ...character,
             armory,
